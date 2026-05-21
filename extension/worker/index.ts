@@ -29,15 +29,36 @@ const CORS_BASE = {
   'Content-Type': 'application/json',
 }
 
+/**
+ * Parse the ALLOWED_EXTENSION_ID env var. Supports a comma-separated list so
+ * an operator can keep the CWS production id alongside dev/unpacked ids
+ * without rotating between them. Returns the set of `chrome-extension://<id>`
+ * origins the Worker will accept.
+ */
+function allowedOrigins(allowedExtId: string | undefined): Set<string> {
+  if (!allowedExtId) return new Set()
+  return new Set(
+    allowedExtId
+      .split(',')
+      .map((s) => s.trim())
+      .filter(Boolean)
+      .map((id) => `chrome-extension://${id}`),
+  )
+}
+
 function corsHeaders(origin: string | null, allowedExtId: string | undefined): HeadersInit {
+  const allowed = allowedOrigins(allowedExtId)
   // Fail-closed: if no extension ID is configured, refuse to echo a usable
   // origin. The browser will block the response and the operator gets a clear
   // signal that ALLOWED_EXTENSION_ID needs to be set before going live.
-  const allowed = allowedExtId ? `chrome-extension://${allowedExtId}` : 'null'
-  return {
-    ...CORS_BASE,
-    'Access-Control-Allow-Origin': origin && origin === allowed ? origin : allowed,
+  if (allowed.size === 0) {
+    return { ...CORS_BASE, 'Access-Control-Allow-Origin': 'null' }
   }
+  // Echo back the request origin if it's in the allow-list; otherwise return
+  // the first allowed origin (browser will block, but operator sees the
+  // configured value in DevTools).
+  const echo = origin && allowed.has(origin) ? origin : [...allowed][0]
+  return { ...CORS_BASE, 'Access-Control-Allow-Origin': echo }
 }
 
 function json(body: unknown, status: number, headers: HeadersInit): Response {
@@ -81,8 +102,8 @@ function checkAuth(req: Request, env: Env): { ok: boolean; status?: number; reas
 
   const origin = req.headers.get('Origin')
   if (env.ALLOWED_EXTENSION_ID && origin) {
-    const expected = `chrome-extension://${env.ALLOWED_EXTENSION_ID}`
-    if (origin !== expected) return { ok: false, status: 401, reason: 'bad_origin' }
+    const allowed = allowedOrigins(env.ALLOWED_EXTENSION_ID)
+    if (!allowed.has(origin)) return { ok: false, status: 401, reason: 'bad_origin' }
   }
   return { ok: true }
 }

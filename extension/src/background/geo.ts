@@ -26,11 +26,22 @@ export const BLOCKED_COUNTRIES = new Set<string>([
   // express. Worker handles ON sub-region when CF returns the region header.
 ])
 
+/** Why a geo check failed, when it failed. */
+export type GeoErrorReason =
+  | 'no_worker'      // Worker URL or secret not configured
+  | 'unauthorized'   // Worker returned 401 — secret mismatch or extension origin not allow-listed
+  | 'misconfigured'  // Worker returned 503 — missing env on the Cloudflare side
+  | 'rate_limited'   // Worker returned 429
+  | 'http_error'     // Other non-2xx response
+  | 'network'        // Fetch threw
+  | 'no_country'     // Worker responded 200 but didn't include a country code
+
 export interface GeoStatus {
   country: string
   blocked: boolean
-  /** True if the lookup failed — fail-closed: treat as blocked. */
+  /** True if the lookup couldn't be performed. See `errorReason` for why. */
   unknown: boolean
+  errorReason?: GeoErrorReason
 }
 
 let cached: GeoStatus | null = null
@@ -40,26 +51,39 @@ export async function getGeoStatus(
   workerSecret: string,
 ): Promise<GeoStatus> {
   if (cached) return cached
+  if (!workerUrl || !workerSecret) {
+    cached = { country: '', blocked: true, unknown: true, errorReason: 'no_worker' }
+    return cached
+  }
   try {
     const res = await fetch(`${workerUrl}/geo`, {
       headers: { 'X-Actually-Auth': workerSecret },
     })
     if (!res.ok) {
-      cached = { country: '', blocked: true, unknown: true }
+      const reason: GeoErrorReason =
+        res.status === 401 ? 'unauthorized'
+        : res.status === 503 ? 'misconfigured'
+        : res.status === 429 ? 'rate_limited'
+        : 'http_error'
+      cached = { country: '', blocked: true, unknown: true, errorReason: reason }
       return cached
     }
     const data = (await res.json()) as {
       country?: string
       blocked?: boolean
     }
+    if (!data.country) {
+      cached = { country: '', blocked: true, unknown: true, errorReason: 'no_country' }
+      return cached
+    }
     cached = {
-      country: (data.country ?? '').toUpperCase(),
+      country: data.country.toUpperCase(),
       blocked: Boolean(data.blocked),
-      unknown: !data.country,
+      unknown: false,
     }
     return cached
   } catch {
-    cached = { country: '', blocked: true, unknown: true }
+    cached = { country: '', blocked: true, unknown: true, errorReason: 'network' }
     return cached
   }
 }

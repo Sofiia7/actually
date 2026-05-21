@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import type { MatchResult } from '../shared/types'
 import { restoreWallet, type WalletState } from '../background/trade'
-import { getGeoStatus } from '../background/geo'
+import { type GeoErrorReason, getGeoStatus } from '../background/geo'
 import { getSettings } from '../background/settings'
 import { ConnectButton } from './trade/ConnectButton'
 import { OrderForm } from './trade/OrderForm'
@@ -31,7 +31,12 @@ interface Props {
 export function TradePanel({ match }: Props) {
   const { t } = useTranslation()
   const [wallet, setWallet] = useState<WalletState | null>(null)
-  const [geo, setGeo] = useState<{ blocked: boolean; country: string; unknown: boolean } | null>(null)
+  const [geo, setGeo] = useState<{
+    blocked: boolean
+    country: string
+    unknown: boolean
+    errorReason?: GeoErrorReason
+  } | null>(null)
   const [loaded, setLoaded] = useState(false)
 
   // On mount: restore wallet session (if any), then check geo.
@@ -48,7 +53,12 @@ export function TradePanel({ match }: Props) {
         const s = await getSettings()
         if (s.workerUrl && s.workerSecret) {
           const g = await getGeoStatus(s.workerUrl, s.workerSecret)
-          if (!cancelled) setGeo({ blocked: g.blocked, country: g.country, unknown: g.unknown })
+          if (!cancelled) setGeo({
+            blocked: g.blocked,
+            country: g.country,
+            unknown: g.unknown,
+            errorReason: g.errorReason,
+          })
         }
       } catch {
         // ignore — geo block treats unknown as blocked at submit time
@@ -62,19 +72,12 @@ export function TradePanel({ match }: Props) {
 
   if (!loaded) return <p className="intro">…</p>
 
-  // Only block on a *confirmed* restricted country. If the geo lookup failed
-  // (Worker misconfigured, network error, etc.) we surface that as a Settings
-  // hint instead of silently locking the user out of the Trade tab.
+  // Only hard-block on a *confirmed* restricted country. If the geo lookup
+  // failed we render the full Trade UI but show a warning at the top — the
+  // user can still browse market analytics; if they actually are in a
+  // restricted region, Polymarket will reject their order at submit time.
   if (geo?.blocked && !geo.unknown) {
     return <GeoBlock country={geo.country} />
-  }
-  if (geo?.unknown) {
-    return (
-      <div className="warning" style={{ marginTop: 0 }}>
-        Couldn't verify your region. Check your Worker URL and secret in
-        Settings, then reload the popup.
-      </div>
-    )
   }
 
   if (!match) {
@@ -94,6 +97,7 @@ export function TradePanel({ match }: Props) {
 
   return (
     <div>
+      {geo?.unknown && <GeoLookupHint reason={geo.errorReason} />}
       <div className="match-card" data-mood={match.color} style={{ marginTop: 0 }}>
         <div className="match-meta">{t('trade.title')}</div>
         <p className="match-question">{match.market.question}</p>
@@ -123,5 +127,39 @@ function parseFirstPrice(raw: string): number {
     return Number(arr[0] ?? '0')
   } catch {
     return 0
+  }
+}
+
+/**
+ * Inline notice when the geo check failed for an actionable reason. Doesn't
+ * gate the Trade UI — Polymarket itself rejects orders from restricted
+ * regions, so the worst case is the user sees the analytics and gets a clear
+ * error at order submission instead of silently being locked out here.
+ */
+function GeoLookupHint({ reason }: { reason?: GeoErrorReason }) {
+  const msg = reasonMessage(reason)
+  return (
+    <div className="warning" style={{ marginTop: 0, marginBottom: 10 }}>
+      {msg}
+    </div>
+  )
+}
+
+function reasonMessage(r?: GeoErrorReason): string {
+  switch (r) {
+    case 'no_worker':
+      return "Add your Worker URL and secret in Settings to enable trading."
+    case 'unauthorized':
+      return "Worker rejected this extension (origin or secret mismatch). " +
+        "Add this extension's ID to ALLOWED_EXTENSION_ID on Cloudflare " +
+        "(comma-separated list supported)."
+    case 'misconfigured':
+      return "Your Worker is missing required env vars (WORKER_SHARED_SECRET or ALLOWED_EXTENSION_ID)."
+    case 'rate_limited':
+      return "Hit Worker rate limit. Try again in a minute."
+    case 'network':
+      return "Couldn't reach the Worker. Check your network and the Worker URL in Settings."
+    default:
+      return "Couldn't verify your region. Trading will work if you're not in a restricted area; Polymarket itself will reject restricted regions at order time."
   }
 }

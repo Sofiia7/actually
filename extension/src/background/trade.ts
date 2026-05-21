@@ -61,13 +61,13 @@ export async function connectWallet(cb: ConnectCallbacks): Promise<WalletState> 
     throw new Error('builder_code_not_configured')
   }
 
-  // 1. Geo gate before showing any wallet UI
+  // 1. Geo gate before showing any wallet UI.
+  // - confirmed restricted → throw
+  // - unknown (Worker misconfig / network) → proceed; Polymarket itself
+  //   blocks restricted regions at order time, and the UI shows an inline
+  //   warning so the user knows the safety net isn't engaged.
   const geo = await getGeoStatus(settings.workerUrl, settings.workerSecret)
-  if (geo.unknown) {
-    // Don't pretend we know the user is blocked — surface the misconfig.
-    throw new Error('geo_lookup_failed')
-  }
-  if (geo.blocked) {
+  if (!geo.unknown && geo.blocked) {
     void trackEvent('geo_blocked', settings, { country: geo.country })
     throw new Error('geo_blocked')
   }
@@ -188,11 +188,9 @@ export async function placeOrder(args: PlaceOrderArgs): Promise<OrderSubmitResul
   if (!settings.workerUrl || !settings.workerSecret) {
     return { ok: false, error: 'worker_not_configured' }
   }
+  // Same posture as connectWallet: only hard-block on confirmed restricted.
   const geo = await getGeoStatus(settings.workerUrl, settings.workerSecret)
-  if (geo.unknown) {
-    return { ok: false, error: 'geo_lookup_failed' }
-  }
-  if (geo.blocked) {
+  if (!geo.unknown && geo.blocked) {
     void trackEvent('geo_blocked', settings, { country: geo.country, stage: 'submit' })
     return { ok: false, error: 'geo_blocked' }
   }
