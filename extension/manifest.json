@@ -1,0 +1,45 @@
+{
+  "manifest_version": 3,
+  "name": "Actually — What Markets Really Think",
+  "version": "1.0.0",
+  "description": "Click to see real market odds on any news story. Powered by Polymarket.",
+
+  "permissions": ["storage", "activeTab", "alarms", "scripting"],
+  "optional_permissions": [],
+  "host_permissions": ["https://clob.polymarket.com/*"],
+
+  "background": {
+    "service_worker": "src/background/index.ts",
+    "type": "module"
+  },
+
+  "action": {
+    "default_popup": "src/popup/index.html",
+    "default_icon": {
+      "16": "public/icon-16.png",
+      "48": "public/icon-48.png",
+      "128": "public/icon-128.png"
+    },
+    "default_title": "Actually — check market odds"
+  },
+
+  "commands": {
+    "_execute_action": {
+      "suggested_key": {
+        "default": "Ctrl+Shift+P",
+        "mac": "Command+Shift+P"
+      },
+      "description": "Open Actually and check the current page"
+    }
+  },
+
+  "content_security_policy": {
+    "extension_pages": "script-src 'self' 'wasm-unsafe-eval'; object-src 'self'"
+  },
+
+  "icons": {
+    "16": "public/icon-16.png",
+    "48": "public/icon-48.png",
+    "128": "public/icon-128.png"
+  }
+}

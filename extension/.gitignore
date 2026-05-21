@@ -1,0 +1,18 @@
+node_modules/
+dist/
+.vite/
+*.log
+.DS_Store
+
+# Cloudflare Worker
+worker/.wrangler/
+worker/.dev.vars
+
+# Local env / secrets
+.env
+.env.local
+*.local
+
+# IDE
+.idea/
+.vscode/

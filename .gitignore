@@ -1,0 +1,27 @@
+# Node / build
+node_modules/
+dist/
+.vite/
+*.log
+
+# Local env / secrets
+.env
+.env.local
+*.local
+
+# Build artifacts (we ship via CWS / GitHub Releases, not via repo)
+*.zip
+*.tar.gz
+
+# Cloudflare Worker
+worker/.wrangler/
+worker/.dev.vars
+
+# OS / IDE
+.DS_Store
+.idea/
+.vscode/
+
+# Claude / agent session data
+.claude/
+.cursor/

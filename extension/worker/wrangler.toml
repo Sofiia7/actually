@@ -1,0 +1,34 @@
+name = "actually-api"
+main = "index.ts"
+compatibility_date = "2025-01-01"
+compatibility_flags = ["nodejs_compat"]
+# Set CLOUDFLARE_ACCOUNT_ID in env or `wrangler login`, or add account_id here
+# locally (do not commit). See wrangler.toml.example for the expected shape.
+workers_dev = true
+
+[[kv_namespaces]]
+binding = "RATE_LIMITS"
+# Create with: npx wrangler kv namespace create RATE_LIMITS
+# Then paste the returned id here (or keep it out of VCS).
+id = "REPLACE_WITH_YOUR_KV_NAMESPACE_ID"
+
+[vars]
+# Non-secret defaults — override in CF dashboard or `wrangler secret put`.
+#
+# ALLOWED_EXTENSION_ID
+#   Required for production. Set this to your Chrome extension ID (from
+#   chrome://extensions or the Web Store listing). Worker fails 503 without it
+#   unless WORKER_DEV_MODE=true.
+ALLOWED_EXTENSION_ID = ""
+#
+# WORKER_DEV_MODE
+#   Set to "true" ONLY for local dev. Bypasses the requirement to have
+#   WORKER_SHARED_SECRET and ALLOWED_EXTENSION_ID set. Never enable in prod.
+WORKER_DEV_MODE = ""
+#
+# Secrets to set via `wrangler secret put`:
+#   WORKER_SHARED_SECRET    — random 32+ chars (openssl rand -hex 32),
+#                             also set in extension Settings → Advanced
+#   OPENAI_API_KEY          — only if you offer centralized OpenAI embeddings
+#   POLYMARKET_BUILDER_CODE — currently unused; the extension hardcodes its
+#                             builderCode at build time. Remove if not planned.

@@ -1,0 +1,88 @@
+{
+  "app": {
+    "name": "Actually",
+    "tagline": "What do markets really think?"
+  },
+  "tabs": {
+    "check": "Check",
+    "trade": "Trade",
+    "history": "History",
+    "settings": "Settings"
+  },
+  "check": {
+    "intro": "Reading a news story? Check what markets really think.",
+    "button": "Check this page",
+    "loading": "Checking markets…",
+    "noKeys": "Add your Worker URL and secret in Settings first.",
+    "noMatch": "No matching market found for this page.",
+    "lowConfidenceTitle": "Best guess — low confidence",
+    "alternatives": "Wrong market? Try one of these:",
+    "viewOnPolymarket": "View on Polymarket →",
+    "marketOdds": "Market odds",
+    "chance": "chance",
+    "volume": "${{amount}} volume"
+  },
+  "history": {
+    "title": "Recent matches",
+    "empty": "No history yet — check a page to get started.",
+    "clear": "Clear history"
+  },
+  "settings": {
+    "apiKeys": "API & connection",
+    "behavior": "Behavior",
+    "privacy": "Privacy",
+    "about": "About",
+    "openaiServerHint": "OpenAI embeddings are served through the Worker (no per-user key needed).",
+    "workerUrl": "Worker URL",
+    "workerSecret": "Worker secret",
+    "embeddingProvider": "Embedding provider",
+    "providerLocal": "Local (free, runs on your device)",
+    "providerOpenAI": "OpenAI (higher quality, served via Worker)",
+    "confidence": "Confidence threshold",
+    "lowConfidenceFloor": "Low-confidence floor",
+    "telemetry": "Share anonymous usage stats",
+    "telemetryHint": "Helps us measure if Actually is useful. No personal data.",
+    "locale": "Language",
+    "test": "Test connection",
+    "save": "Save",
+    "saved": "Saved ✓",
+    "version": "Version {{version}}",
+    "builderCodeReadOnly": "Builder code"
+  },
+  "trade": {
+    "title": "Trade this market",
+    "connectWallet": "Connect wallet",
+    "connecting": "Waiting for wallet…",
+    "connected": "Connected: {{address}}",
+    "disconnect": "Disconnect",
+    "buyYes": "Buy YES",
+    "buyNo": "Buy NO",
+    "amount": "Amount (USDC)",
+    "maxPayout": "Max payout",
+    "returnPct": "Return",
+    "slippage": "Slippage est.",
+    "spread": "Spread",
+    "volumeLabel": "Volume",
+    "liquidityLabel": "Liquidity",
+    "resolves": "Resolves",
+    "resolutionSource": "Source",
+    "rules": "Rules",
+    "placeOrder": "Place order — sign in wallet",
+    "submitting": "Submitting order…",
+    "success": "Order placed ✓",
+    "failure": "Order failed: {{reason}}",
+    "geoBlocked": "Prediction markets are restricted in your region.",
+    "needsFunds": "Add USDC to trade"
+  },
+  "color": {
+    "blue": "calm",
+    "yellow": "attention",
+    "red": "serious"
+  },
+  "errors": {
+    "extractFailed": "Couldn't read the page. Try a different article.",
+    "networkError": "Network error. Check your Worker URL.",
+    "openaiError": "OpenAI request failed.",
+    "modelLoading": "Loading model for first time (one-time, ~33MB)…"
+  }
+}
