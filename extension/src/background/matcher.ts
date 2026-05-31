@@ -6,7 +6,7 @@ import {
 } from '../shared/constants'
 import { embed } from './embeddings'
 import { getMarketCache } from './cache'
-import { b64ToFloatArray, cosineSimilarity } from './util'
+import { b64ToFloatArray, cosineSimilarity, findOutcomeIndex } from './util'
 
 function getColor(prob: number): MatchResult['color'] {
   if (prob < COLOR_THRESHOLDS.blue) return 'blue'
@@ -81,10 +81,13 @@ function stem(w: string): string {
   return w.slice(0, 4)
 }
 
-function priceFromOutcomes(outcomePrices: string): number {
+function priceFromOutcomes(outcomePrices: string, outcomesJson: string): number {
+  // Probability shown is always the YES side. Map by label since some markets
+  // list "No" first.
+  const yesIdx = findOutcomeIndex(outcomesJson, 'Yes')
   try {
     const arr = JSON.parse(outcomePrices) as string[]
-    return parseFloat(arr[0])
+    return parseFloat(arr[yesIdx] ?? '0')
   } catch {
     return 0
   }
@@ -140,7 +143,7 @@ export async function findMatch(
   const isAboveFloor = top.raw >= settings.lowConfidenceFloor
   if (!isAboveFloor) return null
 
-  const probability = priceFromOutcomes(top.market.outcomePrices)
+  const probability = priceFromOutcomes(top.market.outcomePrices, top.market.outcomes)
   const alternatives = scored.slice(1, 5).map((s) => s.market)
   const alternativeScores = scored.slice(1, 5).map((s) => s.score)
 

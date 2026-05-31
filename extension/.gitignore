@@ -4,6 +4,11 @@ dist/
 *.log
 .DS_Store
 
+# Build / packaging artifacts — never commit
+*.zip
+*.tar.gz
+*.crx
+
 # Cloudflare Worker
 worker/.wrangler/
 worker/.dev.vars

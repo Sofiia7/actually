@@ -3,11 +3,20 @@
  *
  * MV3 service workers cannot use dynamic imports and have aggressive lifetime
  * limits, so all heavy work (transformers.js model loading, embedding, cache
- * refresh, matching) happens in the popup context. The SW only handles:
+ * refresh, matching, WalletConnect, CLOB signing) happens in the offscreen
+ * document — see src/offscreen/offscreen.ts and src/background/offscreen-host.ts.
+ *
+ * The SW only handles:
  *   - install/onInstalled hook (installId, alarms)
  *   - settings + history + cache-status messages (storage proxy)
  *   - telemetry flush alarm
  *   - lightweight connection test
+ *   - forwarding "heavy" messages to the offscreen document
+ *
+ * v1 architecture is popup-only — no content script. The toolbar icon opens
+ * the popup via `default_popup` in manifest.json, and Ctrl/Cmd+Shift+P does
+ * the same via the `_execute_action` command (no listener needed when
+ * default_popup is set).
  */
 import { ALARM_NAMES, CACHE_TTL_MINUTES, TELEMETRY_FLUSH_INTERVAL_MIN, defaultThresholds } from '../shared/constants'
 import type { RequestMessage, ResponseMessage } from '../shared/messages'
@@ -16,6 +25,7 @@ import { getCacheStatus, clearMarketCache } from './cache'
 import { getSettings, saveSettings } from './settings'
 import { clearHistory, getHistory } from './history'
 import { flushTelemetry, getInstallId, trackEvent } from './telemetry'
+import { routeToOffscreen } from './offscreen-host'
 
 // --- Lifecycle ---------------------------------------------------------------
 
@@ -58,6 +68,14 @@ chrome.alarms.onAlarm.addListener(async (alarm) => {
 // --- Messaging ---------------------------------------------------------------
 
 chrome.runtime.onMessage.addListener((msg: RequestMessage, _sender, sendResponse) => {
+  // Offscreen-targeted messages are forwarded to the offscreen document
+  // and the response piped back. The SW itself does not interpret them.
+  if (msg && (msg as { target?: string }).target === 'offscreen') {
+    routeToOffscreen(msg)
+      .then((res) => sendResponse(res))
+      .catch((err) => sendResponse({ type: 'OS_ERROR', error: String(err) }))
+    return true
+  }
   handle(msg)
     .then((res) => sendResponse(res))
     .catch((err) => sendResponse({ type: 'ERROR', error: String(err) } satisfies ResponseMessage))
@@ -106,10 +124,11 @@ async function handle(msg: RequestMessage): Promise<ResponseMessage> {
       return { type: 'ERROR', error: 'handled_in_popup' }
 
     case 'PLACE_ORDER': {
-      // Order placement runs in the popup (it needs the WC v2 session and
-      // clob client, which can't live in a service worker). The SW just
-      // refuses cleanly here so this handler doesn't pretend to work.
-      return { type: 'ORDER_RESULT', ok: false, error: 'handled_in_popup' }
+      // Order placement runs in the offscreen document (it needs the WC v2
+      // session and clob client, which can't live in a service worker). The
+      // SW just refuses cleanly here — clients should send the OS_PLACE_ORDER
+      // offscreen message instead.
+      return { type: 'ORDER_RESULT', ok: false, error: 'handled_in_offscreen' }
     }
 
     default:

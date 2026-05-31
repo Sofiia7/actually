@@ -4,7 +4,7 @@
  * Composition:
  *   ./wallet.ts   — WCSigner backed by WalletConnect v2 session
  *   ./clob.ts     — ClobClient (with builderCode), createOrDeriveApiKey,
- *                   placeBuyOrder
+ *                   signBuyOrder + submitSignedOrder, pollOrderStatus
  *   ./geo.ts      — country gate
  *
  * Persisted state in chrome.storage.local (managed via settings.ts):
@@ -21,7 +21,9 @@ import {
   deriveCredentials,
   fetchOrderBook,
   makeClient,
-  placeBuyOrder,
+  pollOrderStatus,
+  signBuyOrder,
+  submitSignedOrder,
   resolveFunderAddress,
 } from './clob'
 import {
@@ -175,6 +177,8 @@ export interface PlaceOrderArgs {
   /** Per-share price (0..1) from orderbook best ask at submit time */
   price: number
   negRisk: boolean
+  /** Exact tick size from the matched market; falls back to negRisk default. */
+  tickSize?: string
 }
 
 export interface OrderSubmitResult {
@@ -195,11 +199,6 @@ export async function placeOrder(args: PlaceOrderArgs): Promise<OrderSubmitResul
     return { ok: false, error: 'geo_blocked' }
   }
 
-  void trackEvent('order_form_opened', settings, {
-    side: args.side,
-    size_bucket: sizeBucket(args.sizeUsd),
-  })
-
   const signer = new WCSigner(args.state.topic, args.state.address)
   const client = makeClient({
     signer,
@@ -211,25 +210,58 @@ export async function placeOrder(args: PlaceOrderArgs): Promise<OrderSubmitResul
   // receives if filled at `price`.
   const size = Math.floor((args.sizeUsd / args.price) * 100) / 100
 
-  void trackEvent('order_signed', settings, { side: args.side })
-  const result = await placeBuyOrder(client, {
-    tokenId: args.tokenId,
-    price: args.price,
-    size,
-    negRisk: args.negRisk,
-  })
-  if (result.success) {
-    void trackEvent('order_submitted', settings, {
-      side: args.side,
-      size_bucket: sizeBucket(args.sizeUsd),
+  // 1. Ask the wallet to sign the typed-data order. If the user rejects in
+  //    MetaMask / WC, we do NOT count it as `order_signed`.
+  let signed: unknown
+  try {
+    signed = await signBuyOrder(client, {
+      tokenId: args.tokenId,
+      price: args.price,
+      size,
+      negRisk: args.negRisk,
+      tickSize: args.tickSize,
     })
-    return { ok: true, orderId: result.orderId }
+  } catch (err) {
+    void trackEvent('order_failed', settings, {
+      side: args.side,
+      stage: 'sign',
+      reason: String(err),
+    })
+    return { ok: false, error: `sign_failed:${err}` }
   }
-  void trackEvent('order_failed', settings, {
+  void trackEvent('order_signed', settings, {
     side: args.side,
-    reason: result.error ?? 'unknown',
+    size_bucket: sizeBucket(args.sizeUsd),
   })
-  return { ok: false, error: result.error ?? 'unknown_error' }
+
+  // 2. Post the signed payload to CLOB.
+  const result = await submitSignedOrder(client, signed)
+  if (!result.success) {
+    void trackEvent('order_failed', settings, {
+      side: args.side,
+      stage: 'submit',
+      reason: result.error ?? 'unknown',
+    })
+    return { ok: false, error: result.error ?? 'unknown_error' }
+  }
+  void trackEvent('order_submitted', settings, {
+    side: args.side,
+    size_bucket: sizeBucket(args.sizeUsd),
+  })
+
+  // 3. Fire-and-forget poll for fill status. UI returns from this call
+  //    immediately on submit-success — the fill event is a downstream
+  //    KPI signal, not part of the synchronous order flow.
+  if (result.orderId) {
+    void (async () => {
+      const status = await pollOrderStatus(client, result.orderId!)
+      if (status === 'matched') {
+        void trackEvent('order_filled', settings, { side: args.side })
+      }
+    })()
+  }
+
+  return { ok: true, orderId: result.orderId }
 }
 
 function sizeBucket(usd: number): string {
@@ -285,16 +317,14 @@ export async function getOrderbookSnapshot(
       }
       if (remaining > 0) {
         // Not enough depth — flag with worst-ask + 100% slippage so the UI
-        // can warn loudly.
-        return { effectivePrice: lvl_or_zero(asks[asks.length - 1]?.price, bestAsk), slippage: 1 }
+        // can warn loudly. Use the deepest available level (last ask), or
+        // bestAsk as a safety fallback if asks somehow became empty mid-walk.
+        const worstAsk = asks[asks.length - 1]?.price ?? bestAsk
+        return { effectivePrice: worstAsk, slippage: 1 }
       }
       const eff = cost / sizeShares
       const slip = (eff - bestAsk) / bestAsk
       return { effectivePrice: eff, slippage: slip }
     },
   }
-}
-
-function lvl_or_zero(a: number | undefined, fallback: number): number {
-  return a ?? fallback
 }

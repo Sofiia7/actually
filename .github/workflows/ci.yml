@@ -1,0 +1,82 @@
+name: CI
+
+on:
+  pull_request:
+    paths:
+      - 'extension/**'
+      - '.github/workflows/ci.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'extension/**'
+      - '.github/workflows/ci.yml'
+
+jobs:
+  test:
+    name: lint + test + build
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: extension
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+          cache-dependency-path: extension/package-lock.json
+
+      - name: Install
+        run: npm ci
+
+      - name: Type-check
+        run: npm run lint
+
+      - name: Unit tests
+        run: npm test
+
+      # The production build needs (a) a fake Worker secret so vite.config.ts
+      # build-time CSP substitution exercises its happy path and (b) the
+      # Marck Script woff2 in public/fonts/. We fetch it from Google Fonts
+      # the same way local devs do via `npm run fonts:fetch`.
+      - name: Fetch fonts
+        run: npm run fonts:fetch
+
+      - name: Build (with CI-stub env)
+        env:
+          VITE_WORKER_URL: https://ci-stub.workers.dev
+          VITE_WORKER_SECRET: ci-stub-secret-not-real
+          VITE_WC_PROJECT_ID: ci-stub-wc-project
+          VITE_BUILDER_CODE: '0x0000000000000000000000000000000000000000000000000000000000000000'
+        run: npm run build
+
+      # Sanity-check that the production manifest CSP got the exact Worker
+      # origin baked in (regression cover for vite.config.ts tightenConnectSrc).
+      - name: Assert production CSP is tightened
+        run: |
+          grep -q 'ci-stub.workers.dev' dist/manifest.json
+          if grep -q 'https://\*\.workers\.dev' dist/manifest.json; then
+            echo "::error::CSP still contains *.workers.dev wildcard in production build"
+            exit 1
+          fi
+
+      # Belt-and-suspenders: fail CI if any known leaked secret reappears.
+      - name: No-leaked-secrets check
+        run: |
+          set -e
+          ! grep -RIn \
+            -e '770d0e45222c7fba195e27da296141a2d1be288120e503ee3161a041642e1f6b' \
+            -e 'a5f1a9a6b73f4df58c5d4b1428cb62da' \
+            --exclude-dir=node_modules \
+            --exclude-dir=dist \
+            --exclude-dir=.git \
+            . || (echo "::error::Known leaked token found in repo" && exit 1)
+
+      - name: Upload dist as artifact
+        if: github.event_name == 'pull_request'
+        uses: actions/upload-artifact@v4
+        with:
+          name: extension-dist
+          path: extension/dist
+          retention-days: 7

@@ -34,6 +34,77 @@ export function cosineSimilarity(a: Float32Array, b: Float32Array): number {
   return denom === 0 ? 0 : dot / denom
 }
 
+/**
+ * Resolve the index of the YES outcome in a PolyMarket's `outcomes` JSON
+ * string. Polymarket does not guarantee positional order — for some markets
+ * "No" is index 0. Sending a BUY_YES order to clobTokenIds[0] when [0] is
+ * actually the NO token would place the trade in the wrong direction
+ * (money loss). Always map via the string label.
+ *
+ * Returns 0 by default if parsing fails or "Yes" not found — the caller
+ * should still validate the result.
+ */
+export function findOutcomeIndex(outcomesJson: string, label: 'Yes' | 'No'): number {
+  try {
+    const arr = JSON.parse(outcomesJson) as string[]
+    const i = arr.findIndex((o) => o?.toLowerCase() === label.toLowerCase())
+    return i >= 0 ? i : (label === 'Yes' ? 0 : 1)
+  } catch {
+    return label === 'Yes' ? 0 : 1
+  }
+}
+
+/**
+ * Parse a JSON-encoded string array (Polymarket Gamma returns `outcomes`
+ * and `outcomePrices` as JSON strings, not native arrays). Returns []
+ * on any parse failure so callers can default-index without `?.`.
+ */
+export function safeJsonArray(s: string | undefined): string[] {
+  if (!s) return []
+  try {
+    const v = JSON.parse(s)
+    return Array.isArray(v) ? v.map(String) : []
+  } catch {
+    return []
+  }
+}
+
+/**
+ * Human-friendly relative time. Accepts a Date or a millisecond timestamp.
+ * Used in History rows, ResolutionCard, and anywhere we render "X ago".
+ */
+export function formatRelative(input: Date | number): string {
+  const ms = input instanceof Date ? input.getTime() : input
+  const diff = ms - Date.now()
+  const absMin = Math.round(Math.abs(diff) / 60_000)
+  if (absMin < 1) return 'just now'
+  // Past
+  if (diff < 0) {
+    if (absMin < 60) return `${absMin}m ago`
+    const h = Math.round(absMin / 60)
+    if (h < 24) return `${h}h ago`
+    const d = Math.round(h / 24)
+    if (d < 7) return `${d}d ago`
+    return new Date(ms).toLocaleDateString()
+  }
+  // Future
+  const d = Math.round(diff / 86_400_000)
+  if (d === 0) return 'today'
+  if (d === 1) return 'tomorrow'
+  return `in ${d}d`
+}
+
+/**
+ * Fast non-cryptographic 8-char hash of an arbitrary string. Used as a
+ * privacy-safe dimension in telemetry (we count "market X got N matches"
+ * without ever sending the raw market id). djb2 in hex, fixed-width.
+ */
+export function shortHash(s: string): string {
+  let h = 5381
+  for (let i = 0; i < s.length; i++) h = ((h << 5) + h + s.charCodeAt(i)) | 0
+  return (h >>> 0).toString(16).padStart(8, '0')
+}
+
 export function uuid(): string {
   if (crypto.randomUUID) return crypto.randomUUID()
   const bytes = crypto.getRandomValues(new Uint8Array(16))

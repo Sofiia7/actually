@@ -35,6 +35,17 @@ export async function fetchActiveMarkets(
     const raw = (await res.json()) as Array<Partial<PolyMarket> & {
       clobTokenIds?: string | string[]
       volumeNum?: number
+      endDate?: string
+      end_date_iso?: string
+      description?: string
+      resolutionSource?: string
+      resolution_source?: string
+      negRisk?: boolean
+      neg_risk?: boolean
+      // Gamma names this differently across versions
+      orderPriceMinTickSize?: number | string
+      tickSize?: number | string
+      minimumTickSize?: number | string
     }>
     if (raw.length === 0) break
     for (const m of raw) {
@@ -53,11 +64,32 @@ export async function fetchActiveMarkets(
         active: Boolean(m.active),
         closed: Boolean(m.closed),
         clobTokenIds: parseClobTokenIds(m.clobTokenIds),
+        endDate: m.endDate ?? m.end_date_iso,
+        description: m.description,
+        resolutionSource: m.resolutionSource ?? m.resolution_source,
+        negRisk: m.negRisk ?? m.neg_risk ?? false,
+        tickSize: normalizeTick(m.orderPriceMinTickSize ?? m.tickSize ?? m.minimumTickSize),
       })
       if (out.length >= total) return out
     }
   }
   return out
+}
+
+/**
+ * Normalize Gamma's tick-size value to a decimal string CLOB accepts
+ * ("0.01", "0.001", ...). Returns undefined when the input doesn't look like
+ * a valid tick — the caller then falls back to negRisk-based defaults.
+ *
+ * Exported for unit testing; production callsite is `fetchActiveMarkets`.
+ */
+export function normalizeTick(v: number | string | undefined): string | undefined {
+  if (v == null) return undefined
+  const n = typeof v === 'string' ? parseFloat(v) : v
+  if (!Number.isFinite(n) || n <= 0 || n >= 1) return undefined
+  // CLOB tick sizes are powers of 10 (0.01 / 0.001 / 0.0001). Keep up to
+  // 6 decimals and strip trailing zeros so the string round-trips cleanly.
+  return n.toFixed(6).replace(/\.?0+$/, '')
 }
 
 function parseClobTokenIds(v: string | string[] | undefined): string[] {

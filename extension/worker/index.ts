@@ -12,8 +12,27 @@ interface Env {
   ALLOWED_EXTENSION_ID?: string
   WORKER_DEV_MODE?: string // "true" allows running without a shared secret
   OPENAI_API_KEY?: string
+  /** Hard daily cap of /embeddings requests across all clients. Default 5000. */
+  OPENAI_DAILY_LIMIT?: string
   POLYMARKET_BUILDER_CODE?: string
   RATE_LIMITS?: KVNamespace
+}
+
+/**
+ * Per-day spend cap for OpenAI requests, enforced via KV counter shared across
+ * all users. Protects the operator from a single bad actor draining the key.
+ * Returns true if the request is allowed, false if the daily quota is exhausted.
+ */
+async function openAiDailyCap(env: Env): Promise<boolean> {
+  if (!env.RATE_LIMITS) return true
+  const limit = parseInt(env.OPENAI_DAILY_LIMIT ?? '5000', 10)
+  const day = new Date().toISOString().slice(0, 10) // YYYY-MM-DD
+  const key = `openai_day:${day}`
+  const cur = parseInt((await env.RATE_LIMITS.get(key)) ?? '0', 10)
+  if (cur >= limit) return false
+  // 25 hour TTL covers the rollover and lets the value GC itself
+  await env.RATE_LIMITS.put(key, String(cur + 1), { expirationTtl: 90_000 })
+  return true
 }
 
 // Polymarket-restricted jurisdictions. Mirrors the client list in
@@ -52,7 +71,11 @@ function corsHeaders(origin: string | null, allowedExtId: string | undefined): H
   // origin. The browser will block the response and the operator gets a clear
   // signal that ALLOWED_EXTENSION_ID needs to be set before going live.
   if (allowed.size === 0) {
-    return { ...CORS_BASE, 'Access-Control-Allow-Origin': 'null' }
+    // Browsers sometimes treat `Access-Control-Allow-Origin: null` as a match
+    // for opaque origins (file://, sandboxed iframes). Echo a clearly-invalid
+    // URL instead — no browser ever matches this, and the operator sees the
+    // misconfig in DevTools.
+    return { ...CORS_BASE, 'Access-Control-Allow-Origin': 'https://__actually_misconfigured__.invalid' }
   }
   // Echo back the request origin if it's in the allow-list; otherwise return
   // the first allowed origin (browser will block, but operator sees the
@@ -169,6 +192,9 @@ export default {
         }
         const apiKey = env.OPENAI_API_KEY
         if (!apiKey) return json({ error: 'no_openai_key' }, 503, headers)
+        if (!(await openAiDailyCap(env))) {
+          return json({ error: 'daily_cap_reached' }, 429, headers)
+        }
         const body = (await req.json()) as { texts: string[]; model?: string }
         const res = await fetch('https://api.openai.com/v1/embeddings', {
           method: 'POST',
@@ -234,6 +260,11 @@ export default {
 
       // --- Polymarket Safe (funder) lookup by EOA -------------------
       // GET /clob/proxy/<eoa> — returns the Polymarket Safe address.
+      //
+      // Polymarket's public data-api exposes the proxy wallet under a few
+      // shapes that have shifted historically. We try the canonical
+      // /proxyWallet first, fall back to /wallet, and tolerate both
+      // `proxyWallet` and `proxy` field names in the response.
       if (url.pathname.startsWith('/clob/proxy/') && req.method === 'GET') {
         if (!(await rateLimit(env, 'proxy', ip, 30))) {
           return json({ error: 'rate_limited' }, 429, headers)
@@ -242,20 +273,39 @@ export default {
         if (!/^0x[0-9a-f]{40}$/.test(eoa)) {
           return json({ error: 'bad_eoa' }, 400, headers)
         }
-        // Polymarket's account endpoint returns the proxy/safe wallet for an EOA.
-        const res = await fetch(
+        const candidates = [
+          `https://data-api.polymarket.com/proxyWallet?address=${eoa}`,
           `https://data-api.polymarket.com/wallet?user=${eoa}`,
-        )
-        if (!res.ok) {
-          return json({ error: 'lookup_failed', status: res.status }, 502, headers)
+        ]
+        let addr: string | undefined
+        let lastStatus = 0
+        for (const u of candidates) {
+          try {
+            const res = await fetch(u)
+            lastStatus = res.status
+            if (!res.ok) continue
+            const data = (await res.json()) as Record<string, unknown>
+            const v =
+              (data.proxyWallet as string | undefined) ??
+              (data.proxy as string | undefined) ??
+              (data.safe as string | undefined) ??
+              (data.wallet as string | undefined) ??
+              (data.address as string | undefined)
+            if (v && typeof v === 'string' && /^0x[0-9a-fA-F]{40}$/.test(v)) {
+              addr = v
+              break
+            }
+          } catch {
+            // try next
+          }
         }
-        const data = (await res.json()) as {
-          proxyWallet?: string
-          safe?: string
-          wallet?: string
+        if (!addr) {
+          return json(
+            { error: 'lookup_failed', status: lastStatus },
+            lastStatus === 404 ? 404 : 502,
+            headers,
+          )
         }
-        const addr = data.proxyWallet ?? data.safe ?? data.wallet
-        if (!addr) return json({ error: 'not_found' }, 404, headers)
         return json({ proxyWallet: addr.toLowerCase() }, 200, headers)
       }
 

@@ -1,0 +1,147 @@
+/* ============================================================
+   Actually popup — global styles
+   ============================================================
+   Everything in here is either:
+     - a pseudo-element (::before / ::after on .glass-btn)
+     - a keyframe animation
+     - a class that needs SVG-data-URL backgrounds or CSS masks
+     - shared form-control resets (range thumb, select)
+   The colored / sized / positioned bits live as inline styles
+   on the React components.
+   ============================================================ */
+
+/* ---------- Label caps ---------------------------------------- */
+.label{
+  font-family:'Marck Script', cursive; font-weight:400;
+  font-size:10.5px; letter-spacing:.22em; text-transform:uppercase;
+  color: rgba(35,45,70,.45);
+  text-shadow: 0 1px 0 rgba(255,255,255,.5);
+}
+
+/* ---------- Hairline range slider ----------------------------- */
+input[type=range].thin{
+  -webkit-appearance:none; appearance:none;
+  width:100%; height:18px; background:transparent; margin:0;
+}
+input[type=range].thin::-webkit-slider-runnable-track{ height:2px; background:transparent; }
+input[type=range].thin::-webkit-slider-thumb{
+  -webkit-appearance:none; appearance:none;
+  width:13px; height:13px; border-radius:50%;
+  background:radial-gradient(circle at 30% 25%, #fff 0%, rgba(255,255,255,.85) 60%, rgba(255,255,255,.55) 100%);
+  border:1px solid rgba(255,255,255,.95);
+  box-shadow:0 1px 3px rgba(20,30,55,.25), inset 0 1px 0 rgba(255,255,255,.9);
+  margin-top:-5.5px; cursor:pointer;
+}
+input[type=range].thin::-moz-range-thumb{
+  width:13px; height:13px; border-radius:50%; border:1px solid rgba(255,255,255,.95);
+  background:radial-gradient(circle at 30% 25%, #fff 0%, rgba(255,255,255,.85) 100%);
+  box-shadow:0 1px 3px rgba(20,30,55,.25); cursor:pointer;
+}
+
+/* ---------- Translucent select -------------------------------- */
+select.thin-glass{
+  appearance:none; -webkit-appearance:none;
+  width:100%;
+  padding:10px 32px 10px 12px;
+  font-family:inherit; font-size:13px; font-weight:400;
+  color: rgba(20,30,55,.85);
+  background: rgba(255,255,255,.08);
+  border:1px solid rgba(255,255,255,.28);
+  border-radius:8px;
+  backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
+  cursor:pointer;
+  text-shadow: 0 1px 0 rgba(255,255,255,.45);
+}
+
+/* ---------- Keyframes ----------------------------------------- */
+@keyframes spin{ from{transform:rotate(0)} to{transform:rotate(360deg)} }
+
+/* ============================================================
+   FROST TRAIL — crumpled / crystalline glass texture revealed
+   locally under the cursor. NOT a star, NOT radiating lines.
+   Driven by --mx / --my custom properties on the host element.
+   The host element MUST have class "frost-host" and set
+   --mx / --my via JS (see GlassSurface / IceCard).
+   ============================================================ */
+.frost-needles{
+  position:absolute; inset:0; border-radius:inherit; pointer-events:none;
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='400' height='400'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.032' numOctaves='4' seed='3' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 1  0 0 0 0 1  0 0 0 0 1  0 0 0 1.4 -0.45'/></filter><rect width='100%25' height='100%25' filter='url(%23n)'/></svg>");
+  background-size: 240px 240px;
+  -webkit-mask:
+    radial-gradient(95px 95px at var(--mx,50%) var(--my,50%),
+      #000 0%, rgba(0,0,0,.75) 28%, rgba(0,0,0,.25) 60%, transparent 92%);
+          mask:
+    radial-gradient(95px 95px at var(--mx,50%) var(--my,50%),
+      #000 0%, rgba(0,0,0,.75) 28%, rgba(0,0,0,.25) 60%, transparent 92%);
+  opacity: 0;
+  transition: opacity .25s ease;
+}
+.frost-host:hover .frost-needles,
+.frost-host.is-tracking .frost-needles{ opacity:.38; }
+
+/* ============================================================
+   ICE-PLATE textures
+     .ice-crackle — coarse crystalline surface (market cards)
+     .matte-grain — fine matte film (main popup chrome)
+   ============================================================ */
+.ice-crackle{
+  position:absolute; inset:0; border-radius:inherit; pointer-events:none;
+  opacity:.55;
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='320' height='320'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.022' numOctaves='3' seed='7' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 1  0 0 0 0 1  0 0 0 0 1  0 0 0 1.4 -0.35'/></filter><rect width='100%25' height='100%25' filter='url(%23n)'/></svg>");
+  background-size: 240px 240px;
+  mix-blend-mode: overlay;
+}
+.matte-grain{
+  position:absolute; inset:0; border-radius:inherit; pointer-events:none;
+  opacity:.45;
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='180' height='180'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 1  0 0 0 0 1  0 0 0 0 1  0 0 0 0.55 0'/></filter><rect width='100%25' height='100%25' filter='url(%23n)'/></svg>");
+  mix-blend-mode: overlay;
+}
+
+/* ============================================================
+   GLASS BUTTON — flat at rest, convex on hover.
+   Hover state = gradient highlight (top light / bottom dark) +
+   inset highlights + lifted shadow + 0.5px lift.
+   No cursor-tracking effects on buttons (kept intentionally calm).
+   ============================================================ */
+.glass-btn{
+  position:relative;
+  display:inline-flex; align-items:center; justify-content:center; gap:8px;
+  font-family:inherit; font-weight:400; letter-spacing:-.005em;
+  color: rgba(18,26,48,.85);
+  text-shadow:0 1px 0 rgba(255,255,255,.5);
+  background: rgba(255,255,255,.09);
+  border:1px solid rgba(255,255,255,.32);
+  backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
+  box-shadow: none;
+  cursor:pointer;
+  overflow:hidden; isolation:isolate;
+  transition:
+    background .18s ease,
+    border-color .18s ease,
+    box-shadow .22s ease,
+    transform .18s ease;
+}
+.glass-btn::before{
+  content:''; position:absolute; inset:0; border-radius:inherit; pointer-events:none;
+  background: linear-gradient(180deg,
+    rgba(255,255,255,.55) 0%,
+    rgba(255,255,255,.18) 38%,
+    rgba(255,255,255,0)   55%,
+    rgba(20,30,60,.06)    100%);
+  opacity:0; transition: opacity .22s ease;
+}
+.glass-btn:hover{
+  background: rgba(255,255,255,.13);
+  border-color: rgba(255,255,255,.55);
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,.7),
+    inset 0 -1px 0 rgba(20,30,60,.08),
+    0 8px 22px -10px rgba(20,40,90,.28),
+    0 2px 6px -3px rgba(20,40,90,.18);
+  transform: translateY(-.5px);
+}
+.glass-btn:hover::before{ opacity:1; }
+.glass-btn:active{ transform: translateY(.5px); box-shadow: inset 0 1px 2px rgba(20,30,60,.18); }
+.glass-btn:active::before{ opacity:.4; }
+.glass-btn > span{ position:relative; z-index:1; }
