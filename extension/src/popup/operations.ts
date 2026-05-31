@@ -16,6 +16,7 @@ import { extractFromPage } from '../background/extractor'
 import { fetchLivePrice } from '../background/polymarket'
 import { addToHistory } from '../background/history'
 import { trackEvent } from '../background/telemetry'
+import { findOutcomeIndex } from '../background/util'
 import { CACHE_TTL_MINUTES } from '../shared/constants'
 
 export async function runRefresh(
@@ -85,8 +86,10 @@ export async function runMatch(settings: Settings): Promise<{
     confidence_bucket: Math.floor(match.confidence * 10) / 10,
   })
 
-  // Live price refresh — non-fatal
-  const tokenId = match.market.clobTokenIds[0]
+  // Live price refresh — non-fatal. Always resolve YES by label, not by
+  // positional index — outcomes[0] can be "No" on some markets.
+  const yesIdx = findOutcomeIndex(match.market.outcomes, 'Yes')
+  const tokenId = match.market.clobTokenIds[yesIdx]
   if (tokenId) {
     try {
       const live = await fetchLivePrice(tokenId, settings.workerUrl, settings.workerSecret)

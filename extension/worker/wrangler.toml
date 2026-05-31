@@ -9,8 +9,8 @@ workers_dev = true
 [[kv_namespaces]]
 binding = "RATE_LIMITS"
 # Create with: npx wrangler kv namespace create RATE_LIMITS
-# Then paste the returned id here (or keep it out of VCS).
-id = "REPLACE_WITH_YOUR_KV_NAMESPACE_ID"
+# Then paste the returned id here LOCALLY ONLY — do not commit your real id.
+id = "REPLACE_WITH_KV_NAMESPACE_ID"
 
 [vars]
 # Non-secret defaults — override in CF dashboard or `wrangler secret put`.
@@ -18,8 +18,8 @@ id = "REPLACE_WITH_YOUR_KV_NAMESPACE_ID"
 # ALLOWED_EXTENSION_ID
 #   Required for production. Set this to your Chrome extension ID (from
 #   chrome://extensions or the Web Store listing). Worker fails 503 without it
-#   unless WORKER_DEV_MODE=true.
-ALLOWED_EXTENSION_ID = ""
+#   unless WORKER_DEV_MODE=true. Comma-separated list supported.
+ALLOWED_EXTENSION_ID = "REPLACE_WITH_EXTENSION_ID"
 #
 # WORKER_DEV_MODE
 #   Set to "true" ONLY for local dev. Bypasses the requirement to have
@@ -28,7 +28,6 @@ WORKER_DEV_MODE = ""
 #
 # Secrets to set via `wrangler secret put`:
 #   WORKER_SHARED_SECRET    — random 32+ chars (openssl rand -hex 32),
-#                             also set in extension Settings → Advanced
+#                             also baked into the extension via
+#                             VITE_WORKER_SECRET. Rotate together.
 #   OPENAI_API_KEY          — only if you offer centralized OpenAI embeddings
-#   POLYMARKET_BUILDER_CODE — currently unused; the extension hardcodes its
-#                             builderCode at build time. Remove if not planned.

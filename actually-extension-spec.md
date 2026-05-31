@@ -1,13 +1,25 @@
 # ACTUALLY — Chrome Extension
-## Technical Spec v2.0
-**Version:** 2.0 | **Date:** May 2026
-**Supersedes:** v1.0 Final (March 22, 2026) — see git history for previous version.
+## Technical Spec v2.1
+**Version:** 2.1 | **Date:** May 2026
+**Supersedes:** v2.0 (this same month) — see git history for previous version.
 
-> v2.0 reflects the post-audit pivot:
-> - Audience expanded to dual-mode (normie discovery + crypto-native trading)
-> - Trading layer added (WalletConnect v2 + Polymarket CLOB v2 + builderCode)
-> - Glassmorphism in-page widget cut (never shipped, popup-only UX retained)
-> - Local embedding model is `Xenova/all-MiniLM-L12-v2` (384-dim)
+> v2.1 reflects the implementation-audit pass:
+> - **Architecture:** popup-only UX is back to the front (v2.0 briefly experimented
+>   with a Shadow-DOM widget injected on every page; reverted because the
+>   `<all_urls>` content-script permission inflates the CWS prompt past the
+>   normie-acquisition threshold). In-page widget moved to v1.2 backlog.
+> - **Offscreen Document** added as the heavy-ops home (transformers.js,
+>   WalletConnect v2, CLOB signing) — MV3 service-worker constraints made the
+>   in-popup design from v2.0 impractical.
+> - **Order routing:** direct from extension to `clob.polymarket.com` for v1.
+>   The Worker `/clob/order` proxy from v2.0 §9 is deferred to v1.2 (paired
+>   with HMAC-signed `X-Actually-Auth`). See §9 for the trade-off.
+> - **Worker shared secret** is explicitly framed as a baked-in client token,
+>   not a true secret — see §13 threat model.
+> - **Typography:** single-family (Marck Script), self-hosted woff2. The v2.0
+>   triplet of Inter / Instrument Serif / JetBrains Mono is retired.
+> - Audience and product mechanic unchanged from v2.0 (dual-mode, builderCode).
+> - Local embedding model unchanged: `Xenova/all-MiniLM-L12-v2` (384-dim).
 
 ---
 
@@ -37,93 +49,129 @@ The product **does not gate discovery behind wallet**. The product **does not pu
 
 ```
 ┌───────────────────────────────────────────────────────────────┐
-│  Chrome Extension (popup, no content script in v1)           │
+│  Chrome Extension (popup-only — no content script in v1)     │
 │                                                                │
-│  ┌─────────────┐  ┌───────────────┐  ┌──────────────────┐    │
-│  │ Discover    │  │ Trade         │  │ Settings/History │    │
-│  │ (default)   │  │ (wallet req)  │  │                  │    │
-│  └──────┬──────┘  └──────┬────────┘  └──────────────────┘    │
-│         │                │                                    │
-│         ▼                ▼                                    │
-│  ┌────────────────────────────────────────────────────┐      │
-│  │  popup runtime: matcher, embeddings, cache, signer │      │
-│  └─────────────────────────┬──────────────────────────┘      │
+│  ┌────────────┐  ┌────────────┐  ┌──────────┐  ┌──────────┐  │
+│  │ Check      │  │ Trade      │  │ History  │  │ Settings │  │
+│  │ (default)  │  │ (wallet+)  │  │          │  │          │  │
+│  └──────┬─────┘  └──────┬─────┘  └────┬─────┘  └────┬─────┘  │
+│         │               │             │             │         │
+│         ▼               ▼             ▼             ▼         │
+│  ┌────────────────────────────────────────────────────────┐  │
+│  │ popup runtime (React, light) — UI state + chrome.*     │  │
+│  └────────────────────────┬───────────────────────────────┘  │
+│                            │ chrome.runtime.sendMessage       │
+│                            ▼                                   │
+│  ┌────────────────────────────────────────────────────────┐  │
+│  │ Service Worker — install, alarms, storage proxy,       │  │
+│  │   message router. Forwards "heavy" ops to offscreen.   │  │
+│  └────────────────────────┬───────────────────────────────┘  │
+│                            │ chrome.runtime.sendMessage       │
+│                            ▼                                   │
+│  ┌────────────────────────────────────────────────────────┐  │
+│  │ Offscreen Document — transformers.js embeddings,       │  │
+│  │   WC v2 SignClient, CLOB v2 client + signing.          │  │
+│  │   Owns the heavyweight long-lived state.               │  │
+│  └────────────────────────┬───────────────────────────────┘  │
 └────────────────────────────┼──────────────────────────────────┘
-                             │ HTTPS + X-Actually-Auth
-                             ▼
-┌───────────────────────────────────────────────────────────────┐
-│  Cloudflare Worker (actually-api)                             │
-│  /markets   Gamma proxy + cache                               │
-│  /price     CLOB price proxy                                  │
-│  /orderbook CLOB orderbook proxy (NEW)                        │
-│  /history   Gamma price-history proxy (NEW)                   │
-│  /geo       client geo check via CF headers (NEW)             │
-│  /clob/*    CLOB API proxy for order submission (NEW)         │
-│  /telemetry anonymous event ingest                            │
-└───────────────────────────────────────────────────────────────┘
-                             │
-                             ▼
-                    Polymarket Gamma + CLOB APIs
+                             │ HTTPS + X-Actually-Auth          │ Direct HTTPS
+                             ▼                                   │ (CLOB only)
+┌───────────────────────────────────────────────────────────┐   │
+│  Cloudflare Worker (actually-api)                         │   │
+│  /markets   Gamma proxy + cache                           │   │
+│  /price     CLOB price proxy                              │   │
+│  /orderbook CLOB orderbook proxy                          │   │
+│  /history   Gamma price-history proxy                     │   │
+│  /geo       client geo check via CF headers               │   │
+│  /clob/proxy/<eoa>  Safe (funder) lookup                  │   │
+│  /embeddings  OpenAI fallback                             │   │
+│  /telemetry  anonymous event ingest                       │   │
+│  /clob/order  ← deferred to v1.2 (see §9)                 │   │
+└────────────────────────────┬──────────────────────────────┘   │
+                             │                                   ▼
+                             ▼                          ┌──────────────────────┐
+                    Polymarket Gamma                    │ clob.polymarket.com  │
+                    (markets, history)                  │ (signed orders, GET  │
+                                                        │  book / price)       │
+                                                        └──────────────────────┘
 ```
 
-**Service worker role:** lightweight only. Lifecycle hooks, telemetry alarm, settings storage proxy. **All heavy work** (transformers.js embedding, market caching, matching, signing) happens in the popup context — MV3 service workers are too constrained for it.
+**Service Worker role:** lightweight only. Lifecycle hooks (install, alarms), telemetry queue flush, settings/history storage proxy, message routing. **All heavy work happens in the offscreen document** — MV3 service workers cannot host WASM, WebSockets to WC relays, or long-running clob-client state.
 
-**Worker role:** thin authenticated proxy. Adds per-IP rate limits, hides any future server-side secrets (none currently for read endpoints), enforces extension-origin CORS. The Worker does **not** sign orders — the user's wallet does.
+**Offscreen Document role:** the actual heavy-ops home. `chrome.offscreen.createDocument` is invoked lazily on the first heavy message. Lives at `chrome-extension://<id>/src/offscreen/offscreen.html`, has full Web API (WASM, WSS, IndexedDB), and is kept alive across SW restarts. Hosts:
+- The transformers.js MiniLM-L12 pipeline (model load + embedding).
+- The WalletConnect v2 `SignClient` and its session topic.
+- The `@polymarket/clob-client-v2` instance with its `ApiKeyCreds`.
+- The order-construction + sign + submit flow.
+
+**Popup role:** React UI only. Sends typed messages to the SW, which forwards `target: 'offscreen'` messages to the offscreen doc and pipes responses back.
+
+**Worker role:** thin authenticated proxy for Gamma + OpenAI + geo. Adds per-IP rate limits, fail-closed CORS allowlist. The Worker does **not** sign orders, and (in v1) does **not** proxy signed orders either — those go direct from the extension to `clob.polymarket.com`. See §9 for the deferred `/clob/order` proxy plan.
 
 ---
 
-## 3. FILE STRUCTURE (current + planned additions)
+## 3. FILE STRUCTURE
 
 ```
 extension/
 ├── manifest.json
 ├── package.json
 ├── tsconfig.json
-├── vite.config.ts
-├── .env.example
-├── .gitignore
+├── vite.config.ts            # build-time CSP tightening + entry points
+├── vitest.config.ts
+├── .env.example              # VITE_* and runtime env for scripts/
+├── .gitignore                # also blocks *.zip / *.tar.gz / *.crx
 ├── README.md
+├── SECURITY.md               # threat model, npm audit, hardening
 ├── docs/
+│   ├── privacy-policy.md
+│   └── terms-of-service.md
 │
 ├── src/
-│   ├── background/
-│   │   ├── index.ts          # SW: install, alarms, messages
-│   │   ├── cache.ts          # market cache + TTL refresh           ← TTL TO BE WIRED
-│   │   ├── embeddings.ts     # local (MiniLM-L12) + OpenAI provider
-│   │   ├── extractor.ts      # headline + body extraction from page
-│   │   ├── matcher.ts        # cosine-sim ranking + noise filters
-│   │   ├── polymarket.ts     # Gamma + CLOB + builderUrl helpers
-│   │   ├── history.ts        # last 10 matches
+│   ├── background/           # SW + helpers shared with offscreen
+│   │   ├── index.ts          # SW: install, alarms, message router → offscreen
+│   │   ├── offscreen-host.ts # ensureOffscreen + routeToOffscreen
+│   │   ├── cache.ts          # diff-cache + TTL refresh (called from offscreen)
+│   │   ├── embeddings.ts     # local MiniLM-L12 + OpenAI provider
+│   │   ├── extractor.ts      # headline + body, runs via scripting.executeScript
+│   │   ├── matcher.ts        # cosine-sim + noise filters + tiebreak
+│   │   ├── polymarket.ts     # Gamma fetch, tickSize normalization, URL builder
+│   │   ├── history.ts        # last 10 matches with URL dedup
 │   │   ├── settings.ts       # chrome.storage wrapper
-│   │   ├── telemetry.ts      # event queue + flush
-│   │   ├── trade.ts          # NEW: order construction, builderCode
-│   │   ├── wallet.ts         # NEW: WalletConnect v2 wrapper
-│   │   ├── clob.ts           # NEW: @polymarket/clob-client-v2 init
-│   │   └── geo.ts            # NEW: geo check + blocklist
+│   │   ├── telemetry.ts      # event queue + 1000-event cap + flush
+│   │   ├── trade.ts          # orchestrator: connect, placeOrder w/ staged tel
+│   │   ├── wallet.ts         # WC v2 SignClient + WCSigner
+│   │   ├── clob.ts           # clob-client-v2 init, sign/submit split, polling
+│   │   ├── geo.ts            # geo check + blocklist
+│   │   └── util.ts           # sha256, b64↔float, cosine, findOutcomeIndex,
+│   │                         #   safeJsonArray, formatRelative, shortHash
 │   │
-│   ├── popup/
+│   ├── offscreen/            # heavy-ops home (see §3.5)
+│   │   ├── offscreen.html
+│   │   └── offscreen.ts      # message handler — match, refresh, wallet ops
+│   │
+│   ├── popup/                # thin entry, mounts IntegratedPopup from popup_new
 │   │   ├── index.html
 │   │   ├── main.tsx
-│   │   ├── App.tsx           # tab router: Discover / Trade / Settings / History
-│   │   ├── CheckPage.tsx     # Discover tab (current main UI)
-│   │   ├── TradePanel.tsx    # Trade tab — currently stub, becomes real
-│   │   ├── Settings.tsx
-│   │   ├── History.tsx
-│   │   ├── operations.ts     # message senders to SW
-│   │   ├── styles.css
-│   │   └── trade/                                          ← NEW SUBFOLDER
-│   │       ├── ConnectButton.tsx     # WC v2 connect/disconnect
-│   │       ├── OrderForm.tsx         # size, side, price preview
-│   │       ├── PayoutPreview.tsx     # max payout, return %, slippage
-│   │       ├── Sparkline.tsx         # 7d price history
-│   │       ├── Orderbook.tsx         # best bid/ask + spread
-│   │       ├── ResolutionCard.tsx    # date, source, rules excerpt
-│   │       └── GeoBlock.tsx          # disclaimer for restricted regions
+│   │   └── operations.ts     # extractActiveTabArticle + live-price fetch
+│   │
+│   ├── popup_new/            # the actual UI (glass design system)
+│   │   ├── IntegratedPopup.tsx  # tab router + wiring
+│   │   ├── TradeTabWired.tsx    # connect flow + analytics + order form
+│   │   ├── ops.ts            # popup-side adapter for offscreen RPCs
+│   │   ├── colors.ts
+│   │   ├── fonts.css         # single @font-face → Marck Script
+│   │   ├── styles.css        # frost / ice / glass-btn primitives
+│   │   ├── components/       # Etched, GlassButton, IceCard, Tabs, …
+│   │   ├── tabs/             # CheckTab, HistoryTab, SettingsTab, TradeTab
+│   │   └── trade/
+│   │       └── Analytics.tsx # Sparkline + Orderbook + ResolutionCard +
+│   │                         #   MarketAnalytics composer
 │   │
 │   ├── shared/
-│   │   ├── constants.ts      # thresholds, colors, model id, geo list
-│   │   ├── messages.ts       # SW <-> popup message types
-│   │   └── types.ts          # Settings, PolyMarket, MatchResult, Order
+│   │   ├── constants.ts      # thresholds, colors, model id, BUILDER_CODE
+│   │   ├── messages.ts       # SW ↔ offscreen ↔ popup message types
+│   │   └── types.ts          # Settings, PolyMarket (+ tickSize), MatchResult
 │   │
 │   └── i18n/
 │       ├── index.ts
@@ -131,13 +179,46 @@ extension/
 │       ├── es.json
 │       └── pt-BR.json
 │
-├── public/                   # icons
-├── scripts/                  # offline matching test scripts
+├── public/
+│   ├── icon-{16,48,128}.png
+│   └── fonts/
+│       └── MarckScript-Regular.woff2   # produced by `npm run fonts:fetch`
+│
+├── scripts/                  # ALL read URL+secret from env, never hardcode
+│   ├── fetch-fonts.mjs       # populate public/fonts/ from Google Fonts
+│   ├── probe.mjs             # quick /markets probe
+│   └── test-{match,final}.mjs / compare-models.mjs   # offline matcher iteration
+│
 └── worker/
-    ├── wrangler.toml
-    ├── wrangler.toml.example                             ← NEW
+    ├── wrangler.toml         # placeholders only — real ids never committed
+    ├── wrangler.toml.example
     └── index.ts
 ```
+
+**Removed since v2.0 / earlier audit pass:** `src/popup/{App,CheckPage,History,
+Settings,TradePanel}.tsx`, `src/popup/styles.css`, `src/popup/trade/*`, and
+`src/content/inject.tsx` — all collapsed into the single `popup_new/`
+implementation that the popup HTML entry now mounts directly.
+
+### 3.5 Offscreen Document — rationale and boundary
+
+MV3 service workers cannot:
+- run WebAssembly with the lifetime transformers.js needs (model load is ~3 s,
+  embedding batches several seconds; SW lifetime is opportunistic ~30 s).
+- hold a WebSocket open (WalletConnect v2 relay).
+- carry the SDK state required by `clob-client-v2` across messages.
+
+v2.0 attempted to live in the popup runtime; popup death on close kills the
+WC session and forces a re-derive on every reopen. Offscreen documents are
+the only MV3-correct place for this state.
+
+The offscreen document is created lazily on the first heavy message
+(`OS_RUN_MATCH`, `OS_START_CONNECT`, `OS_PLACE_ORDER`, …) and kept alive by
+Chrome until idle. All long-lived state — model pipeline, WC session, CLOB
+credentials, in-memory geo cache — lives here. The popup never accesses
+`@xenova/transformers`, `@walletconnect/sign-client`, or
+`@polymarket/clob-client-v2` directly; it only sends `target: 'offscreen'`
+messages via the SW router.
 
 ---
 
@@ -148,12 +229,10 @@ extension/
   "manifest_version": 3,
   "name": "Actually — What Markets Really Think",
   "version": "1.0.0",
-  "description": "Click to see real market odds on any news story. Trade in one click if you want.",
 
-  "permissions": ["storage", "activeTab", "alarms", "scripting"],
+  "permissions": ["storage", "activeTab", "alarms", "scripting", "offscreen"],
   "optional_permissions": [],
-  "host_permissions": [],
-  // REMOVED: optional_host_permissions ["https://*/*"] — not used, hurts review
+  "host_permissions": ["https://clob.polymarket.com/*"],
 
   "background": {
     "service_worker": "src/background/index.ts",
@@ -172,15 +251,35 @@ extension/
   },
 
   "content_security_policy": {
-    "extension_pages": "script-src 'self' 'wasm-unsafe-eval'; object-src 'self'; connect-src 'self' https://* wss://*"
+    "extension_pages":
+      "script-src 'self' 'wasm-unsafe-eval'; object-src 'self'; " +
+      "connect-src 'self' https://<your-worker>.workers.dev " +
+      "  https://clob.polymarket.com https://gamma-api.polymarket.com " +
+      "  https://data-api.polymarket.com https://api.openai.com " +
+      "  https://huggingface.co https://*.hf.co " +
+      "  https://*.walletconnect.com https://*.walletconnect.org https://*.reown.com " +
+      "  wss://*.walletconnect.com wss://*.walletconnect.org wss://*.reown.com; " +
+      "img-src 'self' data: https:; style-src 'self' 'unsafe-inline'; font-src 'self'"
   }
 }
 ```
 
 **Notes:**
-- `connect-src` must allow `https://*` and `wss://*` for WalletConnect (which talks to a relay over WSS) and CLOB submission.
-- Still no content scripts → user trust prompt stays small ("Read data of active tab" only).
-- The user must explicitly opt into trading by clicking "Connect wallet" — this triggers `chrome.permissions.request` only if we later add anything sensitive (likely not needed for WalletConnect v2 since it's pure HTTPS+WSS).
+- **No content scripts.** Page reading happens on click via
+  `chrome.scripting.executeScript({ func: extractFromPage })` against the
+  `activeTab` permission. CWS prompt is just "Read your browsing history" — the
+  minimal acceptable for the discovery mechanic.
+- `host_permissions` lists exactly **one** host: `clob.polymarket.com`. This is
+  the deliberate v1 trade-off (see §9). Gamma + data-api are accessed via the
+  Worker, so they need not appear here.
+- `offscreen` permission allows `chrome.offscreen.createDocument` (see §3.5).
+- `connect-src` includes the exact Worker host (substituted at build time from
+  `VITE_WORKER_URL` — see `vite.config.ts`). Dev builds keep `*.workers.dev`
+  as fallback; production builds inline a single concrete origin.
+- `font-src 'self'` — fonts are self-hosted (Marck Script woff2 in
+  `public/fonts/`). No third-party origins are reached at runtime for fonts.
+- `script-src 'wasm-unsafe-eval'` is required by ONNX-runtime-web for the
+  local embedding model.
 
 ---
 
@@ -350,17 +449,50 @@ const response = await clobClient.createAndPostOrder(
 | `/health` | GET | none | none | liveness |
 | `/markets` | GET | X-Actually-Auth | 30/min/IP | Gamma proxy |
 | `/price` | GET | X-Actually-Auth | 120/min/IP | CLOB price |
-| `/orderbook` | GET | X-Actually-Auth | 60/min/IP | CLOB orderbook (NEW) |
-| `/history` | GET | X-Actually-Auth | 60/min/IP | Gamma price-history (NEW) |
-| `/geo` | GET | X-Actually-Auth | 10/min/IP | returns `CF-IPCountry` and blocked flag (NEW) |
-| `/clob/order` | POST | X-Actually-Auth | 60/min/IP | proxies signed order to CLOB (NEW) |
+| `/orderbook` | GET | X-Actually-Auth | 60/min/IP | CLOB orderbook |
+| `/history` | GET | X-Actually-Auth | 60/min/IP | Gamma price-history (sparkline) |
+| `/geo` | GET | X-Actually-Auth | 10/min/IP | returns `CF-IPCountry` + blocked flag |
+| `/clob/proxy/<eoa>` | GET | X-Actually-Auth | 30/min/IP | Polymarket Safe (funder) lookup |
 | `/embeddings` | POST | X-Actually-Auth | 60/min/IP | OpenAI fallback (server-side key) |
 | `/telemetry` | POST | X-Actually-Auth | 30/min/IP | event ingest |
-| `/order` | POST | — | — | **REMOVED** — replaced by `/clob/order` |
 
-**Auth hardening (fix from audit):**
-- If `WORKER_SHARED_SECRET` env var is **unset**, all authenticated endpoints return **503 misconfigured**, not bypass-allow as in the previous version. Dev mode requires an explicit `WORKER_DEV_MODE=true` env to bypass auth.
-- If `ALLOWED_EXTENSION_ID` is unset, CORS origin defaults to a literal `"none"` value (effectively blocking browsers), not `*`. Operators must explicitly set the extension ID before going live.
+### 9.1 Order routing — direct CLOB for v1 (deferred Worker proxy)
+
+The v2.0 spec called for `POST /clob/order` as a Worker proxy that would
+forward signed orders to `clob.polymarket.com`. In v1 we ship without it
+and the extension posts orders directly to CLOB. The trade-off:
+
+**Why direct CLOB in v1:**
+1. CLOB authenticates every request via per-user HMAC headers (`POLY_API_KEY`,
+   `POLY_PASSPHRASE`, `POLY_SIGNATURE`) built from creds derived during
+   connect. The Worker can neither validate nor re-sign these — it would
+   be a transparent pass-through.
+2. To make the proxy worthwhile we'd want CLOB GETs (orderbook, price,
+   status polling) to go through it too. That would multiply latency and
+   force Worker rate limits high enough to not break real-user polling,
+   which neuters the rate-limit-as-DoS-protection idea.
+3. One fewer moving part for v1 review/beta.
+
+**Cost:** `host_permissions: ["https://clob.polymarket.com/*"]` in manifest
+— a single, public, well-known host. Reviewable.
+
+**Planned v1.2:** re-introduce `POST /clob/order` paired with HMAC-signed
+`X-Actually-Auth` (timestamp + nonce + body MAC). At that point the Worker
+adds real value: per-IP order-rate limit + server-side geo re-check on
+submit + revocable secret rotation. The `host_permissions` line can then
+go away entirely.
+
+### 9.2 Auth hardening (fail-closed)
+
+- If `WORKER_SHARED_SECRET` env var is **unset**, every authenticated
+  endpoint returns **503 misconfigured**. Dev mode requires an explicit
+  `WORKER_DEV_MODE=true` env to bypass.
+- If `ALLOWED_EXTENSION_ID` is unset, `Access-Control-Allow-Origin` echoes
+  `https://__actually_misconfigured__.invalid` (never matches any browser
+  origin). Operators see the misconfig in DevTools rather than getting
+  silent `*`-style passthrough.
+- The shared secret is also baked into the extension build via
+  `VITE_WORKER_SECRET` — see §13 for the threat model.
 
 ---
 
@@ -439,16 +571,18 @@ For v1, lazy refresh (check TTL on each match, refresh if stale, non-blocking) i
 
 | Risk | Mitigation |
 |---|---|
-| `WORKER_SHARED_SECRET` leaked in repo (audit found 3 scripts) | Rotated, removed from repo, scripts read from env, `.env.local` gitignored |
-| Worker accepted unauthenticated requests when secret unset | Fail-closed: 503 if unset, explicit `WORKER_DEV_MODE` flag for dev |
-| CORS defaulted to `*` when `ALLOWED_EXTENSION_ID` unset | Fail-closed: blocked unless extension ID set |
-| `optional_host_permissions: ["https://*/*"]` unused | Removed from manifest |
-| Real Cloudflare `account_id` and KV `id` in committed wrangler.toml | Replaced with placeholders, real values in `wrangler.toml.example` (gitignored copy) or env |
-| Hardcoded OpenAI key UI field that did nothing | Removed |
-| `npm audit` 14 vulns (1 critical via @xenova/transformers → onnxruntime-web) | Track upstream fixes; vulns are in WASM bundle, not exfil-capable from extension origin, but flag for review |
-| Remote model download from HuggingFace at runtime (`env.allowLocalModels = false`) | Acceptable for v1 (CWS allows it). Consider bundling later. |
-| User signs arbitrary EIP-712 from extension | Order payload shown in confirm modal before sig request; we never request blanket `eth_sign` |
-| Wallet credentials in `chrome.storage.local` | Encrypted at rest by Chrome profile keyring; consider chrome.storage.session for ephemeral state |
+| `WORKER_SHARED_SECRET` baked into every public extension build | **Acknowledged.** This token is a client-side anti-accidental-load defense, NOT a secret. Per-IP rate limit and global per-day OpenAI cap are the real backstops. Planned v1.2: HMAC-signed `X-Actually-Auth` (timestamp + nonce + body MAC). See `SECURITY.md` for full threat model. |
+| Previously: hardcoded secret in `scripts/probe.mjs` + real KV id / extension id in `wrangler.toml` | Rotated, scripts now read from env, wrangler placeholders + `wrangler.toml.example` committed. Verified clean. |
+| Worker accepted unauthenticated requests when secret unset | Fail-closed: 503 if unset, explicit `WORKER_DEV_MODE=true` for dev. |
+| CORS defaulted to `*` when `ALLOWED_EXTENSION_ID` unset | Fail-closed: echoes `https://__actually_misconfigured__.invalid` (never matches). |
+| Content script on `<all_urls>` would inflate CWS permission prompt | Removed; popup-only UX with `activeTab` on click. Widget deferred to v1.2. |
+| `*.workers.dev` wildcard in CSP `connect-src` | Replaced at build time (`VITE_WORKER_URL`) with the exact production Worker origin. Dist manifest contains a single concrete host. |
+| Remote Google Fonts `@import` at runtime | Removed. Self-hosted Marck Script woff2 via `npm run fonts:fetch`. `font-src 'self'`. |
+| Remote model download from HuggingFace at runtime (`env.allowLocalModels = false`) | Acceptable for v1 (one-time, cached). Planned v1.1: bundle the MiniLM-L12-v2 weights into the .crx to remove `huggingface.co` from CSP. |
+| User signs arbitrary EIP-712 from extension | Order payload (side, size, price) shown in the form before "Place order — sign in wallet" CTA. We never request `eth_sign`. |
+| Wallet credentials (`clobApiKey/secret/passphrase`) in `chrome.storage.local` | Encrypted at rest by Chrome profile keyring. **Settings → Wallet → "Disconnect & wipe"** clears creds + WC session on demand. |
+| Telemetry queue growing unbounded if Worker unreachable | Capped at 1000 most-recent events in `chrome.storage.local`. |
+| `npm audit` advisories in transitive deps | Triaged in `SECURITY.md`. Dev-only (`rollup`, `wrangler` chain) or in non-exercised code paths (`@ethersproject/*` signing primitives — we sign exclusively via the user's wallet). No breaking forced-fix applied. |
 
 ---
 
@@ -489,64 +623,80 @@ For v1, lazy refresh (check TTL on each match, refresh if stale, non-blocking) i
 
 ## 15. OUT OF SCOPE FOR v1
 
-- Content script / in-page widget (Shadow DOM, glassmorphism) — deferred indefinitely, was never built
-- Embedded wallet (Privy / Magic / Turnkey) — explicitly rejected; users bring their own wallet
-- Onramp deeplink — user funds their wallet themselves
-- Copy trading, alerts, position tracking
-- Multi-language LLM-driven explainers (current explainer is template-based)
-- Mobile companions (iOS Share Extension, Android, Telegram bot) — separate roadmap, not v1
-- USDC approve flow — Safe wallet doesn't need it; if user is EOA (signatureType 0) we show "Use a Polymarket Safe wallet, EOA mode is unsupported in v1"
+- **In-page Shadow-DOM widget** — deferred to v1.2. v2.0 prototype existed
+  briefly but was reverted (see header) because the `<all_urls>` content-script
+  permission gates the normie-discovery acquisition channel. If revived, it
+  will be opt-in via `chrome.permissions.request({ origins: ['<all_urls>'] })`
+  after the user opts into it explicitly.
+- **Worker `/clob/order` proxy** — deferred to v1.2 (see §9.1).
+- **HMAC-signed `X-Actually-Auth`** — deferred to v1.2 (see §13).
+- **Bundled local embedding model** — deferred to v1.1 (see §13).
+- Embedded wallet (Privy / Magic / Turnkey) — explicitly rejected; users
+  bring their own wallet.
+- Onramp deeplink — user funds their wallet themselves.
+- Copy trading, alerts, position tracking, sell-to-close.
+- Multi-language LLM-driven explainers (current explainer is template-based).
+- Mobile companions (iOS Share Extension, Android, Telegram bot) — separate
+  roadmap, not v1.
+- USDC approve flow — Safe wallet doesn't need it; if user is EOA
+  (signatureType 0) we show "Use a Polymarket Safe wallet, EOA mode is
+  unsupported in v1".
 
 ---
 
-## 16. IMPLEMENTATION ORDER
+## 16. IMPLEMENTATION ORDER — status as of v2.1
 
-Numbered tasks for sequential execution. Each task should be a self-contained PR.
+Tracked by sprint, not numbered task. Each sprint was a self-contained merge.
 
-**Block A — security/hygiene (in flight, partly done)**
-1. ✅ Update spec (this doc)
-2. ✅ Remove secrets from `scripts/*.mjs`, use env, add `.env.example`
-3. ✅ Replace real CF IDs in `wrangler.toml` with placeholders
-4. Worker auth fail-closed: 503 if `WORKER_SHARED_SECRET` unset (unless `WORKER_DEV_MODE=true`); CORS deny if `ALLOWED_EXTENSION_ID` unset
-5. Remove `optional_host_permissions` from manifest
-6. Remove `openaiKey` field from Settings UI and `Settings` type (kept on Worker as env var)
-7. Remove `builderCode` user field from Settings UI; hardcode build-time via `process.env.BUILDER_CODE` in Vite; show read-only in Settings under "About"
-8. Remove `powerMode` toggle and field — replaced by wallet-connected state
-9. Rewrite `actually-growth-strategy.md` to reflect dual audience + builder-volume KPI
+**Sprint 0 — Security & build reproducibility** ✅
+- Hardcoded `WORKER_SHARED_SECRET` removed from `scripts/probe.mjs`
+- `worker/wrangler.toml` placeholders + `wrangler.toml.example` created
+- `actually-v2-dev.tar.gz/.zip` removed from repo + `.gitignore` updated
+- Verified: clean `grep` for known leaked tokens, `npm run build` zelёный
 
-**Block B — trade infrastructure**
-10. Add `@walletconnect/sign-client`, `@polymarket/clob-client-v2`, `ethers@6` to deps
-11. Write `src/background/wallet.ts` — WC v2 init, connect, session restore, ethers-signer wrapper
-12. Write `src/background/clob.ts` — clob-client-v2 init, API key derive, persist creds
-13. Write `src/background/trade.ts` — order construction with `builderCode`, submit
-14. Write `src/background/geo.ts` — fetch `/geo`, cache for session
-15. Worker: add `/orderbook`, `/history`, `/geo`, `/clob/order`; remove old `/order` 501 stub
+**Sprint 1 — Architecture rollback to popup-only + offscreen** ✅
+- `content_scripts` and `web_accessible_resources` removed from manifest
+- `action.default_popup` restored; `chrome.action.onClicked` widget toggle gone
+- Legacy `src/popup/{App,CheckPage,History,Settings,TradePanel}.tsx` + `popup/trade/*` + `src/content/inject.tsx` deleted
+- `popup/main.tsx` mounts `IntegratedPopup` from `popup_new`
+- Demo `popup_new/index.tsx` moved to `dev/preview/`
 
-**Block C — trade UI**
-16. `popup/trade/ConnectButton.tsx`
-17. `popup/trade/OrderForm.tsx` + size/payout calc
-18. `popup/trade/Sparkline.tsx`
-19. `popup/trade/Orderbook.tsx`
-20. `popup/trade/ResolutionCard.tsx`
-21. `popup/trade/PayoutPreview.tsx`
-22. `popup/trade/GeoBlock.tsx`
-23. Refactor `TradePanel.tsx` to compose the above
-24. Wire confirm modal + status polling
+**Sprint 2 — Critical UX bugs** ✅
+- CheckTab `LinkAction` callbacks wired (`onOpenMarket`, `onTrade`) — dead links fixed
+- YES/NO token mapping for live price (no more "NO price labelled YES")
+- `lvl_or_zero(lvl, …)` ReferenceError fix in `trade.ts`
+- Wallet "Disconnect & wipe" in Settings → WalletSlot
+- WC poll deadline 30 min → 5 min
 
-**Block D — quality**
-25. Cache TTL wiring (alarm + lazy refresh on stale)
-26. CheckPage: "$X volume" instead of "X traders"
-27. Honest telemetry events (all 13 above) — wire and verify with local Worker
-28. i18n: trade.* keys filled in EN/ES/PT-BR
-29. Tests: matcher fixtures, cache diff, URL builder, Worker auth, geo logic. Wire vitest properly (currently has zero tests)
-30. `npm audit` triage — bump or replace what's bumpable
+**Sprint 3 — Trade analytics + telemetry semantics** ✅
+- Dynamic `tickSize` from Gamma (`tickSize?: string` on `PolyMarket`)
+- `placeBuyOrder` split → `signBuyOrder` + `submitSignedOrder` + `pollOrderStatus`
+- `placeOrder` in `trade.ts` emits telemetry in correct phases:
+  `order_form_opened` at UI mount → `order_signed` after createOrder →
+  `order_submitted` after postOrder → `order_filled` from background poll
+- `popup_new/trade/Analytics.tsx` ships `Sparkline` + `Orderbook` + `ResolutionCard`
+  composed by `<MarketAnalytics />` between IceCard and order form
+- Direct CLOB routing for v1 (see §9.1) — `host_permissions: clob.polymarket.com` accepted
 
-**Block E — release readiness**
-31. Privacy policy update (wallet connection, geo check, order routing)
-32. Terms of Service draft (trading disclaimer, no-advice, builder fee disclosure)
-33. CWS listing assets: screenshots showing BOTH modes, video walkthrough
-34. Beta with small group (10-20 crypto-native, 10-20 normies), iterate
-35. Public launch — Product Hunt + CryptoTwitter coordinated
+**Sprint 4 — Security & CWS hardening** ✅
+- Self-hosted Marck Script woff2; `font-src 'self'`; `npm run fonts:fetch` script
+- CSP `*.workers.dev` → exact `VITE_WORKER_URL` origin at build time
+- Worker CORS deny path: `null` → `https://__actually_misconfigured__.invalid`
+- Telemetry queue capped at 1000 events
+- `SECURITY.md` rewritten honestly (baked-in secret threat model, etc.)
+
+**Sprint 5 — Docs sync (this pass)** ✅
+- This spec bumped to v2.1; README, privacy policy refreshed; ToS confirmed accurate.
+
+**Sprint 6 — Tests + CI** — pending
+- Miniflare-based worker tests (auth, CORS, geo, rate-limit)
+- CheckTab links + YES/NO mapping unit tests
+- `.github/workflows/test.yml` for PR + main
+
+**Sprint 7 — Beta + CWS** — pending
+- 10-20 crypto-native + 10-20 normie beta cohort
+- CWS screenshots + 30 s walkthrough video
+- Public launch via Product Hunt + CryptoTwitter
 
 ---
 

@@ -4,7 +4,20 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Actually</title>
-    <link rel="stylesheet" href="./styles.css" />
+    <style>
+      /* Fully transparent chrome — the GlassSurface inside renders the
+         frosted glass via backdrop-filter. Anything opaque here defeats
+         the design (the page behind must show through, blurred). */
+      html, body {
+        margin: 0;
+        padding: 0;
+        width: 360px;
+        background: transparent !important;
+        font-family: 'Marck Script', cursive;
+        color: rgba(18, 26, 48, 0.85);
+      }
+      #root { width: 360px; }
+    </style>
   </head>
   <body>
     <div id="root"></div>

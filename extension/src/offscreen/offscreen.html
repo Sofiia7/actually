@@ -1,0 +1,20 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="UTF-8" />
+    <title>Actually — offscreen</title>
+  </head>
+  <body>
+    <!--
+      Hidden offscreen document. Hosts all heavy work that needs full
+      Web APIs (transformers.js WASM, WalletConnect WSS, ethers, the
+      clob-client-v2 SDK) and would otherwise be blocked by news-site
+      CSPs if it ran in the content-script widget.
+
+      The widget renders the UI inside the page (Shadow DOM); this
+      file does the actual matching / cache / wallet / order work and
+      replies through the Service Worker.
+    -->
+    <script type="module" src="./offscreen.ts"></script>
+  </body>
+</html>

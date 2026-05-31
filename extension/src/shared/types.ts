@@ -9,6 +9,21 @@ export interface PolyMarket {
   active: boolean
   closed: boolean
   clobTokenIds: string[]
+  /** ISO timestamp of market resolution. Used by ResolutionCard. */
+  endDate?: string
+  /** Rules excerpt shown in ResolutionCard. */
+  description?: string
+  /** Oracle / committee name from Gamma. */
+  resolutionSource?: string
+  /** True if this is a neg-risk event (different CLOB tick/contract config). */
+  negRisk?: boolean
+  /**
+   * Minimum price tick for orders, as a decimal string (e.g. "0.01" or
+   * "0.001"). When absent we fall back to `negRisk ? '0.001' : '0.01'`,
+   * but Gamma provides this directly on most markets — using the real
+   * value prevents CLOB from rejecting orders with `invalid_tick`.
+   */
+  tickSize?: string
 }
 
 export interface CachedMarket extends PolyMarket {

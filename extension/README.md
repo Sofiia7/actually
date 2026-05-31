@@ -20,21 +20,23 @@ Security triage: [`SECURITY.md`](SECURITY.md)
 
 | Module | Status |
 |--------|--------|
-| Manifest V3, popup-only UX | ✅ |
+| Manifest V3, popup-only UX (offscreen doc for heavy ops) | ✅ |
 | Local embeddings (`Xenova/all-MiniLM-L12-v2`, free) | ✅ |
 | OpenAI fallback via Worker (server-side key) | ✅ |
 | Diff-cache for market embeddings, lazy TTL refresh | ✅ |
 | Cosine-similarity matcher + noise filter + low-confidence fallback | ✅ |
 | History (local, 10 items, deduped) | ✅ |
-| Anonymous telemetry (opt-out, 16 honest events) | ✅ |
+| Anonymous telemetry (opt-out, 16 honest events, bounded queue) | ✅ |
 | i18n (en, es, pt-BR) | ✅ |
 | Hotkey (Cmd/Ctrl+Shift+P) | ✅ |
 | Cloudflare Worker proxy — fail-closed auth + rate limits | ✅ |
 | **WalletConnect v2** integration | ✅ |
 | **Polymarket CLOB v2** order placement with `builderCode` | ✅ |
 | **Geo-fence** for trading via Worker `/geo` | ✅ |
+| Trade analytics: sparkline / orderbook / resolution card | ✅ |
+| Self-hosted Marck Script font (no remote fetch) | ✅ |
 | Privacy policy + ToS | ✅ |
-| Unit tests (vitest, 20 passing) | ✅ |
+| Unit tests (vitest, 36 passing) | ✅ |
 
 ---
 
@@ -51,8 +53,16 @@ Security triage: [`SECURITY.md`](SECURITY.md)
 cd extension
 npm install
 cp .env.example .env.local
-# Edit .env.local — set VITE_WC_PROJECT_ID and VITE_BUILDER_CODE
+# Edit .env.local — set VITE_WC_PROJECT_ID, VITE_BUILDER_CODE,
+#                       VITE_WORKER_URL, VITE_WORKER_SECRET
+npm run fonts:fetch        # downloads Marck Script woff2 → public/fonts/
 ```
+
+> **Reproducible builds.** Some setups (notably OneDrive-synced project paths
+> with non-ASCII characters) intermittently break Vite's worker resolution
+> with `Cannot read directory "../../../../.." Access is denied`. If you hit
+> that, clone the repo into an ASCII-only path under `C:\src\` (Windows) or
+> `~/src/` (mac/Linux) and build there.
 
 ### 3. Deploy the Worker
 ```bash
@@ -113,8 +123,9 @@ The builderCode is baked into the extension at build time and used by **every** 
 ```bash
 npm run dev              # Vite watch mode → outputs to dist/
 npm run worker:dev       # Wrangler local dev for the API (uses WORKER_DEV_MODE)
-npm test                 # Vitest unit tests (20 passing)
+npm test                 # Vitest unit tests (36 passing)
 npm run lint             # tsc --noEmit type check
+npm run fonts:fetch      # (re)download Marck Script woff2 → public/fonts/
 ```
 
 When you change `manifest.json` or any service-worker file, reload the extension in `chrome://extensions`. Popup hot-reloads via Vite.
@@ -128,62 +139,79 @@ WORKER_URL=https://... WORKER_SECRET=... node scripts/test-match.mjs
 
 ## Architecture
 
+Three-context model: popup (UI), service worker (router), offscreen document
+(heavy ops). See [`actually-extension-spec.md` §3.5](../actually-extension-spec.md)
+for the rationale.
+
 ```
 extension/
-├── manifest.json              Manifest V3 — activeTab + scripting + alarms
-│                              + host_permissions: clob.polymarket.com
+├── manifest.json              MV3 — activeTab + scripting + alarms + offscreen
+│                              + host_permissions: clob.polymarket.com (see spec §9.1)
+├── vite.config.ts             Tightens connect-src to VITE_WORKER_URL at build time
 ├── src/
 │   ├── background/
-│   │   ├── index.ts           Service Worker — install, alarms, message handlers
-│   │   ├── extractor.ts       Headline + body extraction (runs in page context)
-│   │   ├── embeddings.ts      Local (transformers.js MiniLM-L12) + OpenAI providers
-│   │   ├── polymarket.ts      Gamma + live price client (via Worker)
-│   │   ├── cache.ts           Diff-cache by market.id + question hash, TTL
-│   │   ├── matcher.ts         Cosine similarity + noise filter + volume tiebreak
-│   │   ├── settings.ts        Settings get/save with defaults
+│   │   ├── index.ts           SW: install, alarms, message router → offscreen
+│   │   ├── offscreen-host.ts  Lazy create + route OS_* messages
+│   │   ├── extractor.ts       Headline + body — runs in page via scripting
+│   │   ├── embeddings.ts      Local MiniLM-L12 + OpenAI fallback
+│   │   ├── polymarket.ts      Gamma fetch + tickSize normalization
+│   │   ├── cache.ts           Diff-cache by id + question hash
+│   │   ├── matcher.ts         Cosine + noise filter + keyword-overlap bonus
+│   │   ├── settings.ts        chrome.storage wrapper
 │   │   ├── history.ts         Last-10 with URL dedup
-│   │   ├── telemetry.ts       Anonymous event queue + flush
-│   │   ├── wallet.ts          WalletConnect v2 session, WCSigner for clob-client
-│   │   ├── clob.ts            @polymarket/clob-client-v2 init + builderCode wiring
-│   │   ├── trade.ts           Orchestrator: connect → derive creds → submit order
+│   │   ├── telemetry.ts       Anonymous event queue (1000-cap) + flush
+│   │   ├── wallet.ts          WC v2 SignClient + WCSigner
+│   │   ├── clob.ts            clob-client-v2 init + signBuy/submit/pollStatus
+│   │   ├── trade.ts           connectWallet, placeOrder (with staged telemetry)
 │   │   ├── geo.ts             Country check via Worker /geo
-│   │   └── util.ts            sha256, float32<->b64, cosine, uuid
+│   │   └── util.ts            sha256, float32↔b64, cosine, findOutcomeIndex,
+│   │                          safeJsonArray, formatRelative, shortHash
+│   ├── offscreen/
+│   │   ├── offscreen.html
+│   │   └── offscreen.ts       Heavy ops: match, refresh, connect, place_order
 │   ├── popup/
 │   │   ├── index.html
-│   │   ├── main.tsx
-│   │   ├── App.tsx            Tab router (Check / Trade / History / Settings)
-│   │   ├── CheckPage.tsx      Discovery — matched market, color, link out
-│   │   ├── TradePanel.tsx     Trade — analytics + connect + order form
-│   │   ├── trade/
-│   │   │   ├── ConnectButton.tsx   WC v2 QR + deeplink
-│   │   │   ├── OrderForm.tsx       Side + size + submit
-│   │   │   ├── Sparkline.tsx       7d SVG sparkline
-│   │   │   ├── Orderbook.tsx       Best bid / ask / spread
-│   │   │   ├── PayoutPreview.tsx   Max payout, return %, slippage
-│   │   │   ├── ResolutionCard.tsx  Resolution date, source, rules
-│   │   │   └── GeoBlock.tsx
-│   │   ├── History.tsx
-│   │   ├── Settings.tsx
-│   │   └── styles.css         Light, Polymarket-leaning theme
+│   │   ├── main.tsx           Mounts IntegratedPopup from popup_new
+│   │   └── operations.ts      extractActiveTabArticle + live price
+│   ├── popup_new/             The actual UI (glass design system)
+│   │   ├── IntegratedPopup.tsx
+│   │   ├── TradeTabWired.tsx
+│   │   ├── ops.ts             Popup-side adapter for offscreen RPCs
+│   │   ├── fonts.css          Single @font-face → Marck Script
+│   │   ├── styles.css
+│   │   ├── components/        Etched, GlassButton, IceCard, Tabs, …
+│   │   ├── tabs/              CheckTab, HistoryTab, SettingsTab, TradeTab
+│   │   └── trade/Analytics.tsx  Sparkline + Orderbook + ResolutionCard
 │   ├── shared/
-│   │   ├── types.ts
+│   │   ├── types.ts           Settings, PolyMarket (+ tickSize), MatchResult
 │   │   ├── constants.ts       Thresholds, BUILDER_CODE, model id, colors
-│   │   └── messages.ts        Typed SW <-> popup messages
-│   └── i18n/
-│       ├── index.ts
-│       ├── en.json
-│       ├── es.json
-│       └── pt-BR.json
+│   │   └── messages.ts        Typed SW ↔ offscreen ↔ popup messages
+│   └── i18n/                  en, es, pt-BR
 ├── worker/
-│   ├── index.ts               Cloudflare Worker:
-│   │                            /markets, /price, /orderbook, /history,
-│   │                            /geo, /clob/proxy/<eoa>, /embeddings, /telemetry
-│   └── wrangler.toml
-├── scripts/                   Offline matching tests (read WORKER_URL/SECRET from env)
+│   ├── index.ts               /markets, /price, /orderbook, /history,
+│   │                          /geo, /clob/proxy/<eoa>, /embeddings, /telemetry
+│   ├── wrangler.toml          Placeholders only — never commit real ids
+│   └── wrangler.toml.example  Step-by-step setup
+├── public/
+│   ├── icon-{16,48,128}.png
+│   └── fonts/MarckScript-Regular.woff2   # from `npm run fonts:fetch`
+├── scripts/                   Offline matching + fonts:fetch (env-driven)
 └── docs/
     ├── privacy-policy.md
     └── terms-of-service.md
 ```
+
+### Architecture decisions for v1
+
+These deliberate deviations from a "pure" spec are documented in
+[`actually-extension-spec.md`](../actually-extension-spec.md):
+
+- **Direct CLOB order routing** instead of Worker `/clob/order` proxy
+  (spec §9.1). Costs one `host_permissions` entry; saves the Worker leg.
+- **No content script in v1.** Page reading goes via `chrome.scripting.executeScript`
+  under `activeTab`. In-page widget deferred to v1.2.
+- **Baked-in `WORKER_SHARED_SECRET`** treated as a client token (spec §13).
+  Real defense is per-IP rate limit. HMAC-signed auth in v1.2.
 
 ---
 

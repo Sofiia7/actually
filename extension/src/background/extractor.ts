@@ -31,12 +31,27 @@ export function extractFromPage(): ArticleData | null {
   for (const sel of headlineSelectors) {
     const el = document.querySelector(sel)
     const text = el?.textContent?.trim() ?? ''
-    if (text.length > 20) {
+    // 4 char floor — long-form articles have long headlines, but hub/topic
+    // pages on Reuters/AP often have short ones ("Iran War", "AI", "Tariffs")
+    // which are perfectly valid match queries.
+    if (text.length >= 4) {
       headline = text
       break
     }
   }
-  if (!headline) return null
+  // Fallbacks: <meta og:title>, then document.title (strip site suffix).
+  if (!headline) {
+    const og =
+      document.querySelector('meta[property="og:title"]')?.getAttribute('content') ??
+      document.querySelector('meta[name="twitter:title"]')?.getAttribute('content') ??
+      ''
+    if (og.trim().length >= 4) headline = og.trim()
+  }
+  if (!headline && document.title) {
+    // "Iran War | Reuters" → "Iran War"
+    headline = document.title.split(/[|—–-]\s*/)[0]!.trim()
+  }
+  if (!headline || headline.length < 4) return null
 
   let bodyText = ''
   for (const sel of bodySelectors) {
@@ -47,8 +62,27 @@ export function extractFromPage(): ArticleData | null {
         .filter(Boolean)
         .join(' ')
         .slice(0, 500)
-      break
+      if (bodyText.length >= 40) break
+      bodyText = ''
     }
+  }
+  // Hub/topic page fallback: gather visible card headlines (h2/h3) as
+  // context. Markets care about topics, not body paragraphs.
+  if (!bodyText) {
+    const cards = document.querySelectorAll('h2, h3')
+    bodyText = Array.from(cards)
+      .map((el) => el.textContent?.trim() ?? '')
+      .filter((t) => t.length >= 12)
+      .slice(0, 12)
+      .join('. ')
+      .slice(0, 500)
+  }
+  // Last-ditch: meta description.
+  if (!bodyText) {
+    bodyText =
+      document.querySelector('meta[name="description"]')?.getAttribute('content')?.trim() ??
+      document.querySelector('meta[property="og:description"]')?.getAttribute('content')?.trim() ??
+      ''
   }
 
   return {

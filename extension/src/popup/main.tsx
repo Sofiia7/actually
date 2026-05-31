@@ -1,6 +1,8 @@
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
-import { App } from './App'
+import '../popup_new/fonts.css'
+import '../popup_new/styles.css'
+import { IntegratedPopup } from '../popup_new/IntegratedPopup'
 import { initI18n } from '../i18n'
 import { sendToBackground } from '../shared/messages'
 import type { ResponseMessage } from '../shared/messages'
@@ -14,7 +16,7 @@ async function bootstrap() {
   const root = createRoot(document.getElementById('root')!)
   root.render(
     <StrictMode>
-      <App />
+      <IntegratedPopup />
     </StrictMode>,
   )
 }

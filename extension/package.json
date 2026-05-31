@@ -12,6 +12,7 @@
     "test:watch": "vitest",
     "worker:dev": "cd worker && wrangler dev",
     "worker:deploy": "cd worker && wrangler deploy",
+    "fonts:fetch": "node scripts/fetch-fonts.mjs",
     "lint": "tsc --noEmit"
   },
   "dependencies": {

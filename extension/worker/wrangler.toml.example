@@ -1,0 +1,36 @@
+# Copy this file to wrangler.toml and fill in real values LOCALLY.
+# Do NOT commit your real KV namespace id, extension id, or account id.
+#
+# Steps:
+#   1. cp wrangler.toml.example wrangler.toml
+#   2. npx wrangler login                               # CF auth
+#   3. npx wrangler kv namespace create RATE_LIMITS     # copy returned id below
+#   4. Edit the `id =` line below with the returned id
+#   5. Set ALLOWED_EXTENSION_ID to your unpacked / CWS extension id
+#      (chrome://extensions → toggle Developer mode → copy ID).
+#      Comma-separated list supported, e.g. "dev_id,prod_id".
+#   6. Set secrets via wrangler:
+#      openssl rand -hex 32 | npx wrangler secret put WORKER_SHARED_SECRET
+#      npx wrangler secret put OPENAI_API_KEY     # optional
+#   7. npx wrangler deploy
+
+name = "actually-api"
+main = "index.ts"
+compatibility_date = "2025-01-01"
+compatibility_flags = ["nodejs_compat"]
+workers_dev = true
+
+# Optional: pin to a specific CF account. Otherwise inherits from wrangler login.
+# account_id = "YOUR_CF_ACCOUNT_ID"
+
+[[kv_namespaces]]
+binding = "RATE_LIMITS"
+id = "YOUR_KV_NAMESPACE_ID"
+
+[vars]
+ALLOWED_EXTENSION_ID = "YOUR_EXTENSION_ID"
+WORKER_DEV_MODE = ""  # set to "true" only for local dev
+
+# Secrets — DO NOT put in this file. Use wrangler secret put.
+#   WORKER_SHARED_SECRET — random 32+ chars, baked into extension as VITE_WORKER_SECRET
+#   OPENAI_API_KEY       — only for centralized OpenAI embedding fallback

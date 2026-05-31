@@ -85,16 +85,6 @@ export function defaultThresholds(provider: 'local' | 'openai'): {
     : { confidenceThreshold: CONFIDENCE_THRESHOLD_LOCAL, lowConfidenceFloor: LOW_CONFIDENCE_FLOOR_LOCAL }
 }
 
-export const DEFAULT_SETTINGS: Settings = {
-  confidenceThreshold: CONFIDENCE_THRESHOLD_LOCAL,
-  lowConfidenceFloor: LOW_CONFIDENCE_FLOOR_LOCAL,
-  embeddingProvider: 'local',
-  workerUrl: '',
-  workerSecret: '',
-  telemetryEnabled: true,
-  locale: 'en',
-}
-
 /**
  * Our app-wide builderCode, baked at build time via Vite. Used by trade.ts
  * when constructing CLOB orders. Read-only for the user — shown for
@@ -105,5 +95,30 @@ export const DEFAULT_SETTINGS: Settings = {
  */
 export const BUILDER_CODE: string =
   (import.meta.env.VITE_BUILDER_CODE as string | undefined) ?? ''
+
+/**
+ * Default Worker URL + secret, baked at build time. Lets the normie flow work
+ * with zero setup — users never have to paste anything into Settings. Power
+ * users can still override via Settings (kept under "Advanced" toggle).
+ *
+ * For production CWS builds, set VITE_WORKER_URL and VITE_WORKER_SECRET in
+ * .env.local before running `npm run build`.
+ */
+export const DEFAULT_WORKER_URL: string =
+  (import.meta.env.VITE_WORKER_URL as string | undefined) ?? ''
+export const DEFAULT_WORKER_SECRET: string =
+  (import.meta.env.VITE_WORKER_SECRET as string | undefined) ?? ''
+
+export const DEFAULT_SETTINGS: Settings = {
+  confidenceThreshold: CONFIDENCE_THRESHOLD_LOCAL,
+  lowConfidenceFloor: LOW_CONFIDENCE_FLOOR_LOCAL,
+  embeddingProvider: 'local',
+  // Pre-fill from build-time env so the extension works out-of-the-box on
+  // CWS installs. Users who self-host can still override in Settings.
+  workerUrl: DEFAULT_WORKER_URL,
+  workerSecret: DEFAULT_WORKER_SECRET,
+  telemetryEnabled: true,
+  locale: 'en',
+}
 
 export const POLYMARKET_BASE_URL = 'https://polymarket.com/event'

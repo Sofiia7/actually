@@ -1,0 +1,19 @@
+/*
+ * Single-family typography — Marck Script throughout the extension.
+ *
+ * Marck Script is a single-style cursive script. We do NOT layer CSS
+ * italic on top (would render as fake oblique on an already-cursive
+ * design), and we do NOT vary weight (only one weight ships).
+ *
+ * Drop the woff2 file into public/fonts/ before building:
+ *   npm run fonts:fetch
+ * If missing, the UI falls back to system cursive — usable, less polished.
+ */
+
+@font-face {
+  font-family: 'Marck Script';
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+  src: url('/public/fonts/MarckScript-Regular.woff2') format('woff2');
+}

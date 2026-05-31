@@ -1,8 +1,13 @@
 # Actually — Privacy Policy
 
-_Last updated: 2026-05-20_
+_Last updated: 2026-05-31_
 
 Actually is a Chrome extension that shows Polymarket prediction-market odds for news articles, and lets users who connect a wallet place orders on those markets in one click. We aim to be as private as possible. This page explains exactly what data is collected, what is sent off your device, and why.
+
+**Permission model:** the extension uses `activeTab` only — it can read the
+content of the tab you are currently viewing **and only at the moment you
+click the toolbar icon or press the hotkey**. It does not run a content
+script on every page you visit; nothing happens until you act.
 
 ## What is processed on your device only
 
@@ -71,7 +76,9 @@ Disable telemetry at any time in Settings.
 
 - Disable telemetry at any time in Settings
 - Clear history at any time
-- Disconnect wallet at any time (revokes the WC session, wipes stored CLOB credentials)
+- **Disconnect & wipe wallet** at any time — Settings → Wallet → the red
+  button revokes the WC session and clears the stored CLOB API key, secret,
+  passphrase, EOA, and Safe address from local storage
 - Switch to fully-local embeddings (default) so article text never leaves your device
 - Uninstall the extension, which deletes all local data
 
