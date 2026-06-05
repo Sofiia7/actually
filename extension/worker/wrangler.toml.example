@@ -27,9 +27,18 @@ workers_dev = true
 binding = "RATE_LIMITS"
 id = "YOUR_KV_NAMESPACE_ID"
 
+# Optional: telemetry persistence. Without this binding /telemetry just logs
+# counts. With it, each event is written as a data point you can query in the
+# CF dashboard. Create the dataset implicitly by deploying with this binding.
+# [[analytics_engine_datasets]]
+# binding = "TELEMETRY"
+# dataset = "actually_telemetry"
+
 [vars]
 ALLOWED_EXTENSION_ID = "YOUR_EXTENSION_ID"
 WORKER_DEV_MODE = ""  # set to "true" only for local dev
+# Aggregate daily cap on embedded characters across all clients (≈ tokens).
+# OPENAI_DAILY_CHAR_LIMIT = "5000000"
 
 # Secrets — DO NOT put in this file. Use wrangler secret put.
 #   WORKER_SHARED_SECRET — random 32+ chars, baked into extension as VITE_WORKER_SECRET
