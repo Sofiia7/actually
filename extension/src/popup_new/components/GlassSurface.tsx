@@ -63,7 +63,9 @@ export const GlassSurface: React.FC<GlassSurfaceProps> = ({
       }}
     >
       <span aria-hidden className="matte-grain" />
-      <span aria-hidden className="frost-needles" />
+      <span aria-hidden className="frost-needles">
+        <span className="frost-fill" />
+      </span>
       <div style={{ position: 'relative' }}>{children}</div>
     </div>
   );
