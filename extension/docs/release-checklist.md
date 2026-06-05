@@ -21,6 +21,9 @@ risk.
       `https://<account>.workers.dev` origin, no wildcard.
 - [ ] `grep 'host_permissions' dist/manifest.json` — exactly
       `["https://clob.polymarket.com/*"]`.
+- [ ] `npm run preflight` — automated gate: CSP has no `*.workers.dev`,
+      host_permissions = clob only, no burned secret in dist, version present.
+      See also `docs/cws-listing.md` for ready-to-paste store copy.
 - [ ] Smoke-load `dist/` as an unpacked extension in a clean Chrome profile
       and walk through the **manual smoke** below.
 

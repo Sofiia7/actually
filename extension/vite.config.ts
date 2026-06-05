@@ -37,6 +37,9 @@ export default defineConfig(({ mode }) => {
     plugins: [react(), crx({ manifest: finalManifest })],
     build: {
       target: 'es2022',
+      // Wipe dist/ on each build so stale hashed chunks (potentially carrying
+      // an old baked secret) never linger into a release artifact.
+      emptyOutDir: true,
       rollupOptions: {
         // Popup is declared in manifest as default_popup; offscreen is
         // created at runtime via chrome.offscreen.createDocument. Both must
