@@ -1,0 +1,65 @@
+/* =====================================================================
+   FROST-ON-GLASS EFFECT  —  presentational only, no app logic.
+
+   Concept (matches the reference window-frost photo):
+     • A STATIC needle-crystal pattern is painted once to a canvas and
+       exposed as the CSS var --frost-tex (see frost.js).
+     • That pattern lives on .frost-needles and is denser toward the
+       panel edges (static vignette mask).
+     • It is normally HIDDEN. On hover, a soft circle that follows the
+       cursor (--mx/--my) "melts" a window through the covering layer,
+       revealing the fixed crystal pattern beneath — like wiping a
+       frozen pane.
+
+   Integration:
+     1. Load frost.js once on the page (it sets --frost-tex on :root).
+     2. Give your glass panel `position: relative` and class `frost-host`.
+     3. Add a child element as the FIRST child:
+          <span class="frost-needles"><span class="frost-fill"></span></span>
+        (both are absolutely positioned, pointer-events:none).
+     4. Wire pointer tracking (frost.js exports attachFrostTracking()).
+
+   Why two nested spans? The outer (.frost-needles) carries the
+   cursor-following "melt" mask; the inner (.frost-fill) carries the frost
+   texture + a static edge-density vignette mask. Nesting clips the texture
+   by BOTH masks at once (cursor ∩ edges) — the compatible way to intersect
+   two masks without mask-composite.
+   ===================================================================== */
+
+.frost-needles{
+  position:absolute; inset:0; border-radius:inherit; pointer-events:none;
+
+  /* OUTER layer = the cursor-following "melt" hole. A soft circle that
+     tracks --mx/--my; only what's inside it is revealed. */
+  -webkit-mask:
+    radial-gradient(135px 135px at var(--mx,50%) var(--my,50%),
+      #000 0%, rgba(0,0,0,.9) 36%, rgba(0,0,0,.45) 66%, transparent 92%);
+          mask:
+    radial-gradient(135px 135px at var(--mx,50%) var(--my,50%),
+      #000 0%, rgba(0,0,0,.9) 36%, rgba(0,0,0,.45) 66%, transparent 92%);
+
+  opacity:0;
+  transition: opacity .3s ease;
+}
+
+/* INNER layer = the frost itself + a STATIC edge-density vignette.
+   Because it is nested inside .frost-needles, it is clipped by BOTH masks
+   (cursor circle ∩ edge vignette) without needing mask-composite — which
+   is the compatible way to intersect two masks. */
+.frost-fill{
+  position:absolute; inset:0; border-radius:inherit; pointer-events:none;
+  background-image: var(--frost-tex, none);
+  background-size: 300px 300px;
+  background-repeat: repeat;
+  -webkit-mask:
+    radial-gradient(125% 125% at 50% 50%,
+      rgba(0,0,0,.45) 0%, rgba(0,0,0,.8) 50%, #000 80%);
+          mask:
+    radial-gradient(125% 125% at 50% 50%,
+      rgba(0,0,0,.45) 0%, rgba(0,0,0,.8) 50%, #000 80%);
+}
+
+/* Reveal on hover / while the pointer is being tracked.
+   Tune the value (0–1) to taste — lower = subtler frost. */
+.frost-host:hover .frost-needles,
+.frost-host.is-tracking .frost-needles{ opacity:.48; }
