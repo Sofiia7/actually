@@ -12,10 +12,12 @@ interface Env {
   ALLOWED_EXTENSION_ID?: string
   WORKER_DEV_MODE?: string // "true" allows running without a shared secret
   OPENAI_API_KEY?: string
-  /** Hard daily cap of /embeddings requests across all clients. Default 5000. */
-  OPENAI_DAILY_LIMIT?: string
+  /** Hard daily cap of embedded CHARACTERS across all clients. Default 5,000,000. */
+  OPENAI_DAILY_CHAR_LIMIT?: string
   POLYMARKET_BUILDER_CODE?: string
   RATE_LIMITS?: KVNamespace
+  /** Optional Analytics Engine dataset for telemetry persistence. */
+  TELEMETRY?: AnalyticsEngineDataset
 }
 
 /**
@@ -23,16 +25,59 @@ interface Env {
  * all users. Protects the operator from a single bad actor draining the key.
  * Returns true if the request is allowed, false if the daily quota is exhausted.
  */
-async function openAiDailyCap(env: Env): Promise<boolean> {
+async function openAiCharCap(env: Env, chars: number): Promise<boolean> {
   if (!env.RATE_LIMITS) return true
-  const limit = parseInt(env.OPENAI_DAILY_LIMIT ?? '5000', 10)
+  const limit = parseInt(env.OPENAI_DAILY_CHAR_LIMIT ?? '5000000', 10)
   const day = new Date().toISOString().slice(0, 10) // YYYY-MM-DD
-  const key = `openai_day:${day}`
+  const key = `openai_chars_day:${day}`
   const cur = parseInt((await env.RATE_LIMITS.get(key)) ?? '0', 10)
-  if (cur >= limit) return false
+  if (cur + chars > limit) return false
   // 25 hour TTL covers the rollover and lets the value GC itself
-  await env.RATE_LIMITS.put(key, String(cur + 1), { expirationTtl: 90_000 })
+  await env.RATE_LIMITS.put(key, String(cur + chars), { expirationTtl: 90_000 })
   return true
+}
+
+/**
+ * Input limits for the /embeddings route. The Worker secret is publicly
+ * extractable (see SECURITY.md), so a caller could otherwise post arbitrarily
+ * large batches and drain the operator's OpenAI bill. These bound a single
+ * request; the per-day character quota (openAiCharCap) bounds the aggregate.
+ */
+export const EMBED_LIMITS = {
+  maxTexts: 64,
+  maxCharsPerText: 2000,
+  maxTotalChars: 20_000,
+  maxBodyBytes: 256 * 1024,
+} as const
+
+export type EmbeddingsValidation =
+  | { ok: true; texts: string[]; model?: string; totalChars: number }
+  | { ok: false; status: number; error: string }
+
+/** Pure validation for an /embeddings request body. No I/O — unit-tested. */
+export function validateEmbeddingsInput(body: unknown): EmbeddingsValidation {
+  if (typeof body !== 'object' || body === null) {
+    return { ok: false, status: 400, error: 'bad_body' }
+  }
+  const b = body as { texts?: unknown; model?: unknown }
+  if (!Array.isArray(b.texts)) return { ok: false, status: 400, error: 'texts_not_array' }
+  if (b.texts.length === 0) return { ok: false, status: 400, error: 'texts_empty' }
+  if (b.texts.length > EMBED_LIMITS.maxTexts) {
+    return { ok: false, status: 400, error: 'too_many_texts' }
+  }
+  let totalChars = 0
+  for (const t of b.texts) {
+    if (typeof t !== 'string') return { ok: false, status: 400, error: 'text_not_string' }
+    if (t.length > EMBED_LIMITS.maxCharsPerText) {
+      return { ok: false, status: 400, error: 'text_too_long' }
+    }
+    totalChars += t.length
+  }
+  if (totalChars > EMBED_LIMITS.maxTotalChars) {
+    return { ok: false, status: 400, error: 'total_too_large' }
+  }
+  const model = typeof b.model === 'string' ? b.model : undefined
+  return { ok: true, texts: b.texts as string[], model, totalChars }
 }
 
 // Polymarket-restricted jurisdictions. Mirrors the client list in
@@ -88,13 +133,24 @@ function json(body: unknown, status: number, headers: HeadersInit): Response {
   return new Response(JSON.stringify(body), { status, headers })
 }
 
+let warnedNoKv = false
+
 async function rateLimit(
   env: Env,
   bucket: string,
   ip: string,
   perMinute: number,
 ): Promise<boolean> {
-  if (!env.RATE_LIMITS) return true
+  if (!env.RATE_LIMITS) {
+    if (!warnedNoKv) {
+      warnedNoKv = true
+      console.warn(
+        '[actually] RATE_LIMITS KV is not bound — per-IP rate limiting and the ' +
+          'OpenAI daily quota are DISABLED (fail-open). Bind the KV namespace before going live.',
+      )
+    }
+    return true
+  }
   const window = Math.floor(Date.now() / 60_000)
   const key = `rl:${bucket}:${ip}:${window}`
   const cur = parseInt((await env.RATE_LIMITS.get(key)) ?? '0', 10)
@@ -192,10 +248,27 @@ export default {
         }
         const apiKey = env.OPENAI_API_KEY
         if (!apiKey) return json({ error: 'no_openai_key' }, 503, headers)
-        if (!(await openAiDailyCap(env))) {
+
+        // Reject oversized bodies before parsing (cheap DoS guard).
+        const contentLength = parseInt(req.headers.get('Content-Length') ?? '0', 10)
+        if (Number.isFinite(contentLength) && contentLength > EMBED_LIMITS.maxBodyBytes) {
+          return json({ error: 'body_too_large' }, 413, headers)
+        }
+
+        let parsed: unknown
+        try {
+          parsed = await req.json()
+        } catch {
+          return json({ error: 'bad_json' }, 400, headers)
+        }
+        const v = validateEmbeddingsInput(parsed)
+        if (!v.ok) return json({ error: v.error }, v.status, headers)
+
+        // Per-day character quota (aggregate across all clients).
+        if (!(await openAiCharCap(env, v.totalChars))) {
           return json({ error: 'daily_cap_reached' }, 429, headers)
         }
-        const body = (await req.json()) as { texts: string[]; model?: string }
+
         const res = await fetch('https://api.openai.com/v1/embeddings', {
           method: 'POST',
           headers: {
@@ -203,8 +276,8 @@ export default {
             'Content-Type': 'application/json',
           },
           body: JSON.stringify({
-            model: body.model ?? 'text-embedding-3-small',
-            input: body.texts,
+            model: v.model ?? 'text-embedding-3-small',
+            input: v.texts,
           }),
         })
         if (!res.ok) {
@@ -232,8 +305,10 @@ export default {
           return json({ error: 'rate_limited' }, 429, headers)
         }
         const params = url.searchParams.toString()
+        // Price history lives on the CLOB host, not Gamma. (Gamma's
+        // /prices-history 404s.) See https://docs.polymarket.com/api-reference/markets/get-prices-history
         const res = await fetch(
-          `https://gamma-api.polymarket.com/prices-history?${params}`,
+          `https://clob.polymarket.com/prices-history?${params}`,
           { headers: { Accept: 'application/json' } },
         )
         return new Response(await res.text(), { status: res.status, headers })
@@ -314,9 +389,29 @@ export default {
         if (!(await rateLimit(env, 'telem', ip, 30))) {
           return json({ ok: true }, 200, headers) // silently drop
         }
-        const body = (await req.json()) as { events: unknown[] }
-        // For now: log only. Wire to Analytics Engine / D1 later.
-        console.log(`[telemetry] ${body.events?.length ?? 0} events from ${ip}`)
+        let telemBody: { events?: unknown[] }
+        try {
+          telemBody = (await req.json()) as { events?: unknown[] }
+        } catch {
+          return json({ ok: true }, 200, headers) // never error a client on telemetry
+        }
+        const events = Array.isArray(telemBody.events) ? telemBody.events.slice(0, 1000) : []
+        if (env.TELEMETRY) {
+          for (const e of events) {
+            const ev = e as { event?: string; installId?: string; ts?: number; meta?: unknown }
+            try {
+              env.TELEMETRY.writeDataPoint({
+                indexes: [String(ev.event ?? 'unknown')],
+                blobs: [String(ev.installId ?? ''), JSON.stringify(ev.meta ?? {})],
+                doubles: [typeof ev.ts === 'number' ? ev.ts : Date.now()],
+              })
+            } catch {
+              // skip a malformed event; never fail the batch
+            }
+          }
+        } else {
+          console.log(`[telemetry] ${events.length} events from ${ip} (no TELEMETRY binding)`)
+        }
         return json({ ok: true }, 200, headers)
       }
 
