@@ -27,7 +27,7 @@ Security triage: [`SECURITY.md`](SECURITY.md)
 | Cosine-similarity matcher + noise filter + low-confidence fallback | ✅ |
 | History (local, 10 items, deduped) | ✅ |
 | Anonymous telemetry (opt-out, 16 honest events, bounded queue) | ✅ |
-| i18n (en, es, pt-BR) | ✅ |
+| English-only UI (i18n layer removed in v1) | ✅ |
 | Hotkey (Cmd/Ctrl+Shift+P) | ✅ |
 | Cloudflare Worker proxy — fail-closed auth + rate limits | ✅ |
 | **WalletConnect v2** integration | ✅ |
@@ -43,7 +43,7 @@ Security triage: [`SECURITY.md`](SECURITY.md)
 ## Setup
 
 ### 1. Prereqs
-- Node.js 18+
+- Node.js 20+ (pinned via `engines` in package.json; CI uses 20)
 - A Cloudflare account (free tier is enough)
 - A **WalletConnect Cloud project id** — get one free at https://cloud.walletconnect.com
 - A **Polymarket builderCode** — see [Getting a builderCode](#getting-a-polymarket-buildercode)
@@ -186,7 +186,6 @@ extension/
 │   │   ├── types.ts           Settings, PolyMarket (+ tickSize), MatchResult
 │   │   ├── constants.ts       Thresholds, BUILDER_CODE, model id, colors
 │   │   └── messages.ts        Typed SW ↔ offscreen ↔ popup messages
-│   └── i18n/                  en, es, pt-BR
 ├── worker/
 │   ├── index.ts               /markets, /price, /orderbook, /history,
 │   │                          /geo, /clob/proxy/<eoa>, /embeddings, /telemetry

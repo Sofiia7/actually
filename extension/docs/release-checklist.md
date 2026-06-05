@@ -50,11 +50,13 @@ After the new secret is live, optionally add the old token to a blacklist in
 | Click **Check this page** | First match card after ~3–10 s. YES % + volume + match %. |
 | Click "View on Polymarket →" | Opens the matched market URL in a new tab. URL contains `utm_source=actually`. |
 | Click "Trade this market →" | Switches to Trade tab. Featured market card already populated. |
-| Trade tab without wallet | Sparkline + orderbook + resolution card render. Connect-wallet panel shown. |
+| Trade tab without wallet | Odds card + Connect-wallet panel only — analytics (sparkline/orderbook/resolution) are wallet-gated and must NOT render here. |
 | Click **Connect wallet** | QR + "Open in wallet" deeplink appear. |
 | Approve in mobile MetaMask | Order form appears. EOA + Safe addresses visible in Settings → Wallet. |
-| Toggle BUY YES / BUY NO | Price updates per side; for BUY_NO it's `1 - YES`. |
-| Enter $1 size and submit | Wallet prompts for typed-data sig. Order ID returned. Polymarket shows the order under our builder profile. |
+| Toggle BUY YES / BUY NO | Best bid/ask + maker/taker badge update per side; limit price prefills to the side's best ask. |
+| Toggle Limit / Market | Limit shows an editable price field; Market shows the FOK cap (~2%) and a depth-based est. fill + slippage. |
+| Enter $1 size, Limit order, submit | Wallet prompts for typed-data sig. GTC order ID returned. Polymarket shows it under our builder profile. |
+| Enter $1 size, Market order, submit | FOK fill (or clean reject if depth is thin / slippage > 20%). |
 | Settings → Wallet → **Disconnect & wipe** | EOA / Safe / creds gone from storage. Trade tab returns to Connect panel. |
 | Disable telemetry in Settings | `chrome.storage.local.get('telemetryQueue')` stays unchanged on next match. |
 
