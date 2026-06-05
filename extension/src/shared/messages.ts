@@ -66,17 +66,22 @@ export type OffscreenRequest =
   | { target: 'offscreen'; type: 'OS_START_CONNECT' }
   | { target: 'offscreen'; type: 'OS_POLL_CONNECT'; sessionId: string }
   | { target: 'offscreen'; type: 'OS_PLACE_ORDER'; args: OffscreenPlaceOrderArgs }
-  | { target: 'offscreen'; type: 'OS_ORDERBOOK_SNAPSHOT'; tokenId: string }
+  | { target: 'offscreen'; type: 'OS_ORDERBOOK_SNAPSHOT'; tokenId: string; sizeShares?: number }
   | { target: 'offscreen'; type: 'OS_PRICE_HISTORY'; marketIdOrTokenId: string; days?: number }
 
 export interface OffscreenPlaceOrderArgs {
   tokenId: string
   side: 'BUY_YES' | 'BUY_NO'
   sizeUsd: number
+  /** LIMIT → the resting limit price; MARKET → the worst-acceptable cap price. */
   price: number
   negRisk: boolean
   /** Optional tick size override from the matched market (e.g. "0.001"). */
   tickSize?: string
+  /** LIMIT → GTC resting order at `price`; MARKET → FOK capped at `price`. */
+  orderType: 'LIMIT' | 'MARKET'
+  /** UI-derived maker/taker classification — telemetry only. */
+  makerTaker?: 'maker' | 'taker'
 }
 
 export type OffscreenResponse =
@@ -88,7 +93,7 @@ export type OffscreenResponse =
   | { type: 'OS_CONNECT_STARTED'; sessionId: string }
   | { type: 'OS_CONNECT_STATUS'; stage: 'pending' | 'awaiting_approval' | 'done' | 'error'; uri?: string; wallet?: SerializableWalletState; error?: string }
   | { type: 'OS_ORDER_RESULT'; ok: boolean; orderId?: string; error?: string }
-  | { type: 'OS_ORDERBOOK'; bestBid: number | null; bestAsk: number | null; spread: number | null; slippageForUsd?: number }
+  | { type: 'OS_ORDERBOOK'; bestBid: number | null; bestAsk: number | null; spread: number | null; estimate?: { effectivePrice: number; slippage: number } | null }
   | { type: 'OS_PRICE_HISTORY'; points: Array<{ t: number; p: number }> }
   | { type: 'OS_ERROR'; error: string }
 

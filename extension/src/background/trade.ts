@@ -15,7 +15,7 @@
  * delegates `PLACE_ORDER` back to the popup since CLOB+WC can't run in a
  * service worker.
  */
-import type { ApiKeyCreds } from '@polymarket/clob-client-v2'
+import { OrderType, type ApiKeyCreds } from '@polymarket/clob-client-v2'
 import { BUILDER_CODE } from '../shared/constants'
 import {
   deriveCredentials,
@@ -23,6 +23,7 @@ import {
   makeClient,
   pollOrderStatus,
   signBuyOrder,
+  signMarketBuyOrder,
   submitSignedOrder,
   resolveFunderAddress,
 } from './clob'
@@ -72,6 +73,12 @@ export async function connectWallet(cb: ConnectCallbacks): Promise<WalletState> 
   if (!geo.unknown && geo.blocked) {
     void trackEvent('geo_blocked', settings, { country: geo.country })
     throw new Error('geo_blocked')
+  }
+  // Fail-open by design: when the geo lookup can't be performed we proceed
+  // (Polymarket enforces its own block at order time and the UI shows an
+  // inline warning). Track the rate so we can monitor the unguarded share.
+  if (geo.unknown) {
+    void trackEvent('geo_unknown', settings, { stage: 'connect', reason: geo.errorReason ?? 'unknown' })
   }
 
   void trackEvent('wallet_connect_started', settings)
@@ -174,11 +181,15 @@ export interface PlaceOrderArgs {
   side: 'BUY_YES' | 'BUY_NO'
   /** USDC notional from the UI (e.g. $20) */
   sizeUsd: number
-  /** Per-share price (0..1) from orderbook best ask at submit time */
+  /** LIMIT → resting limit price; MARKET → worst-acceptable cap price (0..1). */
   price: number
   negRisk: boolean
   /** Exact tick size from the matched market; falls back to negRisk default. */
   tickSize?: string
+  /** LIMIT → GTC resting order; MARKET → FOK capped at `price`. */
+  orderType: 'LIMIT' | 'MARKET'
+  /** UI-derived maker/taker classification — telemetry only. */
+  makerTaker?: 'maker' | 'taker'
 }
 
 export interface OrderSubmitResult {
@@ -198,6 +209,10 @@ export async function placeOrder(args: PlaceOrderArgs): Promise<OrderSubmitResul
     void trackEvent('geo_blocked', settings, { country: geo.country, stage: 'submit' })
     return { ok: false, error: 'geo_blocked' }
   }
+  // Fail-open: unknown geo still submits (Polymarket blocks at order time).
+  if (geo.unknown) {
+    void trackEvent('geo_unknown', settings, { stage: 'submit', reason: geo.errorReason ?? 'unknown' })
+  }
 
   const signer = new WCSigner(args.state.topic, args.state.address)
   const client = makeClient({
@@ -206,21 +221,33 @@ export async function placeOrder(args: PlaceOrderArgs): Promise<OrderSubmitResul
     creds: args.state.creds,
   })
 
-  // Convert USD notional → shares. Number of shares the user actually
-  // receives if filled at `price`.
-  const size = Math.floor((args.sizeUsd / args.price) * 100) / 100
+  const isMarket = args.orderType === 'MARKET'
 
   // 1. Ask the wallet to sign the typed-data order. If the user rejects in
   //    MetaMask / WC, we do NOT count it as `order_signed`.
+  //    LIMIT  → resting GTC order at `price` for the share-converted size.
+  //    MARKET → FOK for `sizeUsd` notional, capped at `price`.
   let signed: unknown
   try {
-    signed = await signBuyOrder(client, {
-      tokenId: args.tokenId,
-      price: args.price,
-      size,
-      negRisk: args.negRisk,
-      tickSize: args.tickSize,
-    })
+    if (isMarket) {
+      signed = await signMarketBuyOrder(client, {
+        tokenId: args.tokenId,
+        sizeUsd: args.sizeUsd,
+        capPrice: args.price,
+        negRisk: args.negRisk,
+        tickSize: args.tickSize,
+      })
+    } else {
+      // Convert USD notional → shares the user receives if filled at `price`.
+      const size = Math.floor((args.sizeUsd / args.price) * 100) / 100
+      signed = await signBuyOrder(client, {
+        tokenId: args.tokenId,
+        price: args.price,
+        size,
+        negRisk: args.negRisk,
+        tickSize: args.tickSize,
+      })
+    }
   } catch (err) {
     void trackEvent('order_failed', settings, {
       side: args.side,
@@ -232,10 +259,15 @@ export async function placeOrder(args: PlaceOrderArgs): Promise<OrderSubmitResul
   void trackEvent('order_signed', settings, {
     side: args.side,
     size_bucket: sizeBucket(args.sizeUsd),
+    order_type: args.orderType,
   })
 
-  // 2. Post the signed payload to CLOB.
-  const result = await submitSignedOrder(client, signed)
+  // 2. Post the signed payload to CLOB with the matching execution type.
+  const result = await submitSignedOrder(
+    client,
+    signed,
+    isMarket ? OrderType.FOK : OrderType.GTC,
+  )
   if (!result.success) {
     void trackEvent('order_failed', settings, {
       side: args.side,
@@ -247,6 +279,8 @@ export async function placeOrder(args: PlaceOrderArgs): Promise<OrderSubmitResul
   void trackEvent('order_submitted', settings, {
     side: args.side,
     size_bucket: sizeBucket(args.sizeUsd),
+    order_type: args.orderType,
+    ...(args.makerTaker ? { maker_taker: args.makerTaker } : {}),
   })
 
   // 3. Fire-and-forget poll for fill status. UI returns from this call

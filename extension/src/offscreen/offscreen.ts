@@ -12,7 +12,9 @@
 import type { OffscreenRequest, OffscreenResponse, SerializableWalletState } from '../shared/messages'
 import { getSettings } from '../background/settings'
 import { findMatch } from '../background/matcher'
-import { refreshMarketCache, getMarketCache } from '../background/cache'
+import { refreshMarketCache, getMarketCache, getCacheStatus } from '../background/cache'
+import { CACHE_TTL_MINUTES } from '../shared/constants'
+import type { Settings } from '../shared/types'
 import { fetchLivePrice } from '../background/polymarket'
 import { addToHistory } from '../background/history'
 import { trackEvent } from '../background/telemetry'
@@ -43,6 +45,24 @@ interface ConnectSession {
   error?: string
 }
 const sessions = new Map<string, ConnectSession>()
+
+// §12: lazy cache TTL. After a match is returned we kick off a non-blocking
+// refresh if the cache is older than CACHE_TTL_MINUTES, deduped so concurrent
+// matches don't stack refreshes. The user sees the current match immediately;
+// fresh data lands on the next check.
+let staleRefreshInFlight = false
+async function maybeRefreshStale(settings: Settings): Promise<void> {
+  if (staleRefreshInFlight) return
+  const { lastUpdated } = await getCacheStatus()
+  const ageMin = lastUpdated > 0 ? (Date.now() - lastUpdated) / 60_000 : Infinity
+  if (ageMin <= CACHE_TTL_MINUTES) return
+  staleRefreshInFlight = true
+  void refreshMarketCache(settings.embeddingProvider, settings.workerUrl, settings.workerSecret)
+    .catch(() => undefined)
+    .finally(() => {
+      staleRefreshInFlight = false
+    })
+}
 
 function newSessionId(): string {
   return `cs_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`
@@ -148,6 +168,7 @@ async function handle(msg: OffscreenRequest): Promise<OffscreenResponse> {
           color: match.color,
           confidence_bucket: Math.floor(match.confidence * 10) / 10,
         })
+        void maybeRefreshStale(settings) // §12 non-blocking TTL refresh
         return { type: 'OS_MATCH_RESULT', match }
       } catch (err) {
         return { type: 'OS_MATCH_RESULT', match: null, reason: `match_error[step=${step}]:${String(err)}` }
@@ -235,6 +256,8 @@ async function handle(msg: OffscreenRequest): Promise<OffscreenResponse> {
         price: msg.args.price,
         negRisk: msg.args.negRisk,
         tickSize: msg.args.tickSize,
+        orderType: msg.args.orderType,
+        makerTaker: msg.args.makerTaker,
       })
       return { type: 'OS_ORDER_RESULT', ...r }
     }
@@ -244,12 +267,15 @@ async function handle(msg: OffscreenRequest): Promise<OffscreenResponse> {
       if (!settings.workerUrl || !settings.workerSecret) {
         return { type: 'OS_PRICE_HISTORY', points: [] }
       }
+      // CLOB prices-history takes an explicit window (startTs/endTs, unix
+      // seconds) + `fidelity` (bucket minutes). Do NOT also pass `interval`
+      // — that's a relative range and conflicts with an explicit window.
+      const nowSec = Math.floor(Date.now() / 1000)
       const params = new URLSearchParams({
         market: msg.marketIdOrTokenId,
-        interval: '1h',
-        // Gamma's prices-history accepts `interval` + relative range; we
-        // pass an explicit days window for forward compatibility.
-        startTs: String(Math.floor((Date.now() - (msg.days ?? 7) * 86400_000) / 1000)),
+        startTs: String(nowSec - (msg.days ?? 7) * 86400),
+        endTs: String(nowSec),
+        fidelity: '60',
       })
       try {
         const res = await fetch(`${settings.workerUrl}/history?${params}`, {
@@ -265,13 +291,17 @@ async function handle(msg: OffscreenRequest): Promise<OffscreenResponse> {
 
     case 'OS_ORDERBOOK_SNAPSHOT': {
       const w = await rehydrateWallet()
-      if (!w) return { type: 'OS_ORDERBOOK', bestBid: null, bestAsk: null, spread: null }
+      if (!w) return { type: 'OS_ORDERBOOK', bestBid: null, bestAsk: null, spread: null, estimate: null }
       const snap = await getOrderbookSnapshot(w, msg.tokenId)
+      // Walk the book for a depth-based fill estimate when the UI passes the
+      // intended size (shares); otherwise just return the top-of-book.
+      const estimate = msg.sizeShares != null ? snap.estimateBuy(msg.sizeShares) : null
       return {
         type: 'OS_ORDERBOOK',
         bestBid: snap.bestBid,
         bestAsk: snap.bestAsk,
         spread: snap.spread,
+        estimate,
       }
     }
 

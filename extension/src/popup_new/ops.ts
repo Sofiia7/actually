@@ -1,11 +1,10 @@
 /**
  * UI-side ops adapter — sends heavy operations to the offscreen
- * document via the SW. Used by both the popup and the in-page widget.
+ * document via the service worker. Used by the popup.
  *
- * Direct calls to background/* modules from the widget would crash:
- * widget runs in page context, page CSP often blocks WASM and the
- * WalletConnect relay. The offscreen document is the single allowed
- * heavy-ops home.
+ * The popup must not call the heavy background/* modules directly: the
+ * offscreen document is the single MV3-correct home for WASM embeddings,
+ * the WalletConnect relay, and CLOB signing.
  */
 import type {
   OffscreenPlaceOrderArgs,
@@ -132,16 +131,21 @@ export async function priceHistoryViaOffscreen(
   return r.points
 }
 
-export async function orderbookSnapshotViaOffscreen(tokenId: string): Promise<{
+export async function orderbookSnapshotViaOffscreen(
+  tokenId: string,
+  sizeShares?: number,
+): Promise<{
   bestBid: number | null
   bestAsk: number | null
   spread: number | null
+  estimate: { effectivePrice: number; slippage: number } | null
 }> {
   const r = await call<Extract<OffscreenResponse, { type: 'OS_ORDERBOOK' }> | Extract<OffscreenResponse, { type: 'OS_ERROR' }>>({
     target: 'offscreen',
     type: 'OS_ORDERBOOK_SNAPSHOT',
     tokenId,
+    sizeShares,
   })
-  if (r.type === 'OS_ERROR') return { bestBid: null, bestAsk: null, spread: null }
-  return { bestBid: r.bestBid, bestAsk: r.bestAsk, spread: r.spread }
+  if (r.type === 'OS_ERROR') return { bestBid: null, bestAsk: null, spread: null, estimate: null }
+  return { bestBid: r.bestBid, bestAsk: r.bestAsk, spread: r.spread, estimate: r.estimate ?? null }
 }

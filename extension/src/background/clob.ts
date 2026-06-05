@@ -19,6 +19,7 @@ import {
   type ApiKeyCreds,
   type OrderBookSummary,
   type UserOrderV2,
+  type UserMarketOrderV2,
 } from '@polymarket/clob-client-v2'
 import { BUILDER_CODE } from '../shared/constants'
 import { WCSigner } from './wallet'
@@ -198,17 +199,61 @@ export async function signBuyOrder(
   return client.createOrder(userOrder, opts)
 }
 
-/** Submit-only step. Posts a previously-signed order to CLOB. */
+export interface MarketBuyOrderArgs {
+  tokenId: string
+  /** USD notional to spend (SDK `amount` for a BUY market order). */
+  sizeUsd: number
+  /**
+   * Worst-acceptable price cap (0..1). Passed to the SDK as the marketable
+   * limit so a FOK can't fill above it — our slippage guard. Omit for an
+   * uncapped market take.
+   */
+  capPrice?: number
+  negRisk?: boolean
+  tickSize?: string
+}
+
+/**
+ * Sign-only step for a MARKET (FOK) buy. Mirrors signBuyOrder but uses the
+ * SDK's market-order path: `amount` is USD notional, execution is fill-or-kill,
+ * and `capPrice` (if given) bounds the fill price.
+ */
+export async function signMarketBuyOrder(
+  client: ClobClient,
+  args: MarketBuyOrderArgs,
+): Promise<unknown> {
+  if (!BUILDER_CODE) throw new Error('builder_code_not_configured')
+
+  const userMarketOrder: UserMarketOrderV2 = {
+    tokenID: args.tokenId,
+    amount: args.sizeUsd,
+    side: Side.BUY,
+    orderType: OrderType.FOK,
+    builderCode: BUILDER_CODE,
+    ...(args.capPrice != null ? { price: args.capPrice } : {}),
+  }
+  const opts = {
+    tickSize: args.tickSize ?? fallbackTick(args.negRisk),
+    negRisk: args.negRisk ?? false,
+  } as Parameters<ClobClient['createMarketOrder']>[1]
+  return client.createMarketOrder(userMarketOrder, opts)
+}
+
+/**
+ * Submit-only step. Posts a previously-signed order to CLOB. `orderType` must
+ * match how the order was built: GTC for a resting limit, FOK for a market buy.
+ */
 export async function submitSignedOrder(
   client: ClobClient,
   signed: unknown,
+  orderType: OrderType = OrderType.GTC,
 ): Promise<{ success: boolean; orderId?: string; error?: string }> {
   try {
     // SDK type is `SignedOrder` — we passed it through `unknown` to keep
     // the sign/submit boundary explicit. Cast back here.
     const res = (await client.postOrder(
       signed as Parameters<ClobClient['postOrder']>[0],
-      OrderType.GTC,
+      orderType,
     )) as { success?: boolean; errorMsg?: string; orderID?: string }
     if (res.success) return { success: true, orderId: res.orderID }
     return { success: false, error: res.errorMsg ?? 'clob_rejected' }

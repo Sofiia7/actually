@@ -107,6 +107,7 @@ export interface TelemetryEvent {
     | 'order_filled'
     | 'order_failed'
     | 'geo_blocked'
+    | 'geo_unknown'
     | 'cache_refresh'
   ts: number
   meta?: Record<string, string | number | boolean>
