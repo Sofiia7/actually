@@ -52,8 +52,7 @@ async function offscreenExists(): Promise<boolean> {
     // Fallback for older Chrome — try create; if it throws "already
     // exists", we're good.
     try {
-      await chrome.offscreen.hasDocument?.()
-      return true
+      return (await chrome.offscreen.hasDocument?.()) ?? false
     } catch {
       return false
     }

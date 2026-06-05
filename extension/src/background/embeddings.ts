@@ -1,7 +1,7 @@
 /**
  * Pluggable embedding provider — local (transformers.js, free) or OpenAI fallback.
  *
- * - `local`:  Xenova/all-MiniLM-L12-v2 — 384 dims, runs in SW via WASM. First call
+ * - `local`:  Xenova/all-MiniLM-L12-v2 — 384 dims, runs in the offscreen document via WASM. First call
  *             downloads ~33MB to extension cache; subsequent calls ~100ms.
  * - `openai`: text-embedding-3-small — 1536 dims, ~$0.02 per 1M tokens, via Worker.
  *

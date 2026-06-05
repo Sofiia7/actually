@@ -19,8 +19,8 @@ export const LOW_CONFIDENCE_FLOOR = LOW_CONFIDENCE_FLOOR_LOCAL
 export const CACHE_TTL_MINUTES = 30
 // 300 markets covers the long tail of news topics (US politics, geopolitics,
 // crypto, sports) while still completing first-load embedding in <90s on the
-// local MiniLM model. Embedding now runs in the popup (no MV3 SW limits),
-// so previous 100-market cap was overly conservative.
+// local MiniLM model. Embedding runs in the offscreen document (no MV3 SW
+// lifetime limits), so the previous 100-market cap was overly conservative.
 export const MAX_MARKETS_CACHE = 300
 export const EMBED_PROGRESS_CHUNK = 25
 export const MAX_BODY_TEXT_CHARS = 500
@@ -54,7 +54,6 @@ export const STORAGE_KEYS = {
   history: 'history',
   installId: 'installId',
   telemetryQueue: 'telemetryQueue',
-  lastMatchByUrl: 'lastMatchByUrl',
 } as const
 
 // Bumped when we change the local embedding model — vectors from different
