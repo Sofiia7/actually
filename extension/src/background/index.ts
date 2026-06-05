@@ -36,8 +36,8 @@ chrome.runtime.onInstalled.addListener(async (details) => {
   })
   // Periodically nudge the popup to refresh stale market cache. The SW
   // itself cannot run embeddings (MV3 lifetime + no DOM), so the alarm
-  // just sets a "stale" flag the popup reads on next open. The actual
-  // refresh happens in popup operations.maybeRefreshStaleCache().
+  // just fires a telemetry signal. The actual refresh happens lazily in the
+  // offscreen document on the next check (see offscreen.ts maybeRefreshStale).
   chrome.alarms.create(ALARM_NAMES.refreshCache, {
     delayInMinutes: CACHE_TTL_MINUTES,
     periodInMinutes: CACHE_TTL_MINUTES,

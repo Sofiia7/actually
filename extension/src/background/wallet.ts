@@ -89,7 +89,7 @@ export async function startConnect(): Promise<ConnectStart> {
   const { uri, approval } = await client.connect({
     requiredNamespaces: {
       eip155: {
-        methods: ['eth_signTypedData_v4', 'personal_sign'],
+        methods: ['eth_signTypedData_v4'],
         chains: [POLYGON_CHAIN_ID],
         events: ['chainChanged', 'accountsChanged'],
       },

@@ -12,7 +12,6 @@ export interface SettingsValues {
   provider: string;
   confidence: number;
   floor: number;
-  language: string;
   shareStats: boolean;
   cacheSize?: number;
   cacheAge?: string;
@@ -43,8 +42,6 @@ const PROVIDERS = [
   'Local (free, runs on your device)',
   'OpenAI · text-embedding-3-small',
 ];
-
-const LANGUAGES = ['English', 'Español', 'Português (BR)'];
 
 // =============================================================
 const Field: React.FC<{ label: string; children: React.ReactNode }> = ({
@@ -180,18 +177,6 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
         </Etched>
         <LinkAction onClick={onRefreshCache}>Refresh now</LinkAction>
       </div>
-
-      <Field label="Language">
-        <select
-          className="thin-glass"
-          value={values.language}
-          onChange={(e) => onChange({ language: e.target.value })}
-        >
-          {LANGUAGES.map((l) => (
-            <option key={l}>{l}</option>
-          ))}
-        </select>
-      </Field>
 
       <Field label="Privacy">
         <div

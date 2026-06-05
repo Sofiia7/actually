@@ -11,7 +11,6 @@ import type {
   HistoryItem,
   MatchResult,
   Settings as SettingsT,
-  SupportedLocale,
   TestKeysResult,
 } from '../shared/types'
 import {
@@ -35,7 +34,6 @@ import {
 } from './ops'
 import type { SerializableWalletState } from '../shared/messages'
 import type { ArticleData } from '../shared/types'
-import { useTranslation } from 'react-i18next'
 
 // =============================================================
 // Provider / language ↔ design-string mapping
@@ -48,17 +46,6 @@ const LABEL_TO_PROVIDER: Record<string, SettingsT['embeddingProvider']> = {
   'Local (free, runs on your device)': 'local',
   'OpenAI · text-embedding-3-small': 'openai',
 }
-const LOCALE_LABELS: Record<SupportedLocale, string> = {
-  en: 'English',
-  es: 'Español',
-  'pt-BR': 'Português (BR)',
-}
-const LABEL_TO_LOCALE: Record<string, SupportedLocale> = {
-  English: 'en',
-  Español: 'es',
-  'Português (BR)': 'pt-BR',
-}
-
 // =============================================================
 // MatchResult → design Market
 // =============================================================
@@ -108,7 +95,6 @@ export const IntegratedPopup: React.FC<IntegratedPopupProps> = ({
   extractor = extractActiveTabArticle,
   onClose,
 }) => {
-  const { i18n } = useTranslation()
   const [tab, setTab] = useState<TabName>('Check')
   const [settings, setSettings] = useState<SettingsT | null>(null)
 
@@ -253,7 +239,6 @@ export const IntegratedPopup: React.FC<IntegratedPopupProps> = ({
       { type: 'SETTINGS_RESPONSE' }
     >
     setSettings(res.settings)
-    if (patch.locale) await i18n.changeLanguage(patch.locale)
   }
   async function testConnection() {
     setTestStatus('testing…')
@@ -289,7 +274,6 @@ export const IntegratedPopup: React.FC<IntegratedPopupProps> = ({
     provider: PROVIDER_LABELS[settings.embeddingProvider],
     confidence: settings.confidenceThreshold,
     floor: settings.lowConfidenceFloor,
-    language: LOCALE_LABELS[settings.locale],
     shareStats: settings.telemetryEnabled,
     cacheSize: cache.count,
     cacheAge: cache.lastUpdated ? formatRelative(cache.lastUpdated) : '—',
@@ -413,10 +397,6 @@ export const IntegratedPopup: React.FC<IntegratedPopupProps> = ({
                     next.confidenceThreshold = td.confidenceThreshold
                     next.lowConfidenceFloor = td.lowConfidenceFloor
                   }
-                }
-                if (patch.language != null) {
-                  const loc = LABEL_TO_LOCALE[patch.language]
-                  if (loc) next.locale = loc
                 }
                 if (patch.confidence != null) next.confidenceThreshold = patch.confidence
                 if (patch.floor != null) next.lowConfidenceFloor = patch.floor
