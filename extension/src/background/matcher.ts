@@ -26,7 +26,7 @@ const STOPWORDS = new Set([
 ])
 
 /** Extract content keywords ≥4 chars, lowercased, deduped, non-stopword. */
-function extractKeywords(text: string): Set<string> {
+export function extractKeywords(text: string): Set<string> {
   const out = new Set<string>()
   const words = text.toLowerCase().match(/[a-z][a-z']{3,}/g) ?? []
   for (const w of words) {
@@ -57,7 +57,7 @@ const LOW_VALUE_OVERLAP = new Set([
  * Bonus capped at 0.15 so it can outweigh ~0.03 cosine gaps but not derail
  * clearly-better semantic matches (~0.10 gap is preserved).
  */
-function keywordOverlapBonus(headlineKw: Set<string>, marketQuestion: string): number {
+export function keywordOverlapBonus(headlineKw: Set<string>, marketQuestion: string): number {
   if (headlineKw.size === 0) return 0
   const marketKw = extractKeywords(marketQuestion)
   const marketStems = new Set<string>()
