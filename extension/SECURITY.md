@@ -38,6 +38,21 @@ defense above.
 - Per-IP rate limits on every authenticated route; global per-day cap on
   `/embeddings` to protect the operator's OpenAI bill.
 
+## Geo-fence posture (fail-open)
+
+Trading is gated on Polymarket-restricted jurisdictions via the Worker `/geo`
+endpoint (`CF-IPCountry`). The gate is **fail-open by design**:
+
+- **Confirmed restricted** → wallet connect + order placement are blocked.
+- **Unknown** (Worker misconfig, network error, 401/503, missing country) →
+  trading proceeds with an inline warning. A flaky geo lookup must not break
+  legitimate users, and Polymarket enforces its own jurisdiction block at order
+  time.
+
+The `geo_unknown` telemetry event measures how often the gate is disengaged so
+the operator can monitor the unguarded share. A stricter fail-closed mode is a
+localized change in `src/background/trade.ts` if a deployment requires it.
+
 ## Extension permissions (v1)
 
 - `permissions`: `storage`, `activeTab`, `alarms`, `scripting`, `offscreen`.
@@ -89,12 +104,22 @@ time by `npm run fonts:fetch` and bundled into the .crx as woff2 files.
 
 ## npm audit triage
 
-`npm audit` reports advisories largely in transitive deps that are either
-dev-only (`rollup`, `undici`, `miniflare`, `ws`, `esbuild`) or in code paths
-the extension does not exercise (`@ethersproject/*` signature primitives —
-we sign exclusively via the user's wallet; ONNX proto decoding only over
-trusted Hugging Face CDN). No `npm audit fix --force` is applied because
-every "fix" is a breaking downgrade of a runtime-critical dependency.
+`npm audit` reports advisories largely in transitive deps. Honest breakdown:
+
+- **Dev-only** (`rollup`, `undici`, `esbuild`, the `wrangler` / `ws` chain) —
+  not present in the shipped extension.
+- **Runtime, but low-risk given the input.** The `@xenova/transformers` →
+  `onnxruntime-web` → `protobufjs` chain **is** exercised — it parses the local
+  embedding model. The advisories concern malformed protobuf/ONNX input, but the
+  only bytes we ever decode are the MiniLM-L12 weights fetched over HTTPS from
+  the Hugging Face CDN pinned in our CSP — not attacker-controlled. The
+  `@ethersproject/*` signing primitives ship via `clob-client-v2`, but we sign
+  exclusively through the user's wallet (WalletConnect), so those paths aren't hit.
+
+No `npm audit fix --force` is applied because every "fix" is a breaking
+downgrade of a runtime-critical dependency. Bundling the model weights into the
+.crx (planned v1.1) removes the Hugging Face fetch and closes this surface
+entirely.
 
 Re-triage when `clob-client-v2` ships an ethers v6 release or
 `@xenova/transformers` v3 (server-side ONNX) lands.

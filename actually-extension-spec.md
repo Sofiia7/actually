@@ -313,7 +313,7 @@ messages via the SW router.
 
 ### 5.3 Geo-restricted flow
 
-Before any trading UI renders, the popup calls Worker `/geo` (CF returns `CF-IPCountry`). If country in blocklist (US, UK, FR, BE, AU, SG, TH, TW, PL, others — see §10), Trade tab renders `<GeoBlock>` instead of OrderForm. Discovery tab works normally — info is not geo-gated.
+Before any trading UI renders, the popup calls Worker `/geo` (CF returns `CF-IPCountry`). If the country is a **confirmed** blocklist member (US, UK, FR, BE, AU, SG, TH, TW, PL, others — see §10), the Trade tab hard-blocks order placement. **Fail-open:** if the lookup can't be performed (Worker misconfig / network → `unknown`), trading proceeds with an inline warning — Polymarket enforces its own block at order time. Discovery works regardless — info is not geo-gated.
 
 ---
 
@@ -376,7 +376,7 @@ const client = await SignClient.init({
 ```
 
 **Connect flow:**
-1. `client.connect({ requiredNamespaces: { eip155: { methods: ['eth_sendTransaction', 'eth_signTypedData_v4', 'personal_sign'], chains: ['eip155:137'], events: [] } } })`
+1. `client.connect({ requiredNamespaces: { eip155: { methods: ['eth_signTypedData_v4'], chains: ['eip155:137'], events: ['chainChanged', 'accountsChanged'] } } })` — we only ever request EIP-712 typed-data signatures; no `eth_sendTransaction`/`personal_sign`.
 2. Receive `uri` → show QR + "Open in wallet" deeplink
 3. On user approval: receive session, store topic in `chrome.storage.local`
 4. Read EOA address from session.namespaces.eip155.accounts[0]
@@ -500,15 +500,17 @@ go away entirely.
 
 **Blocked countries (initial):** US, UK, FR, BE, AU, SG, TH, TW, PL, ON (Ontario, Canada — Polymarket excludes specifically).
 
-**Source of truth:** `src/shared/constants.ts` `BLOCKED_COUNTRIES`. Operator can override via Worker env `EXTRA_BLOCKED_COUNTRIES` (CSV).
+**Source of truth:** `worker/index.ts` `BLOCKED_COUNTRIES` (authoritative at request time), mirrored client-side in `src/background/geo.ts`. Operator can override via Worker env `EXTRA_BLOCKED_COUNTRIES` (CSV).
 
 **Check timing:**
-- Worker `/geo` is called when the user opens Trade tab for the first time per session
-- Result is cached in popup memory for the session (not persisted — country can change)
-- If blocked: Trade tab renders `<GeoBlock>` with explainer text + link to Polymarket terms
+- Worker `/geo` is called when the user opens the Trade tab (cached in popup memory for the session — country can change between sessions).
 
-**What is geo-gated:** order placement, wallet connect (we don't even show Connect button in restricted regions).
-**What is NOT geo-gated:** discovery odds, market info, sparkline, link out to Polymarket (Polymarket itself enforces its own block).
+**Posture — fail-open (deliberate):**
+- **Confirmed restricted** (`blocked && !unknown`): the Trade tab hard-blocks wallet connect + order placement and shows a region notice.
+- **Unknown** (Worker misconfig / network / 401 / 503 / no country): trading is **allowed to proceed** with an inline warning banner. Rationale: a flaky `/geo` must not break legitimate users, and Polymarket independently enforces its own jurisdiction block at order time. The `geo_unknown` telemetry event tracks how often this safety-net is disengaged.
+
+**What is geo-gated:** order placement + wallet connect — but only on a *confirmed* restricted country.
+**What is NOT geo-gated:** discovery odds, market info, sparkline, link-out; and trading when geo is `unknown` (see fail-open above).
 
 ---
 
