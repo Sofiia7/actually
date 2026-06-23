@@ -54,7 +54,6 @@ const settings: Settings = {
   workerUrl: 'https://w',
   workerSecret: 's',
   telemetryEnabled: false,
-  locale: 'en',
 }
 
 const wallet = {
@@ -126,5 +125,31 @@ describe('TradeTabWired — order ticket', () => {
     await waitFor(() => {
       expect(screen.getByRole('button', { name: /Place market order/i })).toBeDisabled()
     })
+  })
+
+  it('requires a confirm step before signing (ТЗ §6.5)', async () => {
+    opsm.restoreWalletViaOffscreen.mockResolvedValue(wallet)
+    render(<TradeTabWired {...props} />)
+    await screen.findByText('Orderbook')
+    // Limit price prefills from best ask; wait until the primary button enables.
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /Place limit order/i })).toBeEnabled()
+    })
+    await userEvent.click(screen.getByRole('button', { name: /Place limit order/i }))
+    // Confirm card shows; the order is NOT placed yet.
+    expect(screen.getByText(/Confirm limit order/i)).toBeInTheDocument()
+    expect(opsm.placeOrderViaOffscreen).not.toHaveBeenCalled()
+    // Only after "Sign in wallet" does the order go through.
+    await userEvent.click(screen.getByRole('button', { name: /Sign in wallet/i }))
+    await waitFor(() => expect(opsm.placeOrderViaOffscreen).toHaveBeenCalledOnce())
+  })
+})
+
+describe('TradeTabWired — match context (ТЗ §6.1)', () => {
+  it('shows the article headline as context when provided', async () => {
+    opsm.restoreWalletViaOffscreen.mockResolvedValue(null)
+    render(<TradeTabWired {...props} articleHeadline="Iran enriches uranium to 60%" />)
+    expect(await screen.findByText(/Iran enriches uranium/i)).toBeInTheDocument()
+    expect(screen.getByText(/From this page/i)).toBeInTheDocument()
   })
 })
