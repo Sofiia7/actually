@@ -44,7 +44,7 @@ Security triage: [`SECURITY.md`](SECURITY.md)
 ## Setup
 
 ### 1. Prereqs
-- Node.js 20+ (pinned via `engines` in package.json; CI uses 20)
+- Node.js 20+ to run. **Reproducible installs need Node 24 / npm 11** — the committed `package-lock.json` is npm 11, and older npm rejects it on `npm ci`. Version pinned via [`.nvmrc`](.nvmrc); CI runs Node 24.
 - A Cloudflare account (free tier is enough)
 - A **WalletConnect Cloud project id** — get one free at https://cloud.walletconnect.com
 - A **Polymarket builderCode** — see [Getting a builderCode](#getting-a-polymarket-buildercode)
