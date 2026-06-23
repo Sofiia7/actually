@@ -41,6 +41,55 @@ Security triage: [`SECURITY.md`](SECURITY.md)
 
 ---
 
+## How matching works
+
+No server-side model and no per-request inference cost: the article is embedded
+**in your browser**. The default path never sends page content anywhere.
+
+```
+ news article (any page)
+        │  chrome.scripting (activeTab) — extractor.ts
+        ▼
+ headline ×HEADLINE_WEIGHT  +  trimmed body
+        │  offscreen document (MV3) — WASM
+        ▼
+ Xenova/all-MiniLM-L12-v2  →  384-d vector  (mean-pooled, L2-normalized)
+        │
+        ▼                          market cache (diff-cached, pre-embedded)
+ cosine similarity  ───────────────── vs every cached market vector
+        │
+        ├─ + lexical-overlap bonus  (shared keyword stems; generic country /
+        │     leader / econ stems down-weighted via LOW_VALUE_OVERLAP)
+        ├─ + tiny volume bonus      (tiebreaker only, capped)
+        ▼
+ rank → top match + up to 4 alternatives
+        │  threshold on RAW cosine (confidenceThreshold / lowConfidenceFloor)
+        ▼
+ Check tab:  question · YES % · color      Trade tab (wallet):
+                                           WalletConnect → CLOB order (builderCode)
+```
+
+Three design choices that aren't obvious from "just use embeddings":
+
+- **Local-first model.** `Xenova/all-MiniLM-L12-v2` (384-dim) runs as WASM inside
+  an MV3 *offscreen document* — service workers can't run it directly, so
+  transformers.js globals are polyfilled and ONNX is forced single-thread. First
+  run downloads ~33 MB to extension cache; later matches are ~100 ms. An OpenAI
+  `text-embedding-3-small` path exists as an opt-in fallback via the Worker.
+- **Lexical overlap on top of cosine.** Pure cosine treats every "Iran"-mentioning
+  market as equally close; a `+0.04`-per-shared-keyword-stem bonus (capped `0.15`)
+  lets the *specific* noun win — e.g. "uranium" over a generic "Iran" market.
+  Generic stems (countries, leader names, "price", "year") are down-weighted to
+  `+0.01` so thematic generality can't dominate a sharper semantic match.
+- **Confidence is measured on the raw semantic score**, not the boosted one — the
+  volume and keyword bonuses only break ties and re-rank; they never inflate the
+  confidence shown to the user or push a weak match past the floor.
+
+Market embeddings are precomputed and **diff-cached** by id + question-hash, so a
+match is one local embed + N cosine ops, not N model calls.
+
+---
+
 ## Setup
 
 ### 1. Prereqs
