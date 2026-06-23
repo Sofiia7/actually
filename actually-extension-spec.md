@@ -168,16 +168,10 @@ extension/
 │   │       └── Analytics.tsx # Sparkline + Orderbook + ResolutionCard +
 │   │                         #   MarketAnalytics composer
 │   │
-│   ├── shared/
-│   │   ├── constants.ts      # thresholds, colors, model id, BUILDER_CODE
-│   │   ├── messages.ts       # SW ↔ offscreen ↔ popup message types
-│   │   └── types.ts          # Settings, PolyMarket (+ tickSize), MatchResult
-│   │
-│   └── i18n/
-│       ├── index.ts
-│       ├── en.json
-│       ├── es.json
-│       └── pt-BR.json
+│   └── shared/
+│       ├── constants.ts      # thresholds, colors, model id, BUILDER_CODE
+│       ├── messages.ts       # SW ↔ offscreen ↔ popup message types
+│       └── types.ts          # Settings, PolyMarket (+ tickSize), MatchResult
 │
 ├── public/
 │   ├── icon-{16,48,128}.png
@@ -198,7 +192,8 @@ extension/
 **Removed since v2.0 / earlier audit pass:** `src/popup/{App,CheckPage,History,
 Settings,TradePanel}.tsx`, `src/popup/styles.css`, `src/popup/trade/*`, and
 `src/content/inject.tsx` — all collapsed into the single `popup_new/`
-implementation that the popup HTML entry now mounts directly.
+implementation that the popup HTML entry now mounts directly. `src/i18n/*` and
+the `Settings.locale` field were also removed — the v1 UI is English-only.
 
 ### 3.5 Offscreen Document — rationale and boundary
 
@@ -313,7 +308,7 @@ messages via the SW router.
 
 ### 5.3 Geo-restricted flow
 
-Before any trading UI renders, the popup calls Worker `/geo` (CF returns `CF-IPCountry`). If the country is a **confirmed** blocklist member (US, UK, FR, BE, AU, SG, TH, TW, PL, others — see §10), the Trade tab hard-blocks order placement. **Fail-open:** if the lookup can't be performed (Worker misconfig / network → `unknown`), trading proceeds with an inline warning — Polymarket enforces its own block at order time. Discovery works regardless — info is not geo-gated.
+Before any trading UI renders, the popup calls Worker `/geo` (CF returns `CF-IPCountry`). If the country is a **confirmed** blocklist member (US, UK, FR, BE, AU, SG, TH, TW, PL, others — see §10), the Trade tab hard-blocks order placement. **Unknown region (`GEO_FAIL_OPEN`):** if the lookup can't be performed (Worker misconfig / network → `unknown`), prod builds pause trading (fail-closed) while dev/beta proceed with an inline warning — and Polymarket enforces its own block at order time either way. Discovery works regardless — info is not geo-gated.
 
 ---
 
@@ -505,12 +500,12 @@ go away entirely.
 **Check timing:**
 - Worker `/geo` is called when the user opens the Trade tab (cached in popup memory for the session — country can change between sessions).
 
-**Posture — fail-open (deliberate):**
-- **Confirmed restricted** (`blocked && !unknown`): the Trade tab hard-blocks wallet connect + order placement and shows a region notice.
-- **Unknown** (Worker misconfig / network / 401 / 503 / no country): trading is **allowed to proceed** with an inline warning banner. Rationale: a flaky `/geo` must not break legitimate users, and Polymarket independently enforces its own jurisdiction block at order time. The `geo_unknown` telemetry event tracks how often this safety-net is disengaged.
+**Posture — build-flagged (`GEO_FAIL_OPEN`, see `src/shared/constants.ts`):**
+- **Confirmed restricted** (`blocked && !unknown`): the Trade tab hard-blocks wallet connect + order placement and shows a region notice — always, regardless of the flag.
+- **Unknown** (Worker misconfig / network / 401 / 503 / no country): governed by `GEO_FAIL_OPEN`. **Production builds fail closed** — connect + placement are paused until the region is confirmed. **Dev/beta builds fail open** — trading proceeds with an inline warning. In both cases Polymarket independently enforces its own jurisdiction block at order time, and the `geo_unknown` telemetry event tracks how often the lookup fails. The default resolves to closed in `vite build` (prod) and open in dev; `VITE_GEO_FAIL_OPEN=true|false` overrides.
 
 **What is geo-gated:** order placement + wallet connect — but only on a *confirmed* restricted country.
-**What is NOT geo-gated:** discovery odds, market info, sparkline, link-out; and trading when geo is `unknown` (see fail-open above).
+**What is NOT geo-gated:** discovery odds, market info, sparkline, link-out; and trading when geo is `unknown` **only in fail-open (dev/beta) builds** (see posture above).
 
 ---
 
@@ -521,7 +516,7 @@ interface Settings {
   // Display
   confidenceThreshold: number    // computed from provider defaults
   lowConfidenceFloor: number
-  locale: 'en' | 'es' | 'pt-BR'
+  // locale REMOVED — v1 UI is English-only (i18n layer dropped)
   telemetryEnabled: boolean
 
   // Embeddings

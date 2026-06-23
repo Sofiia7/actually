@@ -31,6 +31,11 @@ defense above.
 - **Fail-closed auth**: the Worker returns 503 if `WORKER_SHARED_SECRET` is
   unset, unless `WORKER_DEV_MODE=true` is explicitly opted in.
 - **Fail-closed origin allowlist**: 503 if `ALLOWED_EXTENSION_ID` is unset.
+- **Fail-closed rate-limit backstop**: 503 if the `RATE_LIMITS` KV namespace is
+  not bound. Because the shared secret is publicly extractable from the build,
+  the per-IP rate limit and the OpenAI daily cap are the *real* abuse defense —
+  so a prod Worker without KV refuses authenticated routes rather than silently
+  fail-open. `WORKER_DEV_MODE=true` bypasses this for local work.
 - **CORS denial**: when the allowlist is empty, the Worker echoes a
   guaranteed-invalid origin (`https://__actually_misconfigured__.invalid`)
   rather than `*` or `null` — browsers never match the response and operators
@@ -38,20 +43,27 @@ defense above.
 - Per-IP rate limits on every authenticated route; global per-day cap on
   `/embeddings` to protect the operator's OpenAI bill.
 
-## Geo-fence posture (fail-open)
+## Geo-fence posture (build-flag controlled)
 
 Trading is gated on Polymarket-restricted jurisdictions via the Worker `/geo`
-endpoint (`CF-IPCountry`). The gate is **fail-open by design**:
+endpoint (`CF-IPCountry`).
 
-- **Confirmed restricted** → wallet connect + order placement are blocked.
+- **Confirmed restricted** → wallet connect + order placement are ALWAYS
+  blocked, regardless of any flag.
 - **Unknown** (Worker misconfig, network error, 401/503, missing country) →
-  trading proceeds with an inline warning. A flaky geo lookup must not break
-  legitimate users, and Polymarket enforces its own jurisdiction block at order
-  time.
+  behavior is governed by `GEO_FAIL_OPEN` (`VITE_GEO_FAIL_OPEN` at build time,
+  see `src/shared/constants.ts`):
+  - **fail-closed** (production default): wallet connect + order placement are
+    paused until the region can be confirmed. This is the legally-conservative
+    posture and is what a plain `vite build` ships.
+  - **fail-open** (dev default, or `VITE_GEO_FAIL_OPEN=true`): trading proceeds
+    with an inline warning. A flaky geo lookup won't break a beta cohort, and
+    Polymarket still enforces its own jurisdiction block at order time.
 
-The `geo_unknown` telemetry event measures how often the gate is disengaged so
-the operator can monitor the unguarded share. A stricter fail-closed mode is a
-localized change in `src/background/trade.ts` if a deployment requires it.
+Enforcement is defense-in-depth: both `connectWallet` and `placeOrder` in
+`src/background/trade.ts` check independently, and the Trade tab UI blocks the
+form before either is reached. The `geo_unknown` telemetry event measures how
+often the lookup fails so the operator can monitor it.
 
 ## Extension permissions (v1)
 

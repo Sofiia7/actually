@@ -8,7 +8,7 @@ Two audiences, one product:
 - **Discovery (no wallet needed):** click the toolbar icon while reading a news article → see the matched market and its probability, color-coded. Click out to Polymarket if you want.
 - **Trading (opt-in via WalletConnect):** connect MetaMask / Rabby / any WC-compatible wallet → unlocks the Trade tab with 7-day sparkline, orderbook spread, payout calculator, and one-signature order placement attributed to our builder code.
 
-Spec: [`actually-extension-spec.md`](../actually-extension-spec.md) (v2.0)
+Spec: [`actually-extension-spec.md`](../actually-extension-spec.md) (v2.1)
 Growth plan: [`actually-growth-strategy.md`](../actually-growth-strategy.md) (v2.0)
 Privacy: [`docs/privacy-policy.md`](docs/privacy-policy.md)
 Terms: [`docs/terms-of-service.md`](docs/terms-of-service.md)
@@ -26,7 +26,7 @@ Security triage: [`SECURITY.md`](SECURITY.md)
 | Diff-cache for market embeddings, lazy TTL refresh | ✅ |
 | Cosine-similarity matcher + noise filter + low-confidence fallback | ✅ |
 | History (local, 10 items, deduped) | ✅ |
-| Anonymous telemetry (opt-out, 16 honest events, bounded queue) | ✅ |
+| Anonymous telemetry (opt-out, 17 honest events, bounded queue) | ✅ |
 | English-only UI (i18n layer removed in v1) | ✅ |
 | Hotkey (Cmd/Ctrl+Shift+P) | ✅ |
 | Cloudflare Worker proxy — fail-closed auth + rate limits | ✅ |
@@ -36,7 +36,8 @@ Security triage: [`SECURITY.md`](SECURITY.md)
 | Trade analytics: sparkline / orderbook / resolution card | ✅ |
 | Self-hosted Marck Script font (no remote fetch) | ✅ |
 | Privacy policy + ToS | ✅ |
-| Unit tests (vitest, 36 passing) | ✅ |
+| Unit + component tests (vitest, 129 passing) | ✅ |
+| Build-integrity smoke gate (`npm run smoke`) | ✅ |
 
 ---
 
@@ -123,7 +124,7 @@ The builderCode is baked into the extension at build time and used by **every** 
 ```bash
 npm run dev              # Vite watch mode → outputs to dist/
 npm run worker:dev       # Wrangler local dev for the API (uses WORKER_DEV_MODE)
-npm test                 # Vitest unit tests (36 passing)
+npm test                 # Vitest unit + component tests (129 passing)
 npm run lint             # tsc --noEmit type check
 npm run fonts:fetch      # (re)download Marck Script woff2 → public/fonts/
 ```
@@ -210,7 +211,15 @@ These deliberate deviations from a "pure" spec are documented in
 - **No content script in v1.** Page reading goes via `chrome.scripting.executeScript`
   under `activeTab`. In-page widget deferred to v1.2.
 - **Baked-in `WORKER_SHARED_SECRET`** treated as a client token (spec §13).
-  Real defense is per-IP rate limit. HMAC-signed auth in v1.2.
+  Real defense is per-IP rate limit (the Worker fails closed — 503 — if its
+  `RATE_LIMITS` KV is unbound in prod). HMAC-signed auth in v1.2.
+- **Geo posture is build-flagged.** Production builds fail *closed* when the
+  region can't be confirmed; dev/beta builds fail open. Confirmed-restricted
+  countries are always blocked. See `GEO_FAIL_OPEN` in `src/shared/constants.ts`
+  and `SECURITY.md`.
+- **Existing Polymarket Safe wallets only (v1).** Orders sign with
+  `signatureType = POLY_GNOSIS_SAFE`. Fresh deposit wallets (`POLY_1271`) are
+  post-v1; the Connect panel says so up front.
 
 ---
 

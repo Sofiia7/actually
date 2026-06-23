@@ -9,15 +9,38 @@ Legend — "green" = `npx tsc --noEmit` + `npx vitest run` + `npm run build` all
 
 ## Locked product decisions
 
-- **Geo = fail-open.** Trading is allowed when the `/geo` lookup is `unknown`
-  (network / misconfig); an inline warning is shown and Polymarket enforces its
-  own block at order time. Spec §10 / SECURITY.md to be aligned to this.
+- **Geo = build-flagged (revised in the v2.1 audit pass).** When the `/geo`
+  lookup is `unknown`, behavior is governed by `GEO_FAIL_OPEN`
+  (`VITE_GEO_FAIL_OPEN`): **prod builds fail closed** (trading paused until the
+  region is confirmed), dev/beta builds fail open with an inline warning.
+  Confirmed-restricted countries are always blocked. Polymarket still enforces
+  its own block at order time. Aligned in SECURITY.md; spec §10/§5.3 updated.
 - **Trade UX is wallet-gated.** Without a connected wallet the Trade tab shows
   only the odds card + "Connect wallet" — no sparkline / orderbook / resolution.
   With a wallet: full order ticket (Limit + Market) + analytics.
 - **i18n = English-only for v1.** Reduce to `en`; remove i18next /
   react-i18next / locale files / language selector. Re-introduce later if a
   market needs it.
+
+---
+
+## v2.1 audit hardening (this pass) — landed
+
+Beyond the sprints below (which are largely done), this pass added:
+
+- **Worker fail-closed on unbound KV** (`worker/index.ts`): authenticated routes
+  return 503 if `RATE_LIMITS` is missing in prod — supersedes the warn-only 7.4.
+- **Geo build flag** `GEO_FAIL_OPEN` (prod fail-closed) + UI gating.
+- **Binary-market filter** at cache entry (`isBinaryOutcomes`) — non-binary
+  markets never reach the YES/NO trade flow.
+- **Confirm step before signing** (spec §6.5) + **match context** (headline +
+  confidence, spec §6.1) + **selectable alternates** (`onPickRelated`).
+- **Build-integrity smoke** (`npm run smoke`) wired into CI; CI no-leak grep
+  no longer self-matches its guard file; removed dead `Settings.locale`.
+
+**The one remaining release blocker is 8.1 — rotate `WORKER_SHARED_SECRET`**
+(the burned `770d0e45…` is still the live value; `npm run preflight` fails until
+it is rotated).
 
 ---
 

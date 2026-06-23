@@ -61,7 +61,17 @@ jobs:
             exit 1
           fi
 
+      # Release gate: preflight (CSP/host_permissions/burned-secret) + smoke
+      # (every manifest- and HTML-referenced file exists in the built bundle).
+      - name: Release gate (preflight + smoke)
+        run: |
+          npm run preflight
+          npm run smoke
+
       # Belt-and-suspenders: fail CI if any known leaked secret reappears.
+      # `preflight.mjs` is excluded because it intentionally embeds the burned
+      # token as its `BURNED_SECRET` guard constant — without the exclude this
+      # step would match its own guard file and fail on every run.
       - name: No-leaked-secrets check
         run: |
           set -e
@@ -71,6 +81,7 @@ jobs:
             --exclude-dir=node_modules \
             --exclude-dir=dist \
             --exclude-dir=.git \
+            --exclude='preflight.mjs' \
             . || (echo "::error::Known leaked token found in repo" && exit 1)
 
       - name: Upload dist as artifact
