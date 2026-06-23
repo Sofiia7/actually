@@ -73,6 +73,22 @@ describe('health + auth', () => {
     expect(res.status).toBe(200)
   })
 
+  it('returns 503 when RATE_LIMITS KV is not bound in prod (fail-closed backstop)', async () => {
+    const res = await call('/geo', baseEnv({ RATE_LIMITS: undefined }), { country: 'RS' })
+    expect(res.status).toBe(503)
+    expect((await res.json() as { reason?: string }).reason).toBe('worker_misconfigured_no_kv')
+  })
+
+  it('dev mode bypasses missing KV', async () => {
+    const res = await call('/geo', baseEnv({ RATE_LIMITS: undefined, WORKER_DEV_MODE: 'true' }), { country: 'RS' })
+    expect(res.status).toBe(200)
+  })
+
+  it('/health stays up even without KV (liveness must not depend on the backstop)', async () => {
+    const res = await call('/health', baseEnv({ RATE_LIMITS: undefined }), { auth: null, origin: null })
+    expect(res.status).toBe(200)
+  })
+
   it('rejects an origin not in the allow-list', async () => {
     const res = await call('/geo', baseEnv(), { origin: 'chrome-extension://someoneelse' })
     expect(res.status).toBe(401)
@@ -151,6 +167,15 @@ describe('/embeddings input limits', () => {
     const texts = Array.from({ length: 65 }, () => 'a')
     const res = await call('/embeddings', baseEnv(), { method: 'POST', body: JSON.stringify({ texts }) })
     expect(res.status).toBe(400)
+  })
+
+  it('429 daily_cap_reached when the OpenAI character quota is exhausted', async () => {
+    const res = await call('/embeddings', baseEnv({ OPENAI_DAILY_CHAR_LIMIT: '3' }), {
+      method: 'POST',
+      body: JSON.stringify({ texts: ['abcdef'] }), // 6 chars > 3-char daily cap
+    })
+    expect(res.status).toBe(429)
+    expect((await res.json() as { error?: string }).error).toBe('daily_cap_reached')
   })
 })
 
