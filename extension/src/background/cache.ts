@@ -8,7 +8,7 @@ import {
 } from '../shared/constants'
 import { fetchActiveMarkets } from './polymarket'
 import { embedBatch } from './embeddings'
-import { floatArrayToB64, sha256 } from './util'
+import { floatArrayToB64, isBinaryOutcomes, sha256 } from './util'
 
 function isNoiseMarket(question: string): boolean {
   return NOISE_QUESTION_PATTERNS.some((re) => re.test(question))
@@ -53,9 +53,14 @@ export async function refreshMarketCache(
   const rawRemote = await fetchActiveMarkets(
     workerUrl,
     workerSecret,
-    MAX_MARKETS_CACHE + 50, // overfetch a bit to compensate for noise filter
+    MAX_MARKETS_CACHE + 50, // overfetch a bit to compensate for noise/binary filters
   )
-  const remote = rawRemote.filter((m) => !isNoiseMarket(m.question)).slice(0, MAX_MARKETS_CACHE)
+  // Drop word-association noise AND non-binary markets — the trade flow assumes
+  // a Yes/No pair, so a categorical market must never reach the cache.
+  const remote = rawRemote
+    .filter((m) => !isNoiseMarket(m.question))
+    .filter((m) => isBinaryOutcomes(m.outcomes))
+    .slice(0, MAX_MARKETS_CACHE)
   const existing = await getMarketCache()
   const existingById = new Map(existing.map((m) => [m.id, m]))
 

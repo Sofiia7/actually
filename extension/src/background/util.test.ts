@@ -5,6 +5,7 @@ import {
   findOutcomeIndex,
   floatArrayToB64,
   formatRelative,
+  isBinaryOutcomes,
   safeJsonArray,
   sha256,
   shortHash,
@@ -129,6 +130,34 @@ describe('safeJsonArray', () => {
   it('returns [] when the parsed value is not an array', () => {
     expect(safeJsonArray('{"foo":1}')).toEqual([])
     expect(safeJsonArray('42')).toEqual([])
+  })
+})
+
+describe('isBinaryOutcomes', () => {
+  it('accepts a Yes/No pair in either order', () => {
+    expect(isBinaryOutcomes('["Yes","No"]')).toBe(true)
+    expect(isBinaryOutcomes('["No","Yes"]')).toBe(true)
+  })
+
+  it('is case- and whitespace-insensitive', () => {
+    expect(isBinaryOutcomes('["YES","no"]')).toBe(true)
+    expect(isBinaryOutcomes('[" Yes ","No"]')).toBe(true)
+  })
+
+  it('rejects categorical / multi-outcome markets', () => {
+    expect(isBinaryOutcomes('["Candidate A","Candidate B","Candidate C"]')).toBe(false)
+    expect(isBinaryOutcomes('["Yes","No","Maybe"]')).toBe(false)
+  })
+
+  it('rejects two-outcome markets that are not Yes/No', () => {
+    expect(isBinaryOutcomes('["Over","Under"]')).toBe(false)
+    expect(isBinaryOutcomes('["Yes","Yes"]')).toBe(false)
+  })
+
+  it('rejects malformed / empty input', () => {
+    expect(isBinaryOutcomes('not json')).toBe(false)
+    expect(isBinaryOutcomes('')).toBe(false)
+    expect(isBinaryOutcomes('["Yes"]')).toBe(false)
   })
 })
 

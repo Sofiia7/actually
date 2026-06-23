@@ -70,6 +70,24 @@ export function safeJsonArray(s: string | undefined): string[] {
 }
 
 /**
+ * True only for a binary Yes/No market — exactly two outcomes that are "Yes"
+ * and "No" (case-insensitive). The whole UI (YES %, BUY YES / BUY NO, payout
+ * math) assumes binary markets; a categorical market like
+ * ["Candidate A","Candidate B",...] would otherwise be mislabeled and, worse,
+ * a "BUY YES" would route to outcomes[0] (the wrong token). We drop non-binary
+ * markets at cache-entry so they never reach discovery or the trade flow.
+ *
+ * Note: Gamma's /markets endpoint already represents multi-outcome *events* as
+ * separate binary sub-markets, so this filters out very few real rows.
+ */
+export function isBinaryOutcomes(outcomesJson: string): boolean {
+  const arr = safeJsonArray(outcomesJson)
+  if (arr.length !== 2) return false
+  const set = new Set(arr.map((o) => o.trim().toLowerCase()))
+  return set.has('yes') && set.has('no')
+}
+
+/**
  * Human-friendly relative time. Accepts a Date or a millisecond timestamp.
  * Used in History rows, ResolutionCard, and anywhere we render "X ago".
  */
