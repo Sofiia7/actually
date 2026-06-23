@@ -96,6 +96,27 @@ export const BUILDER_CODE: string =
   (import.meta.env.VITE_BUILDER_CODE as string | undefined) ?? ''
 
 /**
+ * Geo posture for the Trade path. When the `/geo` lookup is `unknown` (Worker
+ * misconfig / network / 401 / 503):
+ *   - fail-OPEN  → trading proceeds with an inline warning (Polymarket still
+ *                  enforces its own block at order time). Convenient for beta.
+ *   - fail-CLOSED → wallet connect + order placement are paused until the
+ *                  region can be confirmed. The legally-conservative posture.
+ *
+ * Resolution order:
+ *   1. explicit `VITE_GEO_FAIL_OPEN` ('true' | 'false') always wins;
+ *   2. otherwise default to OPEN in dev builds and CLOSED in production builds
+ *      (so a plain `vite build` ships fail-closed without anyone remembering).
+ * Confirmed-restricted countries are ALWAYS hard-blocked regardless of this.
+ */
+export const GEO_FAIL_OPEN: boolean = (() => {
+  const v = import.meta.env.VITE_GEO_FAIL_OPEN as string | undefined
+  if (v === 'true') return true
+  if (v === 'false') return false
+  return Boolean(import.meta.env.DEV)
+})()
+
+/**
  * Default Worker URL + secret, baked at build time. Lets the normie flow work
  * with zero setup — users never have to paste anything into Settings. Power
  * users can still override via Settings (kept under "Advanced" toggle).
@@ -117,7 +138,6 @@ export const DEFAULT_SETTINGS: Settings = {
   workerUrl: DEFAULT_WORKER_URL,
   workerSecret: DEFAULT_WORKER_SECRET,
   telemetryEnabled: true,
-  locale: 'en',
 }
 
 export const POLYMARKET_BASE_URL = 'https://polymarket.com/event'

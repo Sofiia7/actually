@@ -64,7 +64,6 @@ export interface Settings {
   workerUrl: string
   workerSecret: string
   telemetryEnabled: boolean
-  locale: SupportedLocale
   // Wallet state — managed by trade flow, not user-editable directly.
   // All optional until the user connects via WalletConnect v2.
   wcSessionTopic?: string
@@ -74,8 +73,6 @@ export interface Settings {
   clobApiSecret?: string
   clobApiPassphrase?: string
 }
-
-export type SupportedLocale = 'en' | 'es' | 'pt-BR'
 
 export interface HistoryItem {
   marketId: string

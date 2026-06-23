@@ -16,7 +16,7 @@
  * service worker.
  */
 import { OrderType, type ApiKeyCreds } from '@polymarket/clob-client-v2'
-import { BUILDER_CODE } from '../shared/constants'
+import { BUILDER_CODE, GEO_FAIL_OPEN } from '../shared/constants'
 import {
   deriveCredentials,
   fetchOrderBook,
@@ -74,11 +74,12 @@ export async function connectWallet(cb: ConnectCallbacks): Promise<WalletState> 
     void trackEvent('geo_blocked', settings, { country: geo.country })
     throw new Error('geo_blocked')
   }
-  // Fail-open by design: when the geo lookup can't be performed we proceed
-  // (Polymarket enforces its own block at order time and the UI shows an
-  // inline warning). Track the rate so we can monitor the unguarded share.
+  // Unknown geo: behavior depends on GEO_FAIL_OPEN (see constants.ts).
+  // fail-open → proceed with a UI warning (Polymarket blocks at order time);
+  // fail-closed (prod default) → pause connect until the region is confirmed.
   if (geo.unknown) {
     void trackEvent('geo_unknown', settings, { stage: 'connect', reason: geo.errorReason ?? 'unknown' })
+    if (!GEO_FAIL_OPEN) throw new Error('geo_unavailable')
   }
 
   void trackEvent('wallet_connect_started', settings)
@@ -209,9 +210,11 @@ export async function placeOrder(args: PlaceOrderArgs): Promise<OrderSubmitResul
     void trackEvent('geo_blocked', settings, { country: geo.country, stage: 'submit' })
     return { ok: false, error: 'geo_blocked' }
   }
-  // Fail-open: unknown geo still submits (Polymarket blocks at order time).
+  // Unknown geo: same posture as connect. Defense-in-depth — the UI also
+  // gates this, but the submit path enforces independently.
   if (geo.unknown) {
     void trackEvent('geo_unknown', settings, { stage: 'submit', reason: geo.errorReason ?? 'unknown' })
+    if (!GEO_FAIL_OPEN) return { ok: false, error: 'geo_unavailable' }
   }
 
   const signer = new WCSigner(args.state.topic, args.state.address)
