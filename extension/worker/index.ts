@@ -146,7 +146,8 @@ async function rateLimit(
       warnedNoKv = true
       console.warn(
         '[actually] RATE_LIMITS KV is not bound — per-IP rate limiting and the ' +
-          'OpenAI daily quota are DISABLED (fail-open). Bind the KV namespace before going live.',
+          'OpenAI daily quota are DISABLED (fail-open). This is only reachable in ' +
+          'WORKER_DEV_MODE; production refuses authenticated routes without KV (see checkAuth).',
       )
     }
     return true
@@ -172,6 +173,14 @@ function checkAuth(req: Request, env: Env): { ok: boolean; status?: number; reas
   }
   if (!env.ALLOWED_EXTENSION_ID && env.WORKER_DEV_MODE !== 'true') {
     return { ok: false, status: 503, reason: 'worker_misconfigured_no_extension_id' }
+  }
+  // The rate-limit KV is the real abuse backstop — the shared secret is
+  // publicly extractable from the shipped build (see SECURITY.md), so without
+  // KV every per-IP limit and the OpenAI daily cap silently fail-open. Refuse
+  // to serve authenticated routes in prod until RATE_LIMITS is bound; dev mode
+  // (WORKER_DEV_MODE=true) still allows running without it for local work.
+  if (!env.RATE_LIMITS && env.WORKER_DEV_MODE !== 'true') {
+    return { ok: false, status: 503, reason: 'worker_misconfigured_no_kv' }
   }
 
   const auth = req.headers.get('X-Actually-Auth')
