@@ -14,6 +14,14 @@ Privacy: [`docs/privacy-policy.md`](docs/privacy-policy.md)
 Terms: [`docs/terms-of-service.md`](docs/terms-of-service.md)
 Security triage: [`SECURITY.md`](SECURITY.md)
 
+**Verify it's real in 60 seconds** — no wallet, worker, or secret needed:
+
+```bash
+cd extension && npm install && npm test   # 129 unit + component tests, all green
+```
+
+What the extension actually does is walked through in [How matching works](#how-matching-works); full setup is below.
+
 ---
 
 ## Status
