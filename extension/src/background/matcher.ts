@@ -120,8 +120,9 @@ export async function findMatch(
 
   // Score every market. Three additive components:
   //   1. raw cosine similarity (semantic relatedness)
-  //   2. lexical-overlap bonus (+0.025 per keyword shared, capped +0.075) —
-  //      catches topical specificity that embeddings smooth over
+  //   2. lexical-overlap bonus (+0.04 per shared keyword stem, +0.01 for
+  //      low-value stems, capped +0.15) — catches topical specificity that
+  //      embeddings smooth over (see keywordOverlapBonus)
   //   3. small volume bonus (capped +0.015) — tiebreaker for genuine ties
   const scored: { market: PolyMarket; score: number; raw: number }[] = []
   for (const m of cache) {

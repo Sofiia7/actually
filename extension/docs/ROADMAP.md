@@ -1,6 +1,6 @@
 # Actually — Roadmap to v1 (post-audit)
 
-**Status date:** 2026-06-04
+**Status date:** 2026-06-23
 **Canonical source of truth for remaining work.** Spec sprints 0–5 are done
 (see `actually-extension-spec.md` §16). This document supersedes the "pending"
 rows of spec §16 and folds in the post-audit findings.
@@ -38,9 +38,13 @@ Beyond the sprints below (which are largely done), this pass added:
 - **Build-integrity smoke** (`npm run smoke`) wired into CI; CI no-leak grep
   no longer self-matches its guard file; removed dead `Settings.locale`.
 
-**The one remaining release blocker is 8.1 — rotate `WORKER_SHARED_SECRET`**
-(the burned `770d0e45…` is still the live value; `npm run preflight` fails until
-it is rotated).
+**Release-blocker status (updated 2026-06-23): the secret is rotated.** The
+burned `770d0e45…` is gone from the build and `npm run preflight` passes. The
+shared secret is baked into the client *by design* — it cannot be kept private
+in a distributed extension; the real abuse backstop is the Worker's per-IP rate
+limit + OpenAI cap, which fail closed (503) when `RATE_LIMITS` KV is unbound in
+prod. CI is green on Node 24 / npm 11. The remaining gates to public launch are
+**non-code**: a legal/geo review and the closed beta (Sprint 11).
 
 ---
 
