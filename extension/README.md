@@ -311,6 +311,24 @@ Subsequent orders: skip steps 5-9 — the popup restores the WC session and CLOB
 
 See [`actually-growth-strategy.md`](../actually-growth-strategy.md) for full KPI targets.
 
+## About this build
+
+Actually was conceived, designed, and directed by **Sofia** ([@Sofiia7](https://github.com/Sofiia7)).
+The product idea — news → prediction-market odds → one-click trade — the visual and
+UX design (the glass design system, the two-audience flow), and the engineering
+direction are hers. That direction includes the security and correctness audit that
+shaped v2.1: the fail-closed Worker posture, the build-flagged geo gate, the
+binary-market filter, the confirm-before-sign step, and the release gates
+(`npm run preflight` + `npm run smoke`).
+
+Implementation was done with heavy AI assistance (Claude) acting as a pair-programmer
+under her review — turning each audit finding and design decision into code, tests,
+and docs. Every change was gated by her acceptance criteria and by the test suite
+(129 passing) + CI before it landed.
+
+In short: the *what* and the *why* — product, design, decisions, audit — are Sofia's;
+the AI accelerated the *how*.
+
 ## License
 
-TBD before public release.
+Released under the [MIT License](../LICENSE) — © 2026 Sofia Seremeteva.
