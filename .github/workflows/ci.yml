@@ -23,7 +23,10 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          # Match the dev/release toolchain (Node 24 → npm 11). npm 10 (Node 20)
+          # resolves the @exodus/bytes -> @noble/hashes range differently and
+          # rejects the npm-11-generated lockfile with EUSAGE on `npm ci`.
+          node-version: '24'
           cache: npm
           cache-dependency-path: extension/package-lock.json
 
