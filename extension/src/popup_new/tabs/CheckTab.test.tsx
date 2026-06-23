@@ -40,4 +40,21 @@ describe('CheckTab link wiring (regression for Sprint 2 dead links)', () => {
     await userEvent.click(screen.getByText(/Check this page/i))
     expect(onStart).toHaveBeenCalledOnce()
   })
+
+  it('calls onPickRelated with the row index when an alternate is clicked (ТЗ §6.1)', async () => {
+    const onPickRelated = vi.fn()
+    const withRelated: CheckState = {
+      kind: 'success',
+      featured,
+      related: [
+        { q: 'Alt market A', pct: 30 },
+        { q: 'Alt market B', pct: 70 },
+      ],
+    }
+    render(
+      <CheckTab state={withRelated} onStart={noop} onBack={noop} onPickRelated={onPickRelated} />,
+    )
+    await userEvent.click(screen.getByText('Alt market B'))
+    expect(onPickRelated).toHaveBeenCalledWith(1)
+  })
 })

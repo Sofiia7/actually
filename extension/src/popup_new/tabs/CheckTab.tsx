@@ -154,23 +154,44 @@ const FeaturedMarket: React.FC<FeaturedMarketProps> = ({
   );
 };
 
-const RelatedRow: React.FC<Market> = ({ q, pct }) => (
-  <IceCard
-    pct={pct}
-    intensity={0.6}
-    padding="9px 12px"
-    borderRadius={8}
-    style={{ display: 'flex', alignItems: 'center', gap: 10 }}
-  >
-    <span style={{ display: 'inline-flex' }}>
-      <ProbDot pct={pct} size={6} />
-    </span>
-    <Etched size={13} weight={300} style={{ flex: 1, lineHeight: 1.3 }}>
-      {q}
-    </Etched>
-    <PctChip pct={pct} />
-  </IceCard>
-);
+const RelatedRow: React.FC<Market & { onClick?: () => void }> = ({ q, pct, onClick }) => {
+  const card = (
+    <IceCard
+      pct={pct}
+      intensity={0.6}
+      padding="9px 12px"
+      borderRadius={8}
+      style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: onClick ? 'pointer' : 'default' }}
+    >
+      <span style={{ display: 'inline-flex' }}>
+        <ProbDot pct={pct} size={6} />
+      </span>
+      <Etched size={13} weight={300} style={{ flex: 1, lineHeight: 1.3 }}>
+        {q}
+      </Etched>
+      <PctChip pct={pct} />
+    </IceCard>
+  );
+  if (!onClick) return card;
+  // Picking an alternate promotes it to the featured match (ТЗ §6.1 — "in case
+  // the user disagrees with #1"); it then flows through to the Trade tab.
+  return (
+    <div
+      role="button"
+      tabIndex={0}
+      onClick={onClick}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          onClick();
+        }
+      }}
+      aria-label={`Use this market: ${q}`}
+    >
+      {card}
+    </div>
+  );
+};
 
 // =============================================================
 // CheckTab — state machine
@@ -182,6 +203,7 @@ export const CheckTab: React.FC<CheckTabProps> = ({
   onRetry,
   onOpenMarket,
   onTrade,
+  onPickRelated,
 }) => {
   if (state.kind === 'idle') {
     return (
@@ -313,7 +335,7 @@ export const CheckTab: React.FC<CheckTabProps> = ({
       </div>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
         {state.related.map((m, i) => (
-          <RelatedRow key={i} {...m} />
+          <RelatedRow key={i} {...m} onClick={onPickRelated ? () => onPickRelated(i) : undefined} />
         ))}
       </div>
       <div style={{ textAlign: 'center', marginTop: 4 }}>

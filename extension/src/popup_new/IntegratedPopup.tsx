@@ -15,6 +15,7 @@ import type {
 } from '../shared/types'
 import {
   BUILDER_CODE,
+  COLOR_THRESHOLDS,
   DEFAULT_WORKER_URL,
   DEFAULT_WORKER_SECRET,
   defaultThresholds,
@@ -25,7 +26,7 @@ import { extractActiveTabArticle } from '../popup/operations'
 import { getCacheStatus } from '../background/cache'
 import { trackEvent } from '../background/telemetry'
 import { buildMarketUrl } from '../background/polymarket'
-import { formatRelative } from '../background/util'
+import { findOutcomeIndex, formatRelative } from '../background/util'
 import {
   disconnectWalletViaOffscreen,
   refreshCacheViaOffscreen,
@@ -75,6 +76,38 @@ function historyToRow(h: HistoryItem): HistoryRow {
   }
 }
 
+/**
+ * Promote an alternate match to the featured slot when the user picks it in
+ * CheckTab. Recomputes the YES probability/color from the picked market's own
+ * outcome prices and demotes the previously-featured market into the alternates
+ * list so the user can switch back.
+ */
+function buildMatchFromAlternative(prev: MatchResult, index: number): MatchResult | null {
+  const picked = prev.alternatives[index]
+  if (!picked) return null
+  const rest = prev.alternatives.filter((_, i) => i !== index)
+  const restScores = (prev.alternativeScores ?? []).filter((_, i) => i !== index)
+  const yesIdx = findOutcomeIndex(picked.outcomes, 'Yes')
+  let probability = 0
+  try {
+    const prices = JSON.parse(picked.outcomePrices) as string[]
+    probability = parseFloat(prices[yesIdx] ?? '0') || 0
+  } catch {
+    probability = 0
+  }
+  const color: MatchResult['color'] =
+    probability < COLOR_THRESHOLDS.blue ? 'blue' : probability < COLOR_THRESHOLDS.yellow ? 'yellow' : 'red'
+  return {
+    market: picked,
+    probability,
+    confidence: prev.alternativeScores?.[index] ?? prev.confidence,
+    color,
+    lowConfidence: prev.lowConfidence,
+    alternatives: [prev.market, ...rest],
+    alternativeScores: [prev.confidence, ...restScores],
+  }
+}
+
 // =============================================================
 export interface IntegratedPopupProps {
   /**
@@ -101,6 +134,9 @@ export const IntegratedPopup: React.FC<IntegratedPopupProps> = ({
   // Check tab state
   const [checkState, setCheckState] = useState<CheckState>({ kind: 'idle' })
   const [lastMatch, setLastMatch] = useState<MatchResult | null>(null)
+  // Headline of the page the last match was run against — surfaced as match
+  // context in the Trade tab (ТЗ §6.1).
+  const [lastArticleHeadline, setLastArticleHeadline] = useState<string | null>(null)
 
   // History tab state
   const [historyState, setHistoryState] = useState<HistoryState>({ kind: 'loading' })
@@ -195,6 +231,7 @@ export const IntegratedPopup: React.FC<IntegratedPopupProps> = ({
         setCheckState({ kind: 'error', message: "Couldn't read the article on this page. Try a news site." })
         return
       }
+      setLastArticleHeadline(article.headline)
       const res = await runMatchViaOffscreen(article)
       if (res.match) {
         setLastMatch(res.match)
@@ -230,6 +267,19 @@ export const IntegratedPopup: React.FC<IntegratedPopupProps> = ({
     } catch (err) {
       setCheckState({ kind: 'error', message: String(err) })
     }
+  }
+
+  // Promote an alternate market to the featured match (and into the Trade tab).
+  function pickRelated(index: number) {
+    if (!lastMatch) return
+    const next = buildMatchFromAlternative(lastMatch, index)
+    if (!next) return
+    setLastMatch(next)
+    setCheckState({
+      kind: 'success',
+      featured: toDesignMarket(next),
+      related: next.alternatives.map((alt, i) => altToDesignMarket(alt.question, next.alternativeScores?.[i])),
+    })
   }
 
   // ---- settings actions ----
@@ -337,11 +387,13 @@ export const IntegratedPopup: React.FC<IntegratedPopupProps> = ({
                 )
               }}
               onTrade={() => setTab('Trade')}
+              onPickRelated={pickRelated}
             />
           )}
           {tab === 'Trade' && (
             <TradeTabWired
               match={lastMatch}
+              articleHeadline={lastArticleHeadline}
               settings={settings}
               onPickMatch={() => {
                 setTab('Check')

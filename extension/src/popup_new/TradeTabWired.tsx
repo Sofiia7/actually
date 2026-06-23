@@ -9,6 +9,7 @@ import { toneDark } from './colors'
 
 import type { MatchResult, PolyMarket, Settings as SettingsT } from '../shared/types'
 import type { SerializableWalletState } from '../shared/messages'
+import { GEO_FAIL_OPEN } from '../shared/constants'
 import { findOutcomeIndex, shortHash } from '../background/util'
 import { trackEvent } from '../background/telemetry'
 import type { GeoErrorReason } from '../background/geo'
@@ -32,6 +33,8 @@ type WalletState = SerializableWalletState
 // =============================================================
 export interface TradeTabWiredProps {
   match: MatchResult | null
+  /** Headline of the page the match was run against — shown as match context. */
+  articleHeadline?: string | null
   settings: SettingsT
   onPickMatch: () => void
   onOpenSettings: () => void
@@ -52,6 +55,7 @@ type GeoInfo = {
 // =============================================================
 export const TradeTabWired: React.FC<TradeTabWiredProps> = ({
   match,
+  articleHeadline,
   settings,
   onPickMatch,
   onOpenSettings,
@@ -136,12 +140,18 @@ export const TradeTabWired: React.FC<TradeTabWiredProps> = ({
     )
   }
 
-  // Hard-block only on a confirmed restricted country
-  if (geo?.blocked && !geo.unknown) {
+  // Block on a confirmed restricted country, and — when the build is
+  // fail-closed (prod default, see GEO_FAIL_OPEN) — also when the region
+  // couldn't be verified at all.
+  const geoConfirmedBlock = geo != null && geo.blocked && !geo.unknown
+  const geoUnknownBlock = geo != null && geo.unknown && !GEO_FAIL_OPEN
+  if (geoConfirmedBlock || geoUnknownBlock) {
     return (
       <Panel>
         <ErrorBanner>
-          Trading is not available in your region ({geo.country}). Discovery still works on the Check tab.
+          {geoUnknownBlock
+            ? "Couldn't verify your region, so trading is paused. Check your connection and reopen the popup. Discovery still works on the Check tab."
+            : `Trading is not available in your region (${geo!.country}). Discovery still works on the Check tab.`}
         </ErrorBanner>
       </Panel>
     )
@@ -214,12 +224,14 @@ export const TradeTabWired: React.FC<TradeTabWiredProps> = ({
   return (
     <TradeReady
       match={match}
+      articleHeadline={articleHeadline}
       wallet={wallet}
       settings={settings}
       geoUnknown={geo?.unknown ?? false}
       onConnect={startConnect}
       onDisconnect={doDisconnect}
       onOpenSettings={onOpenSettings}
+      onPickMatch={onPickMatch}
       onOpenExternal={() => onMatchOpenedExternally(match.market)}
     />
   )
@@ -230,23 +242,27 @@ export const TradeTabWired: React.FC<TradeTabWiredProps> = ({
 // =============================================================
 interface ReadyProps {
   match: MatchResult
+  articleHeadline?: string | null
   wallet: WalletState | null
   settings: SettingsT
   geoUnknown: boolean
   onConnect: () => void
   onDisconnect: () => void
   onOpenSettings: () => void
+  onPickMatch: () => void
   onOpenExternal: () => void
 }
 
 const TradeReady: React.FC<ReadyProps> = ({
   match,
+  articleHeadline,
   wallet,
   settings,
   geoUnknown,
   onConnect,
   onDisconnect,
   onOpenSettings,
+  onPickMatch,
   onOpenExternal,
 }) => {
   const yesIdx = findOutcomeIndex(match.market.outcomes, 'Yes')
@@ -260,6 +276,14 @@ const TradeReady: React.FC<ReadyProps> = ({
           Couldn't verify region. Polymarket itself will reject restricted regions at order time.
         </ErrorBanner>
       )}
+
+      <MatchContext
+        headline={articleHeadline}
+        confidence={match.confidence}
+        lowConfidence={match.lowConfidence}
+        hasAlternatives={match.alternatives.length > 0}
+        onPickMatch={onPickMatch}
+      />
 
       <IceCard pct={pct} intensity={1} padding="13px 14px" borderRadius={10}>
         <Etched
@@ -318,6 +342,10 @@ const ConnectPanel: React.FC<{ onConnect: () => void; onOpenSettings: () => void
     <Etched size={12} weight={300} color="rgba(35,45,70,.6)">
       Connect a wallet to place a builder-attributed order in one signature.
     </Etched>
+    <Etched size={11} weight={300} color="rgba(35,45,70,.5)">
+      v1 supports existing Polymarket accounts (Safe wallet). New to Polymarket?
+      Sign in once at polymarket.com first — fresh deposit wallets aren't supported yet.
+    </Etched>
     <GlassButton size="md" full onClick={onConnect}>Connect wallet</GlassButton>
     <div style={{ textAlign: 'center' }}>
       <LinkAction onClick={onOpenSettings}>Configure Worker first →</LinkAction>
@@ -355,6 +383,10 @@ const OrderFormWired: React.FC<OrderFormProps> = ({
   const [estimate, setEstimate] = useState<{ effectivePrice: number; slippage: number } | null>(null)
   const [submitting, setSubmitting] = useState(false)
   const [result, setResult] = useState<{ ok: boolean; msg: string } | null>(null)
+  // Confirm step before the wallet signature prompt (ТЗ §6.5) — a misclick on
+  // "Place order" opens this summary, not the wallet, so the user reviews
+  // side/size/price/payout before committing to a signature.
+  const [confirming, setConfirming] = useState(false)
 
   // `order_form_opened` belongs at OrderForm mount — it measures intent.
   useEffect(() => {
@@ -554,9 +586,59 @@ const OrderFormWired: React.FC<OrderFormProps> = ({
         </Etched>
       )}
 
-      <GlassButton size="md" full disabled={submitDisabled} onClick={onSubmit}>
-        {submitting ? 'Submitting…' : `Place ${orderType === 'MARKET' ? 'market' : 'limit'} order · sign in wallet`}
-      </GlassButton>
+      {!confirming ? (
+        <GlassButton
+          size="md"
+          full
+          disabled={submitDisabled}
+          onClick={() => {
+            setResult(null)
+            setConfirming(true)
+          }}
+        >
+          {`Place ${orderType === 'MARKET' ? 'market' : 'limit'} order · sign in wallet`}
+        </GlassButton>
+      ) : (
+        <div
+          style={{
+            padding: '11px 13px',
+            borderRadius: 8,
+            background: 'rgba(255,255,255,.08)',
+            border: '1px solid rgba(255,255,255,.32)',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: 4,
+          }}
+        >
+          <Etched size={12.5} weight={400} style={{ marginBottom: 4 }}>
+            Confirm {orderType === 'MARKET' ? 'market' : 'limit'} order
+          </Etched>
+          <Row label="Side" value={side === 'BUY_YES' ? 'BUY YES' : 'BUY NO'} />
+          <Row label={orderType === 'MARKET' ? 'Est. fill' : 'Limit price'} value={fmtC(effPrice)} />
+          <Row label="Amount" value={`$${sizeUsd.toFixed(2)}`} />
+          <Row label="Shares" value={effShares > 0 ? effShares.toFixed(2) : '—'} />
+          <Row label="Max payout" value={`$${payout.toFixed(2)}`} />
+          {slippage != null && slippage > 0 && (
+            <Row label="Slippage" value={`${(slippage * 100).toFixed(1)}%`} danger={slippage > WARN_SLIPPAGE} />
+          )}
+          <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
+            <GlassButton size="sm" full disabled={submitting} onClick={() => setConfirming(false)}>
+              Cancel
+            </GlassButton>
+            <GlassButton
+              size="md"
+              full
+              disabled={submitDisabled}
+              onClick={async () => {
+                await onSubmit()
+                setConfirming(false)
+              }}
+            >
+              {submitting ? 'Submitting…' : 'Sign in wallet'}
+            </GlassButton>
+          </div>
+        </div>
+      )}
 
       {result && (
         <Etched
@@ -584,6 +666,60 @@ const Row: React.FC<{ label: string; value: string; danger?: boolean }> = ({ lab
     <span style={{ fontWeight: 500, color: danger ? 'rgba(180,90,30,.95)' : undefined }}>{value}</span>
   </div>
 )
+
+// Match context (ТЗ §6.1) — article headline + match confidence, shown above
+// the market card so the user can sanity-check the match (and jump back to
+// Check to pick a different one). Always visible, wallet or not.
+const MatchContext: React.FC<{
+  headline?: string | null
+  confidence: number
+  lowConfidence: boolean
+  hasAlternatives: boolean
+  onPickMatch: () => void
+}> = ({ headline, confidence, lowConfidence, hasAlternatives, onPickMatch }) => {
+  const pct = Math.round(confidence * 100)
+  return (
+    <div
+      style={{
+        padding: '9px 12px',
+        borderRadius: 8,
+        background: 'rgba(255,255,255,.05)',
+        border: '1px solid rgba(255,255,255,.20)',
+        display: 'flex',
+        flexDirection: 'column',
+        gap: 4,
+      }}
+    >
+      {headline ? (
+        <>
+          <Etched
+            size={10.5}
+            weight={300}
+            color="rgba(35,45,70,.5)"
+            style={{ textTransform: 'uppercase', letterSpacing: '.05em' }}
+          >
+            From this page
+          </Etched>
+          <Etched size={12.5} weight={400} style={{ lineHeight: 1.3 }}>
+            {headline.length > 120 ? `${headline.slice(0, 117)}…` : headline}
+          </Etched>
+        </>
+      ) : (
+        <Etched size={11} weight={300} color="rgba(35,45,70,.5)">
+          Matched market
+        </Etched>
+      )}
+      <Etched size={11} weight={300} color="rgba(35,45,70,.55)">
+        Matched at {pct}% confidence{lowConfidence ? ' · low — double-check it fits' : ''}.
+      </Etched>
+      {hasAlternatives && (
+        <div style={{ marginTop: 2 }}>
+          <LinkAction onClick={onPickMatch}>Not this market? Choose on Check →</LinkAction>
+        </div>
+      )}
+    </div>
+  )
+}
 
 const Panel: React.FC<{ children: React.ReactNode }> = ({ children }) => (
   <div style={{ padding: '14px 18px 22px', display: 'flex', flexDirection: 'column', gap: 14 }}>
@@ -624,6 +760,7 @@ function humanError(raw: string): string {
   if (raw.includes('wc_project_id_missing')) return 'WalletConnect project ID not configured.'
   if (raw.includes('builder_code_not_configured')) return 'Builder code missing in build.'
   if (raw.includes('geo_blocked')) return 'Trading is not available in your region.'
+  if (raw.includes('geo_unavailable')) return "Couldn't verify your region — trading is paused. Check your connection and try again."
   if (raw.includes('worker_not_configured')) return 'Set Worker URL and secret in Settings first.'
   if (raw.includes('funder_not_found')) return 'No Polymarket Safe found for this wallet. v1 supports existing Polymarket Safe wallets — deposit wallets (POLY_1271) are coming soon. If you have a Safe, sign in on polymarket.com once, then retry.'
   return raw.replace(/^Error: /, '')
