@@ -33,7 +33,6 @@ const SETTINGS: Settings = {
   workerUrl: 'https://stub.example/',
   workerSecret: 'stub',
   telemetryEnabled: true,
-  locale: 'en',
 }
 
 describe('trackEvent — queue cap', () => {

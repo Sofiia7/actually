@@ -37,7 +37,7 @@ export interface SettingsTabProps {
 }
 
 // Kept aligned with what the extension actually supports — see
-// EmbeddingProvider and SupportedLocale in src/shared/types.ts.
+// EmbeddingProvider in src/shared/types.ts.
 const PROVIDERS = [
   'Local (free, runs on your device)',
   'OpenAI · text-embedding-3-small',
