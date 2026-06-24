@@ -68,6 +68,23 @@ chrome.alarms.onAlarm.addListener(async (alarm) => {
 // --- Messaging ---------------------------------------------------------------
 
 chrome.runtime.onMessage.addListener((msg: RequestMessage, _sender, sendResponse) => {
+  // Storage proxy for the offscreen document. Some Chrome builds don't expose
+  // chrome.storage there, so the offscreen shim (storage-bridge.ts) forwards
+  // local get/set/remove here, where chrome.storage is always available.
+  if (msg && (msg as { type?: string }).type === 'SW_STORAGE') {
+    const m = msg as unknown as { op: 'get' | 'set' | 'remove'; keys?: string | string[] | null; items?: Record<string, unknown> }
+    const run =
+      m.op === 'get'
+        ? chrome.storage.local.get(m.keys ?? null)
+        : m.op === 'set'
+          ? chrome.storage.local.set(m.items ?? {})
+          : chrome.storage.local.remove(m.keys ?? [])
+    Promise.resolve(run)
+      .then((r) => sendResponse(r ?? null))
+      .catch((e) => sendResponse({ __storageError: String(e) }))
+    return true
+  }
+
   // Offscreen-targeted messages are forwarded to the offscreen document
   // and the response piped back. The SW itself does not interpret them.
   if (msg && (msg as { target?: string }).target === 'offscreen') {

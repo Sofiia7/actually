@@ -27,6 +27,12 @@ import {
   restoreWallet,
   type WalletState,
 } from '../background/trade'
+import { installStorageBridge } from './storage-bridge'
+
+// Some Chrome builds don't expose chrome.storage to offscreen documents. Install
+// a proxy to the service worker BEFORE any handler touches storage (settings,
+// cache, history). No-op when the native API is present.
+installStorageBridge()
 
 // ============================================================
 // Connect-session registry
