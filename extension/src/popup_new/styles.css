@@ -94,6 +94,15 @@ select.thin-glass{
 .frost-host:hover .frost-needles,
 .frost-host.is-tracking .frost-needles{ opacity:.48; }
 
+/* The popup chrome sits over no live page, so the pure-white needle trail has
+   nothing to contrast against and reads as invisible. Give ONLY the chrome's
+   reveal (GlassSurface = .frost-host--chrome) a faint cool halo so the cursor
+   frost is visible on the light surface. IceCards keep the plain white trail —
+   they already sit on colored glass. Tune the alpha / opacity to taste. */
+.frost-host--chrome .frost-needles{ background: rgba(150,180,235,.20); }
+.frost-host--chrome:hover .frost-needles,
+.frost-host--chrome.is-tracking .frost-needles{ opacity:.7; }
+
 @media (prefers-reduced-motion: reduce){
   .frost-needles{ transition: none; }
 }
