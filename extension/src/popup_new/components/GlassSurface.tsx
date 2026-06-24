@@ -47,7 +47,7 @@ export const GlassSurface: React.FC<GlassSurfaceProps> = ({
   return (
     <div
       ref={ref}
-      className="frost-host"
+      className="frost-host frost-host--chrome"
       style={{
         position: 'relative',
         borderRadius: radius,
