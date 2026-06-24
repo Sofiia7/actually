@@ -45,7 +45,7 @@ export function buildFrostTexture(opts: FrostOptions = {}): string | null {
   function needle(x: number, y: number, ang: number, len: number, w: number, alpha: number): void {
     const x2 = x + Math.cos(ang) * len
     const y2 = y + Math.sin(ang) * len
-    ctx!.strokeStyle = `rgba(255,255,255,${alpha})`
+    ctx!.strokeStyle = `rgba(95,112,140,${alpha})`
     ctx!.lineWidth = w
     ctx!.beginPath()
     ctx!.moveTo(x, y)
@@ -97,7 +97,7 @@ export function buildFrostTexture(opts: FrostOptions = {}): string | null {
 
   // Fine sparkle dust between the crystals.
   ctx.shadowBlur = 0
-  ctx.fillStyle = 'rgba(255,255,255,0.6)'
+  ctx.fillStyle = 'rgba(120,135,165,0.6)'
   for (let d = 0; d < 500; d++) {
     const r = Math.random() * 0.6 + 0.2
     ctx.beginPath()
