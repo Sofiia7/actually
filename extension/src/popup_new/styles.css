@@ -94,11 +94,25 @@ select.thin-glass{
 .frost-host:hover .frost-needles,
 .frost-host.is-tracking .frost-needles{ opacity:.48; }
 
-/* The popup chrome sits over no live page, so the trail needs visible needles
-   to read at all. The needle texture is now a cool grey (see frost.ts), so the
-   chrome reveal just needs a touch more opacity than the colored IceCards. */
-.frost-host--chrome:hover .frost-needles,
-.frost-host--chrome.is-tracking .frost-needles{ opacity:.72; }
+/* Popup chrome (GlassSurface) frost: grey needles visible across the whole
+   panel — faint, denser at the edges, sparser in the centre — always on. The
+   cursor adds only a soft local brighten, no hard reveal circle. Colored
+   IceCards keep the original cursor-reveal behavior above. */
+.frost-host--chrome .frost-needles{ -webkit-mask:none; mask:none; opacity:1; }
+.frost-host--chrome .frost-fill{
+  -webkit-mask: radial-gradient(130% 130% at 50% 50%, transparent 0%, rgba(0,0,0,.22) 45%, rgba(0,0,0,.7) 72%, #000 100%);
+          mask: radial-gradient(130% 130% at 50% 50%, transparent 0%, rgba(0,0,0,.22) 45%, rgba(0,0,0,.7) 72%, #000 100%);
+  opacity:.14;
+}
+.frost-host--chrome .frost-glow{
+  position:absolute; inset:0; border-radius:inherit; pointer-events:none;
+  background-image: var(--frost-tex, none); background-size:300px 300px; background-repeat:repeat;
+  -webkit-mask: radial-gradient(130px 130px at var(--mx,50%) var(--my,50%), #000 0%, rgba(0,0,0,.5) 38%, transparent 80%);
+          mask: radial-gradient(130px 130px at var(--mx,50%) var(--my,50%), #000 0%, rgba(0,0,0,.5) 38%, transparent 80%);
+  opacity:0; transition:opacity .4s ease;
+}
+.frost-host--chrome:hover .frost-glow,
+.frost-host--chrome.is-tracking .frost-glow{ opacity:.02; }
 
 @media (prefers-reduced-motion: reduce){
   .frost-needles{ transition: none; }
