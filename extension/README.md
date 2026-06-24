@@ -321,7 +321,7 @@ See [`actually-growth-strategy.md`](../actually-growth-strategy.md) for full KPI
 
 ## About this build
 
-Actually was conceived, designed, and directed by **Sofia** ([@Sofiia7](https://github.com/Sofiia7)).
+Actually was conceived, designed, and directed by **Sofiia Velichkovskaia** ([@Sofiia7](https://github.com/Sofiia7)).
 The product idea — news → prediction-market odds → one-click trade — the visual and
 UX design (the glass design system, the two-audience flow), and the engineering
 direction are hers. That direction includes the security and correctness audit that
@@ -334,9 +334,9 @@ under her review — turning each audit finding and design decision into code, t
 and docs. Every change was gated by her acceptance criteria and by the test suite
 (129 passing) + CI before it landed.
 
-In short: the *what* and the *why* — product, design, decisions, audit — are Sofia's;
+In short: the *what* and the *why* — product, design, decisions, audit — are Sofiia's;
 the AI accelerated the *how*.
 
 ## License
 
-Released under the [MIT License](../LICENSE) — © 2026 Sofia Seremeteva.
+Released under the [MIT License](../LICENSE) — © 2026 Sofiia Velichkovskaia.
