@@ -28,10 +28,18 @@ export async function fetchActiveMarkets(
       order: 'volumeNum',
       ascending: 'false',
     })
-    const res = await fetch(`${workerUrl}/markets?${params}`, {
-      headers: authHeaders(workerSecret),
-    })
-    if (!res.ok) throw new Error(`fetch_markets_failed:${res.status}`)
+    // Gamma occasionally returns a transient 5xx; the Worker proxies it through.
+    // Retry a few times with backoff so one upstream blip doesn't abort the
+    // whole refresh. Non-5xx errors (4xx) are not retried.
+    let res: Response | undefined
+    for (let attempt = 0; attempt < 3; attempt++) {
+      res = await fetch(`${workerUrl}/markets?${params}`, {
+        headers: authHeaders(workerSecret),
+      })
+      if (res.ok || res.status < 500) break
+      await new Promise((r) => setTimeout(r, 400 * (attempt + 1)))
+    }
+    if (!res || !res.ok) throw new Error(`fetch_markets_failed:${res?.status ?? 'network'}`)
     const raw = (await res.json()) as Array<Partial<PolyMarket> & {
       clobTokenIds?: string | string[]
       volumeNum?: number
