@@ -57,6 +57,9 @@ const sessions = new Map<string, ConnectSession>()
 // matches don't stack refreshes. The user sees the current match immediately;
 // fresh data lands on the next check.
 let staleRefreshInFlight = false
+// Shared in-flight guard for explicit OS_REFRESH_CACHE calls (auto-on-open +
+// manual button), so concurrent requests await one refresh instead of stacking.
+let refreshInFlight: Promise<{ added: number; reused: number; removed: number }> | null = null
 async function maybeRefreshStale(settings: Settings): Promise<void> {
   if (staleRefreshInFlight) return
   const { lastUpdated } = await getCacheStatus()
@@ -186,7 +189,18 @@ async function handle(msg: OffscreenRequest): Promise<OffscreenResponse> {
       if (!settings.workerUrl || !settings.workerSecret) {
         throw new Error('no_keys')
       }
-      const r = await refreshMarketCache(settings.embeddingProvider, settings.workerUrl, settings.workerSecret)
+      // Dedupe concurrent refreshes (auto-on-open + manual "Refresh" + the
+      // match-triggered stale refresh) so the embed loop never runs in parallel.
+      if (!refreshInFlight) {
+        refreshInFlight = refreshMarketCache(
+          settings.embeddingProvider,
+          settings.workerUrl,
+          settings.workerSecret,
+        ).finally(() => {
+          refreshInFlight = null
+        })
+      }
+      const r = await refreshInFlight
       return { type: 'OS_CACHE_REFRESHED', ...r }
     }
 
