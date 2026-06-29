@@ -769,7 +769,8 @@ function humanError(raw: string): string {
   if (raw.includes('geo_blocked')) return 'Trading is not available in your region.'
   if (raw.includes('geo_unavailable')) return "Couldn't verify your region — trading is paused. Check your connection and try again."
   if (raw.includes('worker_not_configured')) return 'Set Worker URL and secret in Settings first.'
-  if (raw.includes('funder_not_found')) return 'No Polymarket Safe found for this wallet. v1 supports existing Polymarket Safe wallets — deposit wallets (POLY_1271) are coming soon. If you have a Safe, sign in on polymarket.com once, then retry.'
+  if (raw.includes('funder_not_found')) return 'No Polymarket account found for this wallet. v1 works with existing Polymarket accounts (Safe wallets). New to Polymarket? Sign in once at polymarket.com, then reconnect — fresh deposit wallets (POLY_1271) are coming soon.'
+  if (raw.includes('funder_lookup_failed')) return "Couldn't reach Polymarket to look up your account. Check your connection and try again."
   return raw.replace(/^Error: /, '')
 }
 

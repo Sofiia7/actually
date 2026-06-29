@@ -80,6 +80,11 @@ export async function resolveFunderAddress(
     headers: { 'X-Actually-Auth': workerSecret },
   })
   if (!res.ok) {
+    // 404 = no Polymarket account/Safe exists for this EOA (the wallet has
+    // never used polymarket.com). Surface it as the onboarding case so the UI
+    // shows the friendly "sign in on polymarket.com first" message. Other
+    // statuses are transient lookup failures.
+    if (res.status === 404) throw new Error('funder_not_found')
     throw new Error(`funder_lookup_failed:${res.status}`)
   }
   const data = (await res.json()) as { proxyWallet?: string; address?: string }
