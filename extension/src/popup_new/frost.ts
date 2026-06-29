@@ -45,7 +45,7 @@ export function buildFrostTexture(opts: FrostOptions = {}): string | null {
   function needle(x: number, y: number, ang: number, len: number, w: number, alpha: number): void {
     const x2 = x + Math.cos(ang) * len
     const y2 = y + Math.sin(ang) * len
-    ctx!.strokeStyle = `rgba(95,112,140,${alpha})`
+    ctx!.strokeStyle = `rgba(95,112,140,${alpha})` // grey needle (tuned for the light popup)
     ctx!.lineWidth = w
     ctx!.beginPath()
     ctx!.moveTo(x, y)

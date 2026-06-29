@@ -102,17 +102,17 @@ select.thin-glass{
 .frost-host--chrome .frost-fill{
   -webkit-mask: radial-gradient(130% 130% at 50% 50%, transparent 0%, rgba(0,0,0,.22) 45%, rgba(0,0,0,.7) 72%, #000 100%);
           mask: radial-gradient(130% 130% at 50% 50%, transparent 0%, rgba(0,0,0,.22) 45%, rgba(0,0,0,.7) 72%, #000 100%);
-  opacity:.14;
+  opacity:.33;
 }
 .frost-host--chrome .frost-glow{
   position:absolute; inset:0; border-radius:inherit; pointer-events:none;
   background-image: var(--frost-tex, none); background-size:300px 300px; background-repeat:repeat;
-  -webkit-mask: radial-gradient(130px 130px at var(--mx,50%) var(--my,50%), #000 0%, rgba(0,0,0,.5) 38%, transparent 80%);
-          mask: radial-gradient(130px 130px at var(--mx,50%) var(--my,50%), #000 0%, rgba(0,0,0,.5) 38%, transparent 80%);
+  -webkit-mask: radial-gradient(290px 290px at var(--mx,50%) var(--my,50%), #000 0%, rgba(0,0,0,.5) 38%, transparent 80%);
+          mask: radial-gradient(290px 290px at var(--mx,50%) var(--my,50%), #000 0%, rgba(0,0,0,.5) 38%, transparent 80%);
   opacity:0; transition:opacity .4s ease;
 }
 .frost-host--chrome:hover .frost-glow,
-.frost-host--chrome.is-tracking .frost-glow{ opacity:.02; }
+.frost-host--chrome.is-tracking .frost-glow{ opacity:.12; }
 
 @media (prefers-reduced-motion: reduce){
   .frost-needles{ transition: none; }
