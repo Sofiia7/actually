@@ -30,7 +30,7 @@ export interface FrostOptions {
 export function buildFrostTexture(opts: FrostOptions = {}): string | null {
   const T = opts.tile ?? 300
   const dpr = opts.dpr ?? 2
-  const N = opts.nuclei ?? 135
+  const N = opts.nuclei ?? 70
   const cssVar = opts.cssVar ?? '--frost-tex'
   const target = opts.target ?? document.documentElement
 
@@ -79,9 +79,9 @@ export function buildFrostTexture(opts: FrostOptions = {}): string | null {
     }
   }
 
-  // Soft icy glow so the fine white needles read against the glass.
-  ctx.shadowColor = 'rgba(180,205,245,0.55)'
-  ctx.shadowBlur = 0.8
+  // No per-stroke shadow: shadowBlur applied to tens of thousands of strokes
+  // made generation take many seconds and froze the popup on open. Crisp grey
+  // needles read fine on the light glass.
 
   // Scatter nuclei, each drawn across a 3×3 offset grid for seamless tiling.
   const offs = [-T, 0, T]
@@ -108,4 +108,34 @@ export function buildFrostTexture(opts: FrostOptions = {}): string | null {
   const url = cv.toDataURL('image/png')
   target.style.setProperty(cssVar, `url("${url}")`)
   return url
+}
+
+/**
+ * Set `--frost-tex`, reusing a cached texture when possible. Painting the
+ * canvas on every popup open blocked first paint for seconds; instead we
+ * generate it at most once, cache the data-URL in localStorage, and restore it
+ * instantly on later opens. Bump the cache key to force a regenerate.
+ */
+const FROST_CACHE_KEY = 'actually:frostTex:v2'
+
+export function ensureFrostTexture(opts: FrostOptions = {}): void {
+  const cssVar = opts.cssVar ?? '--frost-tex'
+  const target = opts.target ?? document.documentElement
+  try {
+    const cached = localStorage.getItem(FROST_CACHE_KEY)
+    if (cached) {
+      target.style.setProperty(cssVar, cached)
+      return
+    }
+  } catch {
+    /* localStorage unavailable — fall through and generate */
+  }
+  const url = buildFrostTexture(opts)
+  if (url) {
+    try {
+      localStorage.setItem(FROST_CACHE_KEY, `url("${url}")`)
+    } catch {
+      /* quota / unavailable — the texture is already applied, just not cached */
+    }
+  }
 }
