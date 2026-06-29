@@ -51,12 +51,14 @@ const LABEL_TO_PROVIDER: Record<string, SettingsT['embeddingProvider']> = {
 // MatchResult → design Market
 // =============================================================
 function toDesignMarket(m: MatchResult): DesignMarket {
+  const d = m.market.description?.trim()
   return {
     q: m.market.question,
     pct: Math.round((m.freshPrice ?? m.probability) * 100),
     vol: formatVolume(m.market.volume),
     match: Math.round(m.confidence * 100),
     market: 'Polymarket',
+    desc: d ? (d.length > 200 ? d.slice(0, 200).replace(/\s+\S*$/, '') + '…' : d) : undefined,
   }
 }
 function altToDesignMarket(question: string, score: number | undefined): DesignMarket {
