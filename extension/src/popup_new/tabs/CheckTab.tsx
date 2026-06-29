@@ -16,6 +16,8 @@ export interface Market {
   vol?: string;
   match?: number;
   market?: string;
+  /** Short market description — clarifies what the question actually resolves on. */
+  desc?: string;
 }
 
 export type CheckState =
@@ -51,6 +53,7 @@ const FeaturedMarket: React.FC<FeaturedMarketProps> = ({
   vol,
   match,
   market,
+  desc,
   onOpenMarket,
   onTrade,
 }) => {
@@ -79,6 +82,17 @@ const FeaturedMarket: React.FC<FeaturedMarketProps> = ({
       >
         {q}
       </Etched>
+
+      {desc && (
+        <Etched
+          size={11}
+          weight={300}
+          color="rgba(35,45,70,.6)"
+          style={{ display: 'block', lineHeight: 1.4, marginTop: -6, marginBottom: 12 }}
+        >
+          {desc}
+        </Etched>
+      )}
 
       <div
         style={{
