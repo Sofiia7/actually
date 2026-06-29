@@ -146,6 +146,7 @@ export const IntegratedPopup: React.FC<IntegratedPopupProps> = ({
   // Settings tab state
   const [cache, setCache] = useState<{ count: number; lastUpdated: number }>({ count: 0, lastUpdated: 0 })
   const [testStatus, setTestStatus] = useState<string>('')
+  const [autoRefreshing, setAutoRefreshing] = useState(false)
 
   // Wallet slot in Settings (read-only display + wipe button)
   const [wallet, setWallet] = useState<SerializableWalletState | null>(null)
@@ -185,7 +186,22 @@ export const IntegratedPopup: React.FC<IntegratedPopupProps> = ({
         { type: 'SETTINGS_RESPONSE' }
       >
       setSettings(res.settings)
-      await refreshCache()
+      const status = await getCacheStatus()
+      setCache({ count: status.count, lastUpdated: status.lastUpdated })
+      // Auto-populate the market cache on first open so the user never has to
+      // press "Refresh" manually. Runs in the background; Check still works
+      // (it refreshes inline if needed). Deduped in the offscreen.
+      if (status.count === 0 && res.settings.workerUrl && res.settings.workerSecret) {
+        setAutoRefreshing(true)
+        try {
+          await refreshCacheViaOffscreen()
+        } catch {
+          /* errors surface on demand via Check / Test connection */
+        } finally {
+          await refreshCache()
+          setAutoRefreshing(false)
+        }
+      }
     })()
   }, [])
 
@@ -328,7 +344,7 @@ export const IntegratedPopup: React.FC<IntegratedPopupProps> = ({
     floor: settings.lowConfidenceFloor,
     shareStats: settings.telemetryEnabled,
     cacheSize: cache.count,
-    cacheAge: cache.lastUpdated ? formatRelative(cache.lastUpdated) : '—',
+    cacheAge: autoRefreshing ? 'loading markets…' : cache.lastUpdated ? formatRelative(cache.lastUpdated) : '—',
     version: chrome.runtime?.getManifest?.().version ?? '1.0.0',
     contract: BUILDER_CODE || '(not configured)',
     workerUrl: settings.workerUrl,
