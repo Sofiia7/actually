@@ -17,11 +17,13 @@ export const LOW_CONFIDENCE_FLOOR_LOCAL = 0.30
 export const CONFIDENCE_THRESHOLD = CONFIDENCE_THRESHOLD_LOCAL
 export const LOW_CONFIDENCE_FLOOR = LOW_CONFIDENCE_FLOOR_LOCAL
 export const CACHE_TTL_MINUTES = 30
-// 300 markets covers the long tail of news topics (US politics, geopolitics,
-// crypto, sports) while still completing first-load embedding in <90s on the
-// local MiniLM model. Embedding runs in the offscreen document (no MV3 SW
-// lifetime limits), so the previous 100-market cap was overly conservative.
-export const MAX_MARKETS_CACHE = 300
+// Markets are cached top-N by volume. At 300, lower-volume but topical markets
+// (e.g. Russia/Ukraine ceasefire & territory markets rank ~330-600 by volume)
+// fell outside the pool, so a war article could only match the nearest cached
+// Russia market (Putin-leadership). 600 pulls those in; first-load embedding on
+// the local MiniLM model runs in the offscreen document (no MV3 SW lifetime
+// limit) and is diff-cached, so the one-time cost is paid once.
+export const MAX_MARKETS_CACHE = 600
 export const EMBED_PROGRESS_CHUNK = 25
 export const MAX_BODY_TEXT_CHARS = 500
 export const HEADLINE_WEIGHT = 2
