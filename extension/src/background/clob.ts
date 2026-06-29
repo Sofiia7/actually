@@ -21,10 +21,20 @@ import {
   type UserOrderV2,
   type UserMarketOrderV2,
 } from '@polymarket/clob-client-v2'
+import { getCreate2Address, keccak256, AbiCoder } from 'ethers'
 import { BUILDER_CODE } from '../shared/constants'
 import { WCSigner } from './wallet'
 
 const CLOB_HOST = 'https://clob.polymarket.com'
+
+// Polymarket's Safe (funder) is created deterministically per EOA via CREATE2
+// from its Safe factory on Polygon. We compute it locally — Polymarket retired
+// the data-api EOA→proxy lookup endpoints (they now 404), and there is no public
+// EOA→proxy API; their own frontend derives it client-side. This is the exact
+// derivation `@polymarket/builder-relayer-client`'s deriveSafe uses, verified
+// bit-for-bit against viem's getCreate2Address.
+const POLY_SAFE_FACTORY = '0xaacFeEa03eb1561C4e67d661e40682Bd20E3541b'
+const POLY_SAFE_INIT_CODE_HASH = '0x2bce2127ff07fb632d16c8347c4ebf501f4841168bed00d9e6ef715ddb6fcecf'
 
 /**
  * Architectural note (v1, deliberate deviation from spec §9):
@@ -55,44 +65,22 @@ const CLOB_HOST = 'https://clob.polymarket.com'
 /**
  * Resolve a user's Polymarket Safe (funder) address from their EOA.
  *
- * Polymarket creates a deterministic Gnosis Safe per EOA via CREATE2. The
- * canonical resolution uses Polymarket's own data API which avoids us
- * shipping the factory address / setup-bytes constants and tracking them
- * if they ever change.
+ * Deterministic CREATE2 derivation (see POLY_SAFE_* constants) — the same
+ * address Polymarket itself uses, computed locally with no network call. Works
+ * whether or not the Safe is deployed yet; if the user has never funded their
+ * Polymarket account the address is still correct, an order just fails later on
+ * insufficient balance.
  *
- * Endpoint shape (subject to change): GET clob.polymarket.com/proxy/<eoa>
- * Some integrations also use data.polymarket.com — both surfaces are
- * acceptable; whichever Polymarket continues to support.
- *
- * If we can't resolve (e.g. the user has never interacted with Polymarket
- * and no Safe exists yet), the caller must prompt them to sign in on
- * polymarket.com once before using the trade flow.
+ * Async + workerUrl/secret params are kept for call-site compatibility; the
+ * computation is pure.
  */
 export async function resolveFunderAddress(
   eoa: string,
-  workerUrl: string,
-  workerSecret: string,
+  _workerUrl: string,
+  _workerSecret: string,
 ): Promise<string> {
-  // We route through the Worker to keep the extension's host_permissions
-  // tight (CLOB is not in our allow-list). The Worker has a /clob/proxy
-  // endpoint that forwards the lookup.
-  const res = await fetch(`${workerUrl}/clob/proxy/${eoa.toLowerCase()}`, {
-    headers: { 'X-Actually-Auth': workerSecret },
-  })
-  if (!res.ok) {
-    // 404 = no Polymarket account/Safe exists for this EOA (the wallet has
-    // never used polymarket.com). Surface it as the onboarding case so the UI
-    // shows the friendly "sign in on polymarket.com first" message. Other
-    // statuses are transient lookup failures.
-    if (res.status === 404) throw new Error('funder_not_found')
-    throw new Error(`funder_lookup_failed:${res.status}`)
-  }
-  const data = (await res.json()) as { proxyWallet?: string; address?: string }
-  const addr = data.proxyWallet ?? data.address
-  if (!addr) {
-    throw new Error('funder_not_found')
-  }
-  return addr.toLowerCase()
+  const salt = keccak256(AbiCoder.defaultAbiCoder().encode(['address'], [eoa]))
+  return getCreate2Address(POLY_SAFE_FACTORY, salt, POLY_SAFE_INIT_CODE_HASH).toLowerCase()
 }
 
 export interface InitClientArgs {
