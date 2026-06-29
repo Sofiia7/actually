@@ -23,7 +23,7 @@ export const CACHE_TTL_MINUTES = 30
 // Russia market (Putin-leadership). 600 pulls those in; first-load embedding on
 // the local MiniLM model runs in the offscreen document (no MV3 SW lifetime
 // limit) and is diff-cached, so the one-time cost is paid once.
-export const MAX_MARKETS_CACHE = 600
+export const MAX_MARKETS_CACHE = 800
 export const EMBED_PROGRESS_CHUNK = 25
 export const MAX_BODY_TEXT_CHARS = 500
 export const HEADLINE_WEIGHT = 2
