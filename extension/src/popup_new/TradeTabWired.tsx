@@ -190,7 +190,7 @@ export const TradeTabWired: React.FC<TradeTabWiredProps> = ({
       <Panel>
         <Etched size={13} weight={400}>Scan the QR with your wallet</Etched>
         <Etched size={11} weight={300} color="rgba(35,45,70,.55)">
-          Or tap "Open in wallet" if your wallet app is on this device.
+          Or copy the connection link and paste it into your wallet.
         </Etched>
         {connect.qrDataUrl ? (
           <div style={{ display: 'flex', justifyContent: 'center', padding: 12 }}>
@@ -200,18 +200,25 @@ export const TradeTabWired: React.FC<TradeTabWiredProps> = ({
           <div style={{ padding: 18, textAlign: 'center', opacity: 0.6 }}>preparing…</div>
         )}
         {connect.uri && (
-          <a
-            href={connect.uri}
+          <button
+            type="button"
+            onClick={(e) => {
+              void navigator.clipboard.writeText(connect.uri!)
+              const t = e.currentTarget
+              const prev = t.textContent
+              t.textContent = 'Copied ✓'
+              setTimeout(() => { t.textContent = prev }, 1500)
+            }}
             style={{
-              display: 'block', textAlign: 'center', textDecoration: 'none',
+              display: 'block', width: '100%', textAlign: 'center', cursor: 'pointer',
               padding: '10px 14px', borderRadius: 8,
               background: 'rgba(255,255,255,.09)',
               border: '1px solid rgba(255,255,255,.32)',
               fontFamily: 'Marck Script', fontSize: 13, color: 'rgba(18,26,48,.85)',
             }}
           >
-            Open in wallet
-          </a>
+            Copy connection link
+          </button>
         )}
         {connect.error && <ErrorBanner>{connect.error}</ErrorBanner>}
         <div style={{ display: 'flex', justifyContent: 'center', marginTop: 8 }}>
