@@ -9,6 +9,9 @@
   "engines": {
     "node": ">=20"
   },
+  "_comments": {
+    "devDependencies.jsdom": "Root has no tests of its own — this exists only so npm hoists jsdom to the same node_modules level as the shared vitest package. Without it, vitest's internal bare import('jsdom') can't resolve (extension's jsdom devDependency stays nested instead of hoisting), silently dropping the 2 jsdom-environment test files from extension's suite. Do not remove as 'unused'. See commit 95951c5."
+  },
   "devDependencies": {
     "jsdom": "^29.1.1"
   }
