@@ -1,4 +1,5 @@
-import type { CachedMarket, EmbeddingProvider, PolyMarket } from '../shared/types'
+import type { EmbeddingProvider } from '../shared/types'
+import type { CachedMarket, PolyMarket } from '@actually/core'
 import {
   EMBED_PROGRESS_CHUNK,
   LOCAL_MODEL_ID,

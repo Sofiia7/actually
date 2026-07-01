@@ -1,4 +1,5 @@
-import type { HistoryItem, MatchResult } from '../shared/types'
+import type { HistoryItem } from '../shared/types'
+import type { MatchResult } from '@actually/core'
 import { HISTORY_DEDUP_MINUTES, MAX_HISTORY_ITEMS, STORAGE_KEYS } from '../shared/constants'
 
 export async function getHistory(): Promise<HistoryItem[]> {

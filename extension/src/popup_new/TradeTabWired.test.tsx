@@ -17,7 +17,8 @@ vi.mock('./ops', () => ({
 
 import { TradeTabWired } from './TradeTabWired'
 import * as ops from './ops'
-import type { MatchResult, PolyMarket, Settings } from '../shared/types'
+import type { Settings } from '../shared/types'
+import type { MatchResult, PolyMarket } from '@actually/core'
 
 const market: PolyMarket = {
   id: 'm1',

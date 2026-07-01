@@ -1,40 +1,31 @@
 import type { Settings } from './types'
+import {
+  CONFIDENCE_THRESHOLD_LOCAL,
+  LOW_CONFIDENCE_FLOOR_LOCAL,
+} from '@actually/core'
 
-// Defaults are provider-aware. Local MiniLM gives lower cosine values for
-// semantically-related texts than OpenAI's models, so its thresholds must be
-// proportionally lower. These are seed defaults — DEFAULT_SETTINGS chooses
-// the right pair for the active provider.
-// Empirically calibrated against 300 real markets and a basket of news articles
-// (Trump/Iran, Russia/Ukraine, Fed, Bitcoin). MiniLM-L6 cosine scores for the
-// best genuinely-related matches land in 0.42–0.56; unrelated matches stay
-// below 0.30.
-export const CONFIDENCE_THRESHOLD_OPENAI = 0.82
-export const LOW_CONFIDENCE_FLOOR_OPENAI = 0.70
-export const CONFIDENCE_THRESHOLD_LOCAL = 0.45
-export const LOW_CONFIDENCE_FLOOR_LOCAL = 0.30
+export {
+  COLOR_THRESHOLDS,
+  CONFIDENCE_THRESHOLD_LOCAL,
+  CONFIDENCE_THRESHOLD_OPENAI,
+  LOW_CONFIDENCE_FLOOR_LOCAL,
+  LOW_CONFIDENCE_FLOOR_OPENAI,
+  LOCAL_MODEL_ID,
+  MAX_MARKETS_CACHE,
+  NOISE_QUESTION_PATTERNS,
+  MAX_BODY_TEXT_CHARS,
+  HEADLINE_WEIGHT,
+  defaultThresholds,
+} from '@actually/core'
 
 // Back-compat shims (old name kept for older code paths)
 export const CONFIDENCE_THRESHOLD = CONFIDENCE_THRESHOLD_LOCAL
 export const LOW_CONFIDENCE_FLOOR = LOW_CONFIDENCE_FLOOR_LOCAL
 export const CACHE_TTL_MINUTES = 30
-// Markets are cached top-N by volume. At 300, lower-volume but topical markets
-// (e.g. Russia/Ukraine ceasefire & territory markets rank ~330-600 by volume)
-// fell outside the pool, so a war article could only match the nearest cached
-// Russia market (Putin-leadership). 600 pulls those in; first-load embedding on
-// the local MiniLM model runs in the offscreen document (no MV3 SW lifetime
-// limit) and is diff-cached, so the one-time cost is paid once.
-export const MAX_MARKETS_CACHE = 800
 export const EMBED_PROGRESS_CHUNK = 25
-export const MAX_BODY_TEXT_CHARS = 500
-export const HEADLINE_WEIGHT = 2
 export const MAX_HISTORY_ITEMS = 10
 export const HISTORY_DEDUP_MINUTES = 10
 export const TELEMETRY_FLUSH_INTERVAL_MIN = 5
-
-export const COLOR_THRESHOLDS = {
-  blue: 0.30,
-  yellow: 0.60,
-} as const
 
 export const SMOKE_COLORS = {
   blue: 'rgba(55, 138, 221, 0.65)',
@@ -58,33 +49,10 @@ export const STORAGE_KEYS = {
   telemetryQueue: 'telemetryQueue',
 } as const
 
-// Bumped when we change the local embedding model — vectors from different
-// models are not comparable, so on mismatch the cache is wiped.
-export const LOCAL_MODEL_ID = 'Xenova/all-MiniLM-L12-v2'
-
-// Markets matching these patterns are word-association games rather than
-// actual outcome predictions. They share so much vocabulary with political
-// news that they otherwise dominate matches with no real signal.
-export const NOISE_QUESTION_PATTERNS: RegExp[] = [
-  /\bwill\b.+\bsay\b\s*["'“]/i,
-  /\bwill\b.+\bmention\b/i,
-  /\bduring events with\b/i,
-  /\bword of the (day|week)\b/i,
-]
-
 export const ALARM_NAMES = {
   refreshCache: 'refresh-cache',
   flushTelemetry: 'flush-telemetry',
 } as const
-
-export function defaultThresholds(provider: 'local' | 'openai'): {
-  confidenceThreshold: number
-  lowConfidenceFloor: number
-} {
-  return provider === 'openai'
-    ? { confidenceThreshold: CONFIDENCE_THRESHOLD_OPENAI, lowConfidenceFloor: LOW_CONFIDENCE_FLOOR_OPENAI }
-    : { confidenceThreshold: CONFIDENCE_THRESHOLD_LOCAL, lowConfidenceFloor: LOW_CONFIDENCE_FLOOR_LOCAL }
-}
 
 /**
  * Our app-wide builderCode, baked at build time via Vite. Used by trade.ts
@@ -135,8 +103,6 @@ export const DEFAULT_SETTINGS: Settings = {
   confidenceThreshold: CONFIDENCE_THRESHOLD_LOCAL,
   lowConfidenceFloor: LOW_CONFIDENCE_FLOOR_LOCAL,
   embeddingProvider: 'local',
-  // Pre-fill from build-time env so the extension works out-of-the-box on
-  // CWS installs. Users who self-host can still override in Settings.
   workerUrl: DEFAULT_WORKER_URL,
   workerSecret: DEFAULT_WORKER_SECRET,
   telemetryEnabled: true,
