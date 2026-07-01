@@ -6,6 +6,7 @@
  * with auth + rate limiting. Phase 1: read-only proxy. Phase 1.5: signed-order
  * relay via builderCode.
  */
+import type { MarketCacheBlob } from '@actually/core'
 
 interface Env {
   WORKER_SHARED_SECRET?: string
@@ -86,6 +87,51 @@ export function validateEmbeddingsInput(body: unknown): EmbeddingsValidation {
   }
   const model = typeof b.model === 'string' ? b.model : undefined
   return { ok: true, texts: b.texts as string[], model, totalChars }
+}
+
+/**
+ * Input limits for PUT /market-cache. The blob holds ~800 markets at ~2KB of
+ * base64 embedding each (~1.6MB total at MAX_MARKETS_CACHE) — 5MB leaves
+ * comfortable headroom without allowing an unbounded upload.
+ */
+export const MARKET_CACHE_LIMITS = {
+  maxBodyBytes: 5 * 1024 * 1024,
+  maxMarkets: 1000,
+} as const
+
+export type MarketCacheValidation =
+  | { ok: true; blob: MarketCacheBlob }
+  | { ok: false; status: number; error: string }
+
+/** Pure validation for a PUT /market-cache request body. No I/O — unit-tested. */
+export function validateMarketCacheInput(body: unknown): MarketCacheValidation {
+  if (typeof body !== 'object' || body === null) {
+    return { ok: false, status: 400, error: 'bad_body' }
+  }
+  const b = body as { model?: unknown; builtAt?: unknown; markets?: unknown }
+  if (typeof b.model !== 'string' || b.model.length === 0) {
+    return { ok: false, status: 400, error: 'bad_model' }
+  }
+  if (typeof b.builtAt !== 'number' || !Number.isFinite(b.builtAt)) {
+    return { ok: false, status: 400, error: 'bad_builtAt' }
+  }
+  if (!Array.isArray(b.markets)) {
+    return { ok: false, status: 400, error: 'markets_not_array' }
+  }
+  if (b.markets.length === 0) {
+    return { ok: false, status: 400, error: 'markets_empty' }
+  }
+  if (b.markets.length > MARKET_CACHE_LIMITS.maxMarkets) {
+    return { ok: false, status: 400, error: 'too_many_markets' }
+  }
+  for (const m of b.markets) {
+    if (typeof m !== 'object' || m === null) return { ok: false, status: 400, error: 'bad_market_entry' }
+    const mm = m as Record<string, unknown>
+    if (typeof mm.id !== 'string' || typeof mm.question !== 'string' || typeof mm.embeddingB64 !== 'string') {
+      return { ok: false, status: 400, error: 'bad_market_shape' }
+    }
+  }
+  return { ok: true, blob: body as MarketCacheBlob }
 }
 
 // Polymarket-restricted jurisdictions. Mirrors the client list in
@@ -348,6 +394,24 @@ export default {
           extraSet.has(country) ||
           (country === 'CA' && region === 'ON')
         return json({ country, region, blocked }, 200, headers)
+      }
+
+      // --- Market cache: read (agents / MCP server) -----------------
+      if (url.pathname === '/market-cache' && req.method === 'GET') {
+        if (!(await rateLimit(env, 'market_cache_read', ip, 20))) {
+          return json({ error: 'rate_limited' }, 429, headers)
+        }
+        if (!env.MARKET_CACHE) {
+          return json({ error: 'market_cache_not_configured' }, 503, headers)
+        }
+        const raw = await env.MARKET_CACHE.get('blob')
+        if (!raw) {
+          return json({ error: 'not_populated' }, 404, headers)
+        }
+        return new Response(raw, {
+          status: 200,
+          headers: { ...headers, 'Cache-Control': 'public, max-age=300' },
+        })
       }
 
       // --- Polymarket Safe (funder) lookup by EOA -------------------
