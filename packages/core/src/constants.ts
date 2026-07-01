@@ -21,7 +21,12 @@ export const HEADLINE_WEIGHT = 2
 // models are not comparable, so a mismatch must invalidate any cached vectors.
 export const LOCAL_MODEL_ID = 'Xenova/all-MiniLM-L12-v2'
 
-// Markets are cached top-N by volume.
+// Markets are cached top-N by volume. At 300, lower-volume but topical markets
+// (e.g. Russia/Ukraine ceasefire & territory markets rank ~330-600 by volume)
+// fell outside the pool, so a war article could only match the nearest cached
+// Russia market (Putin-leadership). 600 pulls those in; first-load embedding on
+// the local MiniLM model runs in the offscreen document (no MV3 SW lifetime
+// limit) and is diff-cached, so the one-time cost is paid once.
 export const MAX_MARKETS_CACHE = 800
 
 // Markets matching these patterns are word-association games rather than
