@@ -23,6 +23,7 @@ function baseEnv(over: Record<string, unknown> = {}) {
     ALLOWED_EXTENSION_ID: EXT,
     OPENAI_API_KEY: 'sk-test',
     RATE_LIMITS: fakeKV(),
+    MARKET_CACHE: fakeKV(),
     ...over,
   } as never
 }
@@ -194,5 +195,29 @@ describe('upstream hosts', () => {
     vi.stubGlobal('fetch', spy)
     await call('/orderbook?token_id=0x1', baseEnv())
     expect(String(spy.mock.calls[0]?.[0] ?? '')).toContain('clob.polymarket.com/book')
+  })
+})
+
+describe('market-cache read', () => {
+  it('returns 503 when MARKET_CACHE KV is not bound', async () => {
+    const res = await call('/market-cache', baseEnv({ MARKET_CACHE: undefined }))
+    expect(res.status).toBe(503)
+  })
+
+  it('returns 404 when the cache has never been populated', async () => {
+    const res = await call('/market-cache', baseEnv())
+    expect(res.status).toBe(404)
+  })
+
+  it('returns the stored blob verbatim with a 5-minute Cache-Control', async () => {
+    const env = baseEnv()
+    await (env as { MARKET_CACHE: KVNamespace }).MARKET_CACHE.put(
+      'blob',
+      JSON.stringify({ model: 'Xenova/all-MiniLM-L12-v2', builtAt: 1, markets: [] }),
+    )
+    const res = await call('/market-cache', env)
+    expect(res.status).toBe(200)
+    expect(res.headers.get('Cache-Control')).toBe('public, max-age=300')
+    expect(await res.json()).toEqual({ model: 'Xenova/all-MiniLM-L12-v2', builtAt: 1, markets: [] })
   })
 })
