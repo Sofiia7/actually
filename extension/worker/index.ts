@@ -414,6 +414,37 @@ export default {
         })
       }
 
+      // --- Market cache: write (precompute cron job only) -----------
+      if (url.pathname === '/market-cache' && req.method === 'PUT') {
+        if (!(await rateLimit(env, 'market_cache_write', ip, 6))) {
+          return json({ error: 'rate_limited' }, 429, headers)
+        }
+        if (!env.MARKET_CACHE) {
+          return json({ error: 'market_cache_not_configured' }, 503, headers)
+        }
+        if (!env.MARKET_CACHE_WRITE_SECRET) {
+          return json({ error: 'write_secret_not_configured' }, 503, headers)
+        }
+        const writeAuth = req.headers.get('X-Actually-Cache-Write')
+        if (writeAuth !== env.MARKET_CACHE_WRITE_SECRET) {
+          return json({ error: 'unauthorized' }, 401, headers)
+        }
+        const contentLength = parseInt(req.headers.get('Content-Length') ?? '0', 10)
+        if (Number.isFinite(contentLength) && contentLength > MARKET_CACHE_LIMITS.maxBodyBytes) {
+          return json({ error: 'body_too_large' }, 413, headers)
+        }
+        let parsed: unknown
+        try {
+          parsed = await req.json()
+        } catch {
+          return json({ error: 'bad_json' }, 400, headers)
+        }
+        const v = validateMarketCacheInput(parsed)
+        if (!v.ok) return json({ error: v.error }, v.status, headers)
+        await env.MARKET_CACHE.put('blob', JSON.stringify(v.blob))
+        return json({ ok: true, count: v.blob.markets.length }, 200, headers)
+      }
+
       // --- Polymarket Safe (funder) lookup by EOA -------------------
       // GET /clob/proxy/<eoa> — returns the Polymarket Safe address.
       //

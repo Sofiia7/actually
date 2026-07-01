@@ -221,3 +221,45 @@ describe('market-cache read', () => {
     expect(await res.json()).toEqual({ model: 'Xenova/all-MiniLM-L12-v2', builtAt: 1, markets: [] })
   })
 })
+
+describe('market-cache write', () => {
+  const blob = { model: 'Xenova/all-MiniLM-L12-v2', builtAt: 1700000000000, markets: [{ id: 'm1', question: 'Will X?', embeddingB64: 'AAAA' }] }
+
+  it('rejects without MARKET_CACHE_WRITE_SECRET configured', async () => {
+    const res = await call('/market-cache', baseEnv(), { method: 'PUT', body: JSON.stringify(blob) })
+    expect(res.status).toBe(503)
+  })
+
+  it('rejects a wrong write secret', async () => {
+    const res = await call('/market-cache', baseEnv({ MARKET_CACHE_WRITE_SECRET: 'right' }), {
+      method: 'PUT',
+      headers: { 'X-Actually-Cache-Write': 'wrong' },
+      body: JSON.stringify(blob),
+    })
+    expect(res.status).toBe(401)
+  })
+
+  it('rejects a malformed blob', async () => {
+    const res = await call('/market-cache', baseEnv({ MARKET_CACHE_WRITE_SECRET: 'right' }), {
+      method: 'PUT',
+      headers: { 'X-Actually-Cache-Write': 'right' },
+      body: JSON.stringify({ model: 'x' }),
+    })
+    expect(res.status).toBe(400)
+  })
+
+  it('PUT then GET round-trips the blob', async () => {
+    const env = baseEnv({ MARKET_CACHE_WRITE_SECRET: 'right' })
+    const put = await call('/market-cache', env, {
+      method: 'PUT',
+      headers: { 'X-Actually-Cache-Write': 'right' },
+      body: JSON.stringify(blob),
+    })
+    expect(put.status).toBe(200)
+    expect(await put.json()).toEqual({ ok: true, count: 1 })
+
+    const get = await call('/market-cache', env)
+    expect(get.status).toBe(200)
+    expect(await get.json()).toEqual(blob)
+  })
+})
