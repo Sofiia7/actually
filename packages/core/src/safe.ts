@@ -15,6 +15,8 @@ const POLY_SAFE_INIT_CODE_HASH = '0x2bce2127ff07fb632d16c8347c4ebf501f4841168bed
  * computed locally with no network call. Works whether or not the Safe is
  * deployed yet; if the user has never funded their Polymarket account the
  * address is still correct, an order just fails later on insufficient balance.
+ *
+ * Accepts an EOA in any case (checksummed or not); normalizes internally.
  */
 export function deriveSafeAddress(eoa: string): string {
   // Lowercase first: ethers v6's AbiCoder rejects mixed-case addresses that
