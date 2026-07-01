@@ -75,6 +75,7 @@ jobs:
 
       # Belt-and-suspenders: fail CI if any known leaked secret reappears.
       - name: No-leaked-secrets check
+        working-directory: extension
         run: |
           set -e
           ! grep -RIn \
