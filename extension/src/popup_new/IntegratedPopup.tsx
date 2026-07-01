@@ -9,17 +9,15 @@ import { TradeTabWired } from './TradeTabWired'
 
 import type {
   HistoryItem,
-  MatchResult,
   Settings as SettingsT,
   TestKeysResult,
 } from '../shared/types'
 import {
   BUILDER_CODE,
-  COLOR_THRESHOLDS,
   DEFAULT_WORKER_URL,
   DEFAULT_WORKER_SECRET,
-  defaultThresholds,
 } from '../shared/constants'
+import { COLOR_THRESHOLDS, defaultThresholds, type MatchResult } from '@actually/core'
 import { sendToBackground } from '../shared/messages'
 import type { ResponseMessage } from '../shared/messages'
 import { extractActiveTabArticle } from '../popup/operations'

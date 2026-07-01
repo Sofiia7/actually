@@ -11,7 +11,8 @@ import type {
   OffscreenResponse,
   SerializableWalletState,
 } from '../shared/messages'
-import type { ArticleData, MatchResult } from '../shared/types'
+import type { ArticleData } from '../shared/types'
+import type { MatchResult } from '@actually/core'
 import type { GeoErrorReason } from '../background/geo'
 
 async function call<T extends OffscreenResponse>(msg: unknown): Promise<T> {

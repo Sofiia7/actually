@@ -18,7 +18,8 @@
  * the same via the `_execute_action` command (no listener needed when
  * default_popup is set).
  */
-import { ALARM_NAMES, CACHE_TTL_MINUTES, TELEMETRY_FLUSH_INTERVAL_MIN, defaultThresholds } from '../shared/constants'
+import { ALARM_NAMES, CACHE_TTL_MINUTES, TELEMETRY_FLUSH_INTERVAL_MIN } from '../shared/constants'
+import { defaultThresholds } from '@actually/core'
 import type { RequestMessage, ResponseMessage } from '../shared/messages'
 import type { TestKeysResult } from '../shared/types'
 import { getCacheStatus, clearMarketCache } from './cache'
