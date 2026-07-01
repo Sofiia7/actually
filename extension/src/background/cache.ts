@@ -8,7 +8,7 @@ import {
 } from '../shared/constants'
 import { fetchActiveMarkets } from './polymarket'
 import { embedBatch } from './embeddings'
-import { floatArrayToB64, isBinaryOutcomes, sha256 } from './util'
+import { floatArrayToB64, isBinaryOutcomes, sha256 } from '@actually/core'
 
 function isNoiseMarket(question: string): boolean {
   return NOISE_QUESTION_PATTERNS.some((re) => re.test(question))

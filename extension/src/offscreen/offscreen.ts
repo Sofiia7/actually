@@ -163,7 +163,7 @@ async function handle(msg: OffscreenRequest): Promise<OffscreenResponse> {
         // Polymarket does not guarantee outcomes[0] is "Yes" (some markets
         // list "No" first), and clobTokenIds is parallel to outcomes. Hitting
         // [0] blindly can fetch and display the NO price as if it were YES.
-        const { findOutcomeIndex } = await import('../background/util')
+        const { findOutcomeIndex } = await import('@actually/core')
         const yesIdx = findOutcomeIndex(match.market.outcomes, 'Yes')
         const tokenId = match.market.clobTokenIds[yesIdx]
         if (tokenId) {

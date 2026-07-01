@@ -8,7 +8,7 @@
 import React, { useEffect, useState } from 'react'
 import { Etched } from '../components/Etched'
 import type { PolyMarket } from '../../shared/types'
-import { formatRelative } from '../../background/util'
+import { formatRelative } from '@actually/core'
 import { orderbookSnapshotViaOffscreen, priceHistoryViaOffscreen } from '../ops'
 
 // =============================================================

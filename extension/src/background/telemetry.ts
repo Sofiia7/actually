@@ -1,6 +1,6 @@
 import type { Settings, TelemetryEvent } from '../shared/types'
 import { STORAGE_KEYS } from '../shared/constants'
-import { uuid } from './util'
+import { uuid } from '@actually/core'
 
 export async function getInstallId(): Promise<string> {
   const data = await chrome.storage.local.get(STORAGE_KEYS.installId)

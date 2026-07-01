@@ -26,7 +26,7 @@ import { extractActiveTabArticle } from '../popup/operations'
 import { getCacheStatus } from '../background/cache'
 import { trackEvent } from '../background/telemetry'
 import { buildMarketUrl } from '../background/polymarket'
-import { findOutcomeIndex, formatRelative } from '../background/util'
+import { findOutcomeIndex, formatRelative } from '@actually/core'
 import {
   disconnectWalletViaOffscreen,
   refreshCacheViaOffscreen,
