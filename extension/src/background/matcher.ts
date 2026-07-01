@@ -6,7 +6,7 @@ import {
 } from '../shared/constants'
 import { embed } from './embeddings'
 import { getMarketCache } from './cache'
-import { b64ToFloatArray, cosineSimilarity, findOutcomeIndex } from './util'
+import { b64ToFloatArray, cosineSimilarity, findOutcomeIndex } from '@actually/core'
 
 function getColor(prob: number): MatchResult['color'] {
   if (prob < COLOR_THRESHOLDS.blue) return 'blue'
