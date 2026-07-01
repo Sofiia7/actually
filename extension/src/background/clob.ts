@@ -21,20 +21,10 @@ import {
   type UserOrderV2,
   type UserMarketOrderV2,
 } from '@polymarket/clob-client-v2'
-import { getCreate2Address, keccak256, AbiCoder } from 'ethers'
 import { BUILDER_CODE } from '../shared/constants'
 import { WCSigner } from './wallet'
 
 const CLOB_HOST = 'https://clob.polymarket.com'
-
-// Polymarket's Safe (funder) is created deterministically per EOA via CREATE2
-// from its Safe factory on Polygon. We compute it locally — Polymarket retired
-// the data-api EOA→proxy lookup endpoints (they now 404), and there is no public
-// EOA→proxy API; their own frontend derives it client-side. This is the exact
-// derivation `@polymarket/builder-relayer-client`'s deriveSafe uses, verified
-// bit-for-bit against viem's getCreate2Address.
-const POLY_SAFE_FACTORY = '0xaacFeEa03eb1561C4e67d661e40682Bd20E3541b'
-const POLY_SAFE_INIT_CODE_HASH = '0x2bce2127ff07fb632d16c8347c4ebf501f4841168bed00d9e6ef715ddb6fcecf'
 
 /**
  * Architectural note (v1, deliberate deviation from spec §9):
@@ -61,27 +51,6 @@ const POLY_SAFE_INIT_CODE_HASH = '0x2bce2127ff07fb632d16c8347c4ebf501f4841168bed
  * signing on `X-Actually-*` headers so the Worker leg adds real value
  * (per-IP order-rate limit, server-side geo re-check on submit).
  */
-
-/**
- * Resolve a user's Polymarket Safe (funder) address from their EOA.
- *
- * Deterministic CREATE2 derivation (see POLY_SAFE_* constants) — the same
- * address Polymarket itself uses, computed locally with no network call. Works
- * whether or not the Safe is deployed yet; if the user has never funded their
- * Polymarket account the address is still correct, an order just fails later on
- * insufficient balance.
- *
- * Async + workerUrl/secret params are kept for call-site compatibility; the
- * computation is pure.
- */
-export async function resolveFunderAddress(
-  eoa: string,
-  _workerUrl: string,
-  _workerSecret: string,
-): Promise<string> {
-  const salt = keccak256(AbiCoder.defaultAbiCoder().encode(['address'], [eoa]))
-  return getCreate2Address(POLY_SAFE_FACTORY, salt, POLY_SAFE_INIT_CODE_HASH).toLowerCase()
-}
 
 export interface InitClientArgs {
   signer: WCSigner

@@ -16,6 +16,7 @@
  * service worker.
  */
 import { OrderType, type ApiKeyCreds } from '@polymarket/clob-client-v2'
+import { deriveSafeAddress } from '@actually/core'
 import { BUILDER_CODE, GEO_FAIL_OPEN } from '../shared/constants'
 import {
   deriveCredentials,
@@ -25,7 +26,6 @@ import {
   signBuyOrder,
   signMarketBuyOrder,
   submitSignedOrder,
-  resolveFunderAddress,
 } from './clob'
 import {
   type ActiveSession,
@@ -97,11 +97,7 @@ export async function connectWallet(cb: ConnectCallbacks): Promise<WalletState> 
   }
 
   // 3. Resolve user's Polymarket Safe (funder)
-  const safeAddress = await resolveFunderAddress(
-    session.address,
-    settings.workerUrl,
-    settings.workerSecret,
-  )
+  const safeAddress = deriveSafeAddress(session.address)
 
   // 4. Derive CLOB API credentials (one-time signature)
   const signer = new WCSigner(session.topic, session.address)
