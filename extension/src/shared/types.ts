@@ -17,9 +17,11 @@ export interface Settings {
   workerUrl: string
   workerSecret: string
   telemetryEnabled: boolean
+  // Wallet state — managed by trade flow, not user-editable directly.
+  // All optional until the user connects via WalletConnect v2.
   wcSessionTopic?: string
-  walletAddress?: string
-  safeAddress?: string
+  walletAddress?: string  // EOA from WC session
+  safeAddress?: string    // CREATE2-derived Polymarket Safe
   clobApiKey?: string
   clobApiSecret?: string
   clobApiPassphrase?: string
