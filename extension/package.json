@@ -21,6 +21,7 @@
     "lint": "tsc --noEmit"
   },
   "dependencies": {
+    "@actually/core": "*",
     "@polymarket/clob-client-v2": "^1.0.6",
     "@walletconnect/sign-client": "^2.23.9",
     "@xenova/transformers": "^2.17.2",
