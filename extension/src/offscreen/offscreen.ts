@@ -11,7 +11,8 @@
  */
 import type { OffscreenRequest, OffscreenResponse, SerializableWalletState } from '../shared/messages'
 import { getSettings } from '../background/settings'
-import { findMatch } from '../background/matcher'
+import { findMatch } from '@actually/core'
+import { makeChromeMarketStore, makeSettingsEmbedder } from '../background/adapters'
 import { refreshMarketCache, getMarketCache, getCacheStatus } from '../background/cache'
 import { CACHE_TTL_MINUTES } from '../shared/constants'
 import type { Settings } from '../shared/types'
@@ -146,7 +147,14 @@ async function handle(msg: OffscreenRequest): Promise<OffscreenResponse> {
           cacheNow = await getMarketCache()
         }
         step = 'find_match'
-        const match = await findMatch(msg.article.headline, msg.article.bodyText, settings)
+        const match = await findMatch(msg.article.headline, msg.article.bodyText, {
+          store: makeChromeMarketStore(),
+          embedder: makeSettingsEmbedder(settings),
+          thresholds: {
+            confidenceThreshold: settings.confidenceThreshold,
+            lowConfidenceFloor: settings.lowConfidenceFloor,
+          },
+        })
         if (!match) {
           // Surface diagnostics in the reason so the UI can show what
           // actually happened (cache size, why nothing matched). Without
