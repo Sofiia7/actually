@@ -18,6 +18,14 @@ interface Env {
   RATE_LIMITS?: KVNamespace
   /** Optional Analytics Engine dataset for telemetry persistence. */
   TELEMETRY?: AnalyticsEngineDataset
+  /** Precomputed market-cache blob storage — see /market-cache routes. */
+  MARKET_CACHE?: KVNamespace
+  /**
+   * Guards PUT /market-cache. Unlike WORKER_SHARED_SECRET (public by design,
+   * baked into every client), this secret is NEVER baked into anything —
+   * only the precompute cron job holds it.
+   */
+  MARKET_CACHE_WRITE_SECRET?: string
 }
 
 /**

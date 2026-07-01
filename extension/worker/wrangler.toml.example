@@ -27,6 +27,10 @@ workers_dev = true
 binding = "RATE_LIMITS"
 id = "YOUR_KV_NAMESPACE_ID"
 
+[[kv_namespaces]]
+binding = "MARKET_CACHE"
+id = "YOUR_KV_NAMESPACE_ID"
+
 # Optional: telemetry persistence. Without this binding /telemetry just logs
 # counts. With it, each event is written as a data point you can query in the
 # CF dashboard. Create the dataset implicitly by deploying with this binding.
@@ -43,3 +47,11 @@ WORKER_DEV_MODE = ""  # set to "true" only for local dev
 # Secrets — DO NOT put in this file. Use wrangler secret put.
 #   WORKER_SHARED_SECRET — random 32+ chars, baked into extension as VITE_WORKER_SECRET
 #   OPENAI_API_KEY       — only for centralized OpenAI embedding fallback
+#   MARKET_CACHE_WRITE_SECRET — random 32+ chars (openssl rand -hex 32). Set
+#                             via `wrangler secret put MARKET_CACHE_WRITE_SECRET`.
+#                             Distinct from WORKER_SHARED_SECRET: the shared
+#                             secret is baked into public clients (extension,
+#                             any MCP server operator) by design and offers no
+#                             real protection; this one guards who can OVERWRITE
+#                             the precomputed market cache and must stay private
+#                             to the precompute cron job only.

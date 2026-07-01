@@ -12,6 +12,12 @@ binding = "RATE_LIMITS"
 # Then paste the returned id here LOCALLY ONLY — do not commit your real id.
 id = "REPLACE_WITH_KV_NAMESPACE_ID"
 
+[[kv_namespaces]]
+binding = "MARKET_CACHE"
+# Create with: npx wrangler kv namespace create MARKET_CACHE
+# Then paste the returned id here LOCALLY ONLY — do not commit your real id.
+id = "REPLACE_WITH_KV_NAMESPACE_ID"
+
 [vars]
 # Non-secret defaults — override in CF dashboard or `wrangler secret put`.
 #
