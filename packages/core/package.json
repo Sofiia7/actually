@@ -10,6 +10,9 @@
     "test:watch": "vitest",
     "lint": "tsc --noEmit"
   },
+  "dependencies": {
+    "ethers": "^6.16.0"
+  },
   "devDependencies": {
     "typescript": "^5.4.5",
     "vitest": "^1.6.0"
