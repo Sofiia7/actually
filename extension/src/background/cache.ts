@@ -1,12 +1,12 @@
 import type { EmbeddingProvider } from '../shared/types'
 import { EMBED_PROGRESS_CHUNK, STORAGE_KEYS } from '../shared/constants'
-import { fetchActiveMarkets } from './polymarket'
 import { embedBatch } from './embeddings'
 import {
   type CachedMarket,
   type PolyMarket,
   LOCAL_MODEL_ID,
   MAX_MARKETS_CACHE,
+  fetchActiveMarkets,
   floatArrayToB64,
   isBinaryOutcomes,
   isNoiseMarket,
