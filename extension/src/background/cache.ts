@@ -1,19 +1,17 @@
 import type { EmbeddingProvider } from '../shared/types'
-import type { CachedMarket, PolyMarket } from '@actually/core'
-import {
-  EMBED_PROGRESS_CHUNK,
-  LOCAL_MODEL_ID,
-  MAX_MARKETS_CACHE,
-  NOISE_QUESTION_PATTERNS,
-  STORAGE_KEYS,
-} from '../shared/constants'
+import { EMBED_PROGRESS_CHUNK, STORAGE_KEYS } from '../shared/constants'
 import { fetchActiveMarkets } from './polymarket'
 import { embedBatch } from './embeddings'
-import { floatArrayToB64, isBinaryOutcomes, sha256 } from '@actually/core'
-
-function isNoiseMarket(question: string): boolean {
-  return NOISE_QUESTION_PATTERNS.some((re) => re.test(question))
-}
+import {
+  type CachedMarket,
+  type PolyMarket,
+  LOCAL_MODEL_ID,
+  MAX_MARKETS_CACHE,
+  floatArrayToB64,
+  isBinaryOutcomes,
+  isNoiseMarket,
+  sha256,
+} from '@actually/core'
 
 export async function getMarketCache(): Promise<CachedMarket[]> {
   const data = await chrome.storage.local.get(STORAGE_KEYS.marketCache)
