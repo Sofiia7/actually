@@ -55,4 +55,34 @@ describe('buildBlob', () => {
     const blob = await buildBlob(markets, embed, 'test-model', 1)
     expect(blob.markets.map((m) => m.id)).toEqual(['binary'])
   })
+
+  it('returns an empty blob with zero embed calls when given no markets', async () => {
+    let embedCalls = 0
+    const embed = async () => {
+      embedCalls++
+      return new Float32Array([1, 0, 0])
+    }
+    const blob = await buildBlob([], embed, 'test-model', 42)
+    expect(blob).toEqual({ model: 'test-model', builtAt: 42, markets: [] })
+    expect(embedCalls).toBe(0)
+  })
+
+  it('drops a market that is both noise AND categorical (filters compose, not just one masking the other)', async () => {
+    const markets = [
+      market({ id: 'keep', question: 'Will Iran enrich uranium by July?', outcomes: '["Yes","No"]' }),
+      market({
+        id: 'noise-and-categorical',
+        question: 'Will Trump say "tremendous" during the speech?',
+        outcomes: '["A","B","C"]',
+      }),
+    ]
+    let embedCalls = 0
+    const embed = async () => {
+      embedCalls++
+      return new Float32Array([1, 0, 0])
+    }
+    const blob = await buildBlob(markets, embed, 'test-model', 1)
+    expect(blob.markets.map((m) => m.id)).toEqual(['keep'])
+    expect(embedCalls).toBe(1)
+  })
 })

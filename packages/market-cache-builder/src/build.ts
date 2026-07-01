@@ -31,75 +31,63 @@ function requireEnv(name: string): string {
 }
 
 async function main() {
-  const workerUrl = requireEnv('WORKER_URL')
-  const workerSecret = requireEnv('WORKER_SHARED_SECRET')
-  const writeSecret = DRY_RUN ? undefined : requireEnv('MARKET_CACHE_WRITE_SECRET')
-
-  const fetchTarget = MAX_MARKETS_CACHE + 50
-  console.log(`[market-cache-builder] fetching up to ${fetchTarget} markets from ${workerUrl}`)
-  const fetchStartedAt = Date.now()
-  let markets
+  // Step tracker — a single catch below logs which stage failed, so an
+  // unattended cron job's log has one self-sufficient diagnostic line
+  // instead of a bare, context-free stack trace.
+  let step = 'init'
   try {
-    markets = await fetchActiveMarkets(workerUrl, workerSecret, fetchTarget)
+    step = 'read_env'
+    const workerUrl = requireEnv('WORKER_URL')
+    const workerSecret = requireEnv('WORKER_SHARED_SECRET')
+    const writeSecret = DRY_RUN ? undefined : requireEnv('MARKET_CACHE_WRITE_SECRET')
+
+    step = 'fetch_markets'
+    const fetchTarget = MAX_MARKETS_CACHE + 50
+    console.log(`[market-cache-builder] fetching up to ${fetchTarget} markets from ${workerUrl}`)
+    const markets = await fetchActiveMarkets(workerUrl, workerSecret, fetchTarget)
+    console.log(`[market-cache-builder] fetched ${markets.length} markets`)
+
+    step = 'load_model'
+    const { pipeline, env } = await import('@xenova/transformers')
+    env.allowLocalModels = false
+    const extractor = await pipeline('feature-extraction', LOCAL_MODEL_ID)
+    const embed = async (text: string): Promise<Float32Array> => {
+      const out = (await extractor(text, { pooling: 'mean', normalize: true })) as { data: Float32Array }
+      return out.data
+    }
+
+    step = 'build_blob'
+    const toEmbed = markets.slice(0, MAX_MARKETS_CACHE)
+    const blob = await buildBlob(toEmbed, embed, LOCAL_MODEL_ID, Date.now())
+    console.log(`[market-cache-builder] embedded ${blob.markets.length} markets after noise/binary filtering`)
+
+    if (DRY_RUN) {
+      step = 'write_dry_run_file'
+      writeFileSync(DRY_RUN_OUTPUT_PATH, JSON.stringify(blob, null, 2))
+      console.log(`[market-cache-builder] --dry-run: wrote blob to ${DRY_RUN_OUTPUT_PATH} (not sent to the worker)`)
+      return
+    }
+
+    step = 'put_worker'
+    const res = await fetch(`${workerUrl}/market-cache`, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Actually-Auth': workerSecret,
+        'X-Actually-Cache-Write': writeSecret!,
+      },
+      body: JSON.stringify(blob),
+    })
+    if (!res.ok) {
+      const text = await res.text()
+      throw new Error(`market-cache PUT failed: ${res.status} ${text}`)
+    }
+    const result = (await res.json()) as { ok: boolean; count: number }
+    console.log(`[market-cache-builder] wrote ${result.count} markets to the worker cache`)
   } catch (err) {
-    // fetchActiveMarkets throws a bare `fetch_markets_failed:<status>` with no
-    // indication of how long it ran or how close it got to the target before a
-    // persistent 5xx gave up retrying. In an unattended cron job this line is
-    // often the only diagnostic an operator gets, so make it self-sufficient.
-    const elapsedSec = ((Date.now() - fetchStartedAt) / 1000).toFixed(1)
-    console.error(
-      `[market-cache-builder] fetchActiveMarkets failed after ${elapsedSec}s ` +
-        `(requested up to ${fetchTarget} markets from ${workerUrl}/markets): ${(err as Error).message}`,
-    )
-    throw err
+    console.error(`[market-cache-builder] failed at step "${step}":`, err)
+    process.exitCode = 1
   }
-  console.log(`[market-cache-builder] fetched ${markets.length} markets`)
-
-  const { pipeline, env } = await import('@xenova/transformers')
-  env.allowLocalModels = false
-  const extractor = await pipeline('feature-extraction', LOCAL_MODEL_ID)
-  const embed = async (text: string): Promise<Float32Array> => {
-    const out = (await extractor(text, { pooling: 'mean', normalize: true })) as { data: Float32Array }
-    return out.data
-  }
-
-  const toEmbed = markets.slice(0, MAX_MARKETS_CACHE)
-  let blob
-  try {
-    blob = await buildBlob(toEmbed, embed, LOCAL_MODEL_ID, Date.now())
-  } catch (err) {
-    console.error(
-      `[market-cache-builder] buildBlob failed while embedding up to ${toEmbed.length} ` +
-        `markets (fetched ${markets.length} total): ${(err as Error).message}`,
-    )
-    throw err
-  }
-  console.log(`[market-cache-builder] embedded ${blob.markets.length} markets after noise/binary filtering`)
-
-  if (DRY_RUN) {
-    writeFileSync(DRY_RUN_OUTPUT_PATH, JSON.stringify(blob, null, 2))
-    console.log(`[market-cache-builder] --dry-run: wrote blob to ${DRY_RUN_OUTPUT_PATH} (not sent to the worker)`)
-    return
-  }
-
-  const res = await fetch(`${workerUrl}/market-cache`, {
-    method: 'PUT',
-    headers: {
-      'Content-Type': 'application/json',
-      'X-Actually-Auth': workerSecret,
-      'X-Actually-Cache-Write': writeSecret!,
-    },
-    body: JSON.stringify(blob),
-  })
-  if (!res.ok) {
-    const text = await res.text()
-    throw new Error(`market-cache PUT failed: ${res.status} ${text}`)
-  }
-  const result = (await res.json()) as { ok: boolean; count: number }
-  console.log(`[market-cache-builder] wrote ${result.count} markets to the worker cache`)
 }
 
-main().catch((err) => {
-  console.error('[market-cache-builder] failed:', err)
-  process.exitCode = 1
-})
+main()

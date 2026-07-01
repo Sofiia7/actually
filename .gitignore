@@ -17,6 +17,9 @@ dist/
 worker/.wrangler/
 worker/.dev.vars
 
+# market-cache-builder --dry-run output (local inspection only, never committed)
+packages/market-cache-builder/market-cache-blob.json
+
 # OS / IDE
 .DS_Store
 .idea/
