@@ -1,12 +1,25 @@
-import type { MatchResult, PolyMarket, Settings } from '../shared/types'
-import {
-  COLOR_THRESHOLDS,
-  HEADLINE_WEIGHT,
-  MAX_BODY_TEXT_CHARS,
-} from '../shared/constants'
-import { embed } from './embeddings'
-import { getMarketCache } from './cache'
-import { b64ToFloatArray, cosineSimilarity, findOutcomeIndex } from '@actually/core'
+import type { CachedMarket, MatchResult } from './types'
+import { COLOR_THRESHOLDS, HEADLINE_WEIGHT, MAX_BODY_TEXT_CHARS } from './constants'
+import { b64ToFloatArray, cosineSimilarity, findOutcomeIndex } from './util'
+
+export interface MarketStore {
+  getMarkets(): Promise<CachedMarket[]>
+}
+
+export interface Embedder {
+  embed(text: string): Promise<Float32Array>
+}
+
+export interface MatchThresholds {
+  confidenceThreshold: number
+  lowConfidenceFloor: number
+}
+
+export interface FindMatchDeps {
+  store: MarketStore
+  embedder: Embedder
+  thresholds: MatchThresholds
+}
 
 function getColor(prob: number): MatchResult['color'] {
   if (prob < COLOR_THRESHOLDS.blue) return 'blue'
@@ -96,21 +109,16 @@ function priceFromOutcomes(outcomePrices: string, outcomesJson: string): number 
 export async function findMatch(
   headline: string,
   bodyText: string,
-  settings: Settings,
+  deps: FindMatchDeps,
 ): Promise<MatchResult | null> {
-  const cache = await getMarketCache()
+  const cache = await deps.store.getMarkets()
   if (cache.length === 0) return null
 
   const trimmedBody = bodyText.slice(0, MAX_BODY_TEXT_CHARS)
   const inputText =
     Array(HEADLINE_WEIGHT).fill(headline).join(' ') + ' ' + trimmedBody
 
-  const articleVec = await embed(
-    settings.embeddingProvider,
-    inputText,
-    settings.workerUrl,
-    settings.workerSecret,
-  )
+  const articleVec = await deps.embedder.embed(inputText)
 
   // Topic-specific content words from the headline. When the article is about
   // "uranium", markets whose question contains "uranium" should rank above
@@ -120,11 +128,9 @@ export async function findMatch(
 
   // Score every market. Three additive components:
   //   1. raw cosine similarity (semantic relatedness)
-  //   2. lexical-overlap bonus (+0.04 per shared keyword stem, +0.01 for
-  //      low-value stems, capped +0.15) — catches topical specificity that
-  //      embeddings smooth over (see keywordOverlapBonus)
+  //   2. lexical-overlap bonus (see keywordOverlapBonus)
   //   3. small volume bonus (capped +0.015) — tiebreaker for genuine ties
-  const scored: { market: PolyMarket; score: number; raw: number }[] = []
+  const scored: { market: CachedMarket; score: number; raw: number }[] = []
   for (const m of cache) {
     if (!m.embeddingB64) continue
     const v = b64ToFloatArray(m.embeddingB64)
@@ -140,8 +146,8 @@ export async function findMatch(
 
   // Compare thresholds against the raw semantic score (not the boosted one),
   // so the volume bonus only acts as a tiebreaker, not a confidence inflator.
-  const isAboveThreshold = top.raw >= settings.confidenceThreshold
-  const isAboveFloor = top.raw >= settings.lowConfidenceFloor
+  const isAboveThreshold = top.raw >= deps.thresholds.confidenceThreshold
+  const isAboveFloor = top.raw >= deps.thresholds.lowConfidenceFloor
   if (!isAboveFloor) return null
 
   const probability = priceFromOutcomes(top.market.outcomePrices, top.market.outcomes)
