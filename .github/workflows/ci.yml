@@ -4,50 +4,49 @@ on:
   pull_request:
     paths:
       - 'extension/**'
+      - 'packages/**'
       - '.github/workflows/ci.yml'
   push:
     branches: [main]
     paths:
       - 'extension/**'
+      - 'packages/**'
       - '.github/workflows/ci.yml'
 
 jobs:
   test:
     name: lint + test + build
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: extension
     steps:
       - uses: actions/checkout@v4
 
       - uses: actions/setup-node@v4
         with:
-          # Match the dev/release toolchain (Node 24 → npm 11). npm 10 (Node 20)
-          # resolves the @exodus/bytes -> @noble/hashes range differently and
-          # rejects the npm-11-generated lockfile with EUSAGE on `npm ci`.
-          # Single source of truth for the version: extension/.nvmrc.
-          node-version-file: extension/.nvmrc
+          # Match the dev/release toolchain (Node 24 → npm 11). Single source
+          # of truth for the version: the repo-root .nvmrc.
+          node-version-file: .nvmrc
           cache: npm
-          cache-dependency-path: extension/package-lock.json
+          cache-dependency-path: package-lock.json
 
       - name: Install
         run: npm ci
 
-      - name: Type-check
-        run: npm run lint
+      - name: Type-check all workspaces
+        run: npm run lint --workspaces --if-present
 
-      - name: Unit tests
-        run: npm test
+      - name: Unit tests — all workspaces
+        run: npm test --workspaces --if-present
 
       # The production build needs (a) a fake Worker secret so vite.config.ts
       # build-time CSP substitution exercises its happy path and (b) the
       # Marck Script woff2 in public/fonts/. We fetch it from Google Fonts
       # the same way local devs do via `npm run fonts:fetch`.
       - name: Fetch fonts
+        working-directory: extension
         run: npm run fonts:fetch
 
-      - name: Build (with CI-stub env)
+      - name: Build extension (with CI-stub env)
+        working-directory: extension
         env:
           VITE_WORKER_URL: https://ci-stub.workers.dev
           VITE_WORKER_SECRET: ci-stub-secret-not-real
@@ -58,6 +57,7 @@ jobs:
       # Sanity-check that the production manifest CSP got the exact Worker
       # origin baked in (regression cover for vite.config.ts tightenConnectSrc).
       - name: Assert production CSP is tightened
+        working-directory: extension
         run: |
           grep -q 'ci-stub.workers.dev' dist/manifest.json
           if grep -q 'https://\*\.workers\.dev' dist/manifest.json; then
@@ -68,14 +68,12 @@ jobs:
       # Release gate: preflight (CSP/host_permissions/burned-secret) + smoke
       # (every manifest- and HTML-referenced file exists in the built bundle).
       - name: Release gate (preflight + smoke)
+        working-directory: extension
         run: |
           npm run preflight
           npm run smoke
 
       # Belt-and-suspenders: fail CI if any known leaked secret reappears.
-      # `preflight.mjs` is excluded because it intentionally embeds the burned
-      # token as its `BURNED_SECRET` guard constant — without the exclude this
-      # step would match its own guard file and fail on every run.
       - name: No-leaked-secrets check
         run: |
           set -e
