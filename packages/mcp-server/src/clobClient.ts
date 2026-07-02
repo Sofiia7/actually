@@ -1,0 +1,177 @@
+/**
+ * Polymarket CLOB v2 client — built around `@polymarket/clob-client-v2`.
+ *
+ * Mirrors extension/src/background/clob.ts's makeClient / signBuyOrder /
+ * signMarketBuyOrder / submitSignedOrder, but parameterized on
+ * `EthersKeySigner` (a local-private-key signer, see ./ethersKeySigner.ts)
+ * instead of the extension's WalletConnect-backed `WCSigner`, and on
+ * mcp-server's own baked `BUILDER_CODE` (./config, Task 16) instead of the
+ * extension's `import.meta.env`-derived one.
+ *
+ * There is no separate WalletConnect flow here — the signer's own EOA is all
+ * there is, so the Polymarket Safe (funder) address is derived locally via
+ * `deriveSafeAddress` rather than looked up or passed in externally.
+ */
+import {
+  ClobClient,
+  Chain,
+  OrderType,
+  Side,
+  SignatureTypeV2,
+  type ApiKeyCreds,
+} from '@polymarket/clob-client-v2'
+import { deriveSafeAddress } from '@actually/core'
+import { BUILDER_CODE } from './config'
+import type { EthersKeySigner } from './ethersKeySigner'
+
+const CLOB_HOST = 'https://clob.polymarket.com'
+
+export interface MakeClientArgs {
+  signer: EthersKeySigner
+  creds?: ApiKeyCreds
+}
+
+/** Resolve the caller's Polymarket Safe (funder) address from their EOA. */
+export async function funderForSigner(signer: EthersKeySigner): Promise<string> {
+  const eoa = await signer.getAddress()
+  return deriveSafeAddress(eoa)
+}
+
+export async function makeClient({ signer, creds }: MakeClientArgs): Promise<ClobClient> {
+  const funderAddress = await funderForSigner(signer)
+  return new ClobClient({
+    host: CLOB_HOST,
+    chain: Chain.POLYGON,
+    signer,
+    creds,
+    signatureType: SignatureTypeV2.POLY_GNOSIS_SAFE,
+    funderAddress,
+    // Default builderCode for orders that don't override it explicitly.
+    builderConfig: BUILDER_CODE ? { builderCode: BUILDER_CODE } : undefined,
+  })
+}
+
+/**
+ * One-time-per-device flow: exchange the signer's EOA signature for CLOB API
+ * key/secret/passphrase that authenticates all subsequent order submissions.
+ *
+ * SDK method names have drifted across versions. We probe the union of known
+ * shapes (`createOrDeriveApiKey`, `deriveApiKey`, `createApiKey`) so a minor
+ * SDK bump doesn't silently break onboarding. Whichever method exists is
+ * called; all are expected to return ApiKeyCreds.
+ */
+export async function deriveCredentials(client: ClobClient): Promise<ApiKeyCreds> {
+  const c = client as unknown as Record<string, undefined | ((this: ClobClient) => Promise<ApiKeyCreds>)>
+  const fn = c.createOrDeriveApiKey ?? c.deriveApiKey ?? c.createApiKey
+  if (typeof fn !== 'function') {
+    throw new Error('clob_sdk_missing_api_key_method')
+  }
+  return fn.call(client)
+}
+
+/** CLOB tick fallback: neg-risk markets default to 0.001, others to 0.01. */
+function fallbackTick(negRisk: boolean | undefined): string {
+  return negRisk ? '0.001' : '0.01'
+}
+
+export interface BuyOrderArgs {
+  tokenId: string
+  /** Price per share in USDC (0..1) */
+  price: number
+  /** Order size in shares (USDC notional = price × size) */
+  size: number
+  /** True for neg-risk events (different tick/contract config) */
+  negRisk?: boolean
+  /**
+   * Explicit tick size from the Gamma market record (e.g. "0.01" or
+   * "0.001"). Optional — falls back to negRisk-based default below.
+   * Hardcoding the wrong tick gets the order rejected as `invalid_tick`,
+   * so prefer to pass the real value.
+   */
+  tickSize?: string
+}
+
+/**
+ * Sign-only step. Returns the signed CLOB order object (EIP-712), or throws.
+ * Split out from submission so callers can distinguish "signed but failed to
+ * submit" from "never signed".
+ */
+export async function signBuyOrder(client: ClobClient, args: BuyOrderArgs): Promise<unknown> {
+  if (!BUILDER_CODE) throw new Error('builder_code_not_configured')
+  // SDK types tickSize as a closed union literal ('0.1' | '0.01' | ...). We
+  // accept the string from Gamma at runtime — if Gamma ever returns an
+  // unsupported value the SDK rejects with a clear error. The cast here is
+  // to the SDK's CreateOrderOptions shape since v2 marks the second param
+  // as Partial<...>.
+  const opts = {
+    tickSize: args.tickSize ?? fallbackTick(args.negRisk),
+    negRisk: args.negRisk ?? false,
+  } as Parameters<ClobClient['createOrder']>[1]
+  return client.createOrder(
+    { tokenID: args.tokenId, price: args.price, size: args.size, side: Side.BUY, builderCode: BUILDER_CODE },
+    opts,
+  )
+}
+
+export interface MarketBuyOrderArgs {
+  tokenId: string
+  /** USD notional to spend (SDK `amount` for a BUY market order). */
+  sizeUsd: number
+  /**
+   * Worst-acceptable price cap (0..1). Passed to the SDK as the marketable
+   * limit so a FOK can't fill above it — our slippage guard. Omit for an
+   * uncapped market take.
+   */
+  capPrice?: number
+  negRisk?: boolean
+  tickSize?: string
+}
+
+/**
+ * Sign-only step for a MARKET (FOK) buy. Mirrors signBuyOrder but uses the
+ * SDK's market-order path: `amount` is USD notional, execution is fill-or-kill,
+ * and `capPrice` (if given) bounds the fill price.
+ */
+export async function signMarketBuyOrder(client: ClobClient, args: MarketBuyOrderArgs): Promise<unknown> {
+  if (!BUILDER_CODE) throw new Error('builder_code_not_configured')
+  const opts = {
+    tickSize: args.tickSize ?? fallbackTick(args.negRisk),
+    negRisk: args.negRisk ?? false,
+  } as Parameters<ClobClient['createMarketOrder']>[1]
+  return client.createMarketOrder(
+    {
+      tokenID: args.tokenId,
+      amount: args.sizeUsd,
+      side: Side.BUY,
+      orderType: OrderType.FOK,
+      builderCode: BUILDER_CODE,
+      ...(args.capPrice != null ? { price: args.capPrice } : {}),
+    },
+    opts,
+  )
+}
+
+/**
+ * Submit-only step. Posts a previously-signed order to CLOB. `orderType` must
+ * match how the order was built: GTC for a resting limit, FOK for a market buy.
+ */
+export async function submitSignedOrder(
+  client: ClobClient,
+  signed: unknown,
+  orderType: OrderType = OrderType.GTC,
+): Promise<{ success: boolean; orderId?: string; error?: string }> {
+  try {
+    // SDK type is `SignedOrder` — we passed it through `unknown` to keep the
+    // sign/submit boundary explicit. Cast back here.
+    const res = (await client.postOrder(
+      signed as Parameters<ClobClient['postOrder']>[0],
+      orderType,
+    )) as { success?: boolean; errorMsg?: string; orderID?: string }
+    if (res.success) return { success: true, orderId: res.orderID }
+    return { success: false, error: res.errorMsg ?? 'clob_rejected' }
+  } catch (err) {
+    return { success: false, error: String(err) }
+  }
+}
+
+export { OrderType }
