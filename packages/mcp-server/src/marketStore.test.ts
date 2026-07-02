@@ -40,4 +40,20 @@ describe('WorkerMarketStore', () => {
     await store.getMarkets()
     expect(spy).toHaveBeenCalledTimes(1)
   })
+
+  it('throws a clear error when the response body is not valid JSON', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => new Response('not json', { status: 200 })))
+    const store = new WorkerMarketStore('https://worker.example', 'secret', 'Xenova/all-MiniLM-L12-v2')
+    await expect(store.getMarkets()).rejects.toThrow(/not valid JSON/i)
+  })
+
+  it('dedupes concurrent calls during a cache miss into a single fetch', async () => {
+    const spy = vi.fn(async () => new Response(JSON.stringify(validBlob), { status: 200 }))
+    vi.stubGlobal('fetch', spy)
+    const store = new WorkerMarketStore('https://worker.example', 'secret', 'Xenova/all-MiniLM-L12-v2')
+    const [a, b] = await Promise.all([store.getMarkets(), store.getMarkets()])
+    expect(spy).toHaveBeenCalledTimes(1)
+    expect(a).toHaveLength(1)
+    expect(b).toHaveLength(1)
+  })
 })

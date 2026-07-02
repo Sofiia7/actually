@@ -9,6 +9,7 @@ const CACHE_TTL_MS = 5 * 60_000
  */
 export class WorkerMarketStore implements MarketStore {
   private cached: { markets: CachedMarket[]; fetchedAt: number } | null = null
+  private inFlight: Promise<CachedMarket[]> | null = null
 
   constructor(
     private readonly workerUrl: string,
@@ -20,6 +21,18 @@ export class WorkerMarketStore implements MarketStore {
     if (this.cached && Date.now() - this.cached.fetchedAt < CACHE_TTL_MS) {
       return this.cached.markets
     }
+    // Concurrent callers during a cache miss share one fetch instead of each
+    // firing their own request against the worker (which rate-limits
+    // /market-cache GETs to 20/window).
+    if (!this.inFlight) {
+      this.inFlight = this.fetchAndCache().finally(() => {
+        this.inFlight = null
+      })
+    }
+    return this.inFlight
+  }
+
+  private async fetchAndCache(): Promise<CachedMarket[]> {
     const res = await fetch(`${this.workerUrl}/market-cache`, {
       headers: { 'X-Actually-Auth': this.workerSecret },
     })
@@ -27,7 +40,9 @@ export class WorkerMarketStore implements MarketStore {
       const text = await res.text().catch(() => '')
       throw new Error(`market-cache fetch failed: ${res.status} ${text}`)
     }
-    const blob = (await res.json()) as MarketCacheBlob
+    const blob = (await res.json().catch((err) => {
+      throw new Error(`market-cache response was not valid JSON: ${String(err)}`)
+    })) as MarketCacheBlob
     if (blob.model !== this.expectedModel) {
       throw new Error(
         `market-cache model mismatch: worker served "${blob.model}", expected "${this.expectedModel}". ` +
