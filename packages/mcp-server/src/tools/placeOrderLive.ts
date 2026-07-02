@@ -27,7 +27,14 @@ export function makeSignAndSubmit(
       credsPromise = (async () => {
         const bootstrapClient = await makeClient({ signer })
         return deriveCredentials(bootstrapClient)
-      })()
+      })().catch((err: unknown) => {
+        // Only a FAILED derivation clears the cache so the next call gets a
+        // fresh attempt (transient CLOB API hiccup, network blip during the
+        // EIP-712 round-trip). A successful derivation stays cached forever —
+        // the credentials don't change, so there's never a reason to re-derive.
+        credsPromise = null
+        throw err
+      })
     }
     return credsPromise
   }
