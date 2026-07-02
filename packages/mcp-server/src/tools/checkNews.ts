@@ -22,7 +22,7 @@ export interface CheckNewsOutput {
   confidence?: number
   lowConfidence?: boolean
   alternatives?: Array<{ marketId: string; question: string }>
-  reason?: string
+  reason?: 'empty_text' | 'no_market_above_floor'
 }
 
 export interface CheckNewsDeps {
@@ -31,6 +31,9 @@ export interface CheckNewsDeps {
   thresholds: MatchThresholds
 }
 
+// Errors from deps.store/deps.embedder (network failures, model load
+// failures, etc.) propagate uncaught — the MCP tool-registration layer is
+// responsible for catching and converting to a tool-error response.
 export async function checkNews(deps: CheckNewsDeps, input: CheckNewsInput): Promise<CheckNewsOutput> {
   const text = input.text.trim()
   if (text.length === 0) {
@@ -55,12 +58,14 @@ export async function checkNews(deps: CheckNewsDeps, input: CheckNewsInput): Pro
       question: match.market.question,
       endDate: match.market.endDate,
       clobTokenIds: match.market.clobTokenIds,
-      negRisk: match.market.negRisk ?? false,
+      negRisk: match.market.negRisk ?? false, // Polymarket data model: absence means false.
       tickSize: match.market.tickSize,
     },
     marketProbabilityYes: match.probability,
     confidence: match.confidence,
     lowConfidence: match.lowConfidence,
+    // Trim further than findMatch's own cap of 4 — keeps the agent's context
+    // small; findMatch already ranked these by relevance.
     alternatives: match.alternatives.slice(0, 3).map((m) => ({ marketId: m.id, question: m.question })),
   }
 }
