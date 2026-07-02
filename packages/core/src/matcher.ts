@@ -1,6 +1,6 @@
 import type { CachedMarket, MatchResult } from './types'
 import { COLOR_THRESHOLDS, HEADLINE_WEIGHT, MAX_BODY_TEXT_CHARS } from './constants'
-import { b64ToFloatArray, cosineSimilarity, findOutcomeIndex } from './util'
+import { b64ToFloatArray, cosineSimilarity, priceFromOutcomes } from './util'
 
 export interface MarketStore {
   getMarkets(): Promise<CachedMarket[]>
@@ -92,18 +92,6 @@ export function keywordOverlapBonus(headlineKw: Set<string>, marketQuestion: str
  */
 function stem(w: string): string {
   return w.slice(0, 4)
-}
-
-function priceFromOutcomes(outcomePrices: string, outcomesJson: string): number {
-  // Probability shown is always the YES side. Map by label since some markets
-  // list "No" first.
-  const yesIdx = findOutcomeIndex(outcomesJson, 'Yes')
-  try {
-    const arr = JSON.parse(outcomePrices) as string[]
-    return parseFloat(arr[yesIdx] ?? '0')
-  } catch {
-    return 0
-  }
 }
 
 export async function findMatch(

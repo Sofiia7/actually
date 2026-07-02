@@ -55,6 +55,23 @@ export function findOutcomeIndex(outcomesJson: string, label: 'Yes' | 'No'): num
 }
 
 /**
+ * Read the YES-outcome price from a market's outcomePrices/outcomes JSON
+ * strings. Probability is always shown as the YES side; maps by label since
+ * some markets list "No" first. Returns 0 on any parse failure — callers
+ * that need to distinguish "market has no probability" from "market says 0%"
+ * should check for malformed input themselves before calling this.
+ */
+export function priceFromOutcomes(outcomePrices: string, outcomesJson: string): number {
+  const yesIdx = findOutcomeIndex(outcomesJson, 'Yes')
+  try {
+    const arr = JSON.parse(outcomePrices) as string[]
+    return parseFloat(arr[yesIdx] ?? '0')
+  } catch {
+    return 0
+  }
+}
+
+/**
  * Parse a JSON-encoded string array (Polymarket Gamma returns `outcomes`
  * and `outcomePrices` as JSON strings, not native arrays). Returns []
  * on any parse failure so callers can default-index without `?.`.
