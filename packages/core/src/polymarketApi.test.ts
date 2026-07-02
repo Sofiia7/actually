@@ -1,5 +1,6 @@
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { normalizeTick } from './polymarketApi'
+import { fetchOrderbookJson } from './polymarketApi'
 
 describe('normalizeTick', () => {
   it('accepts the two CLOB-canonical tick sizes', () => {
@@ -30,5 +31,27 @@ describe('normalizeTick', () => {
     expect(normalizeTick(undefined)).toBeUndefined()
     expect(normalizeTick('')).toBeUndefined()
     expect(normalizeTick('not a number')).toBeUndefined()
+  })
+})
+
+afterEach(() => {
+  vi.unstubAllGlobals()
+})
+
+describe('fetchOrderbookJson', () => {
+  it('fetches the worker /orderbook proxy with the token id and auth header', async () => {
+    const spy = vi.fn(async () => new Response(JSON.stringify({ asks: [], bids: [] }), { status: 200 }))
+    vi.stubGlobal('fetch', spy)
+    const book = await fetchOrderbookJson('tok-1', 'https://worker.example', 'secret')
+    expect(book).toEqual({ asks: [], bids: [] })
+    const [url, init] = spy.mock.calls[0] as unknown as [string, RequestInit]
+    expect(url).toContain('/orderbook?token_id=tok-1')
+    expect((init.headers as Record<string, string>)['X-Actually-Auth']).toBe('secret')
+  })
+
+  it('returns an empty book on a non-ok response rather than throwing', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => new Response('{}', { status: 500 })))
+    const book = await fetchOrderbookJson('tok-1', 'https://worker.example', 'secret')
+    expect(book).toEqual({ asks: [], bids: [] })
   })
 })
