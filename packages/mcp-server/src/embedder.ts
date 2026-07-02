@@ -21,7 +21,15 @@ export class LocalEmbedder implements Embedder {
         env.allowLocalModels = false
         const extractor = await pipeline('feature-extraction', LOCAL_MODEL_ID)
         return extractor as unknown as Extractor
-      })()
+      })().catch((err) => {
+        // Only a FAILED load clears the cache so the next call gets a fresh
+        // attempt (network blip, registry hiccup, corrupted cache on a
+        // ~33MB first-run download are all plausible). A successful load
+        // stays cached forever — the model doesn't change, so there's never
+        // a reason to reload it.
+        this.pipelinePromise = null
+        throw err
+      })
     }
     return this.pipelinePromise
   }
