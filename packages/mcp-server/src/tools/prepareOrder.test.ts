@@ -42,4 +42,15 @@ describe('prepareOrder', () => {
       builderCode: '0xbuilder',
     })
   })
+
+  it('floors LIMIT order size to cents on a non-terminating division', () => {
+    const result = prepareOrder(
+      { builderCode: '0xbuilder' },
+      { tokenId: 'tok-no', side: 'BUY_NO', sizeUsd: 20, price: 0.3, orderType: 'LIMIT', negRisk: true, tickSize: '0.001' },
+    )
+    expect(result.ok).toBe(true)
+    expect(result.unsignedOrder).toMatchObject({
+      size: 66.66, // 20 / 0.3 = 66.666... -> floored to cents
+    })
+  })
 })

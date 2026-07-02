@@ -39,7 +39,7 @@ export function prepareOrder(deps: PrepareOrderDeps, input: PrepareOrderInput): 
         side: 'BUY',
         orderType: 'FOK',
         builderCode: deps.builderCode,
-        ...(input.price != null ? { price: input.price } : {}),
+        price: input.price,
       },
       warning: SIGN_UNCHANGED_WARNING,
     }
