@@ -37,4 +37,17 @@ describe('parseOrderbook', () => {
     expect(est?.slippage).toBe(1)
     expect(est?.effectivePrice).toBeCloseTo(0.50, 6)
   })
+
+  it('filters out levels with non-numeric price/size instead of propagating NaN', () => {
+    const book = {
+      asks: [{ price: 'not-a-number', size: '100' }, { price: '0.60', size: '50' }],
+      bids: [{ price: '0.50', size: '200' }, { price: '0.45', size: 'garbage' }],
+    }
+    const snap = parseOrderbook(book)
+    expect(snap.bestAsk).toBeCloseTo(0.60, 6)
+    expect(snap.bestBid).toBeCloseTo(0.50, 6)
+    expect(snap.spread).toBeCloseTo(0.10, 6)
+    expect(Number.isNaN(snap.bestAsk)).toBe(false)
+    expect(Number.isNaN(snap.bestBid)).toBe(false)
+  })
 })
