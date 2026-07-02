@@ -27,18 +27,25 @@ export interface PlaceOrderOutput {
   error?: string
 }
 
-// Errors from deps.signAndSubmit (network failures, signer errors, etc.) are
-// expected to be reported via the SignAndSubmitResult's success/error fields
-// rather than thrown; the real wiring (EthersKeySigner + deriveCredentials +
-// signBuyOrder/signMarketBuyOrder + submitSignedOrder from clobClient.ts) is
-// assembled where this tool is registered, kept out of this file so the
-// orchestration logic here stays testable without a real signer or network call.
+// deps.signAndSubmit is preferably expected to report failures via the
+// SignAndSubmitResult's success/error fields rather than throwing, but that's
+// not guaranteed — e.g. clobClient.ts's signBuyOrder/signMarketBuyOrder throw
+// (rather than returning a failure object) when BUILDER_CODE isn't
+// configured. The try/catch below normalizes either failure mode into the
+// same PlaceOrderOutput shape, so callers (and Task 26's real wiring) never
+// need to worry about an unhandled rejection escaping this function.
 export async function placeOrder(deps: PlaceOrderDeps, input: PlaceOrderInput): Promise<PlaceOrderOutput> {
   if (!deps.privateKey) {
     return { ok: false, error: 'not_configured' }
   }
 
-  const result = await deps.signAndSubmit(input)
+  let result: SignAndSubmitResult
+  try {
+    result = await deps.signAndSubmit(input)
+  } catch (err) {
+    return { ok: false, error: String(err) }
+  }
+
   if (!result.success) {
     return { ok: false, error: result.error ?? 'unknown_error' }
   }
