@@ -1,4 +1,4 @@
-import { findOutcomeIndex, parseOrderbook, type MarketStore, type RawOrderbook } from '@actually/core'
+import { findOutcomeIndex, parseOrderbook, priceFromOutcomes, type MarketStore, type RawOrderbook } from '@actually/core'
 
 export interface GetMarketInput {
   marketId: string
@@ -38,7 +38,7 @@ export async function getMarket(deps: GetMarketDeps, input: GetMarketInput): Pro
 
   const yesIdx = findOutcomeIndex(market.outcomes, 'Yes')
   const yesTokenId = market.clobTokenIds[yesIdx]
-  const probabilityYes = parseFloat((JSON.parse(market.outcomePrices) as string[])[yesIdx] ?? '0')
+  const probabilityYes = priceFromOutcomes(market.outcomePrices, market.outcomes)
 
   const [livePrice, book] = await Promise.all([
     yesTokenId ? deps.fetchLivePrice(yesTokenId) : Promise.resolve(null),

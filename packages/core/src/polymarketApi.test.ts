@@ -40,11 +40,11 @@ afterEach(() => {
 
 describe('fetchOrderbookJson', () => {
   it('fetches the worker /orderbook proxy with the token id and auth header', async () => {
-    const spy = vi.fn(async () => new Response(JSON.stringify({ asks: [], bids: [] }), { status: 200 }))
+    const spy = vi.fn(async (_url: string, _init: RequestInit) => new Response(JSON.stringify({ asks: [], bids: [] }), { status: 200 }))
     vi.stubGlobal('fetch', spy)
     const book = await fetchOrderbookJson('tok-1', 'https://worker.example', 'secret')
     expect(book).toEqual({ asks: [], bids: [] })
-    const [url, init] = spy.mock.calls[0] as unknown as [string, RequestInit]
+    const [url, init] = spy.mock.calls[0]
     expect(url).toContain('/orderbook?token_id=tok-1')
     expect((init.headers as Record<string, string>)['X-Actually-Auth']).toBe('secret')
   })

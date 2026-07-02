@@ -49,4 +49,41 @@ describe('getMarket', () => {
     expect(result.orderbook?.bestAsk).toBeCloseTo(0.32, 6)
     expect(result.orderbook?.bestBid).toBeCloseTo(0.30, 6)
   })
+
+  it('degrades gracefully when the market has no YES token id', async () => {
+    const mkt = fakeMarket({ id: 'm1', clobTokenIds: [] })
+    const store = { getMarkets: async () => [mkt] }
+    let fetchLivePriceCalled = false
+    let fetchOrderbookCalled = false
+    const result = await getMarket(
+      {
+        store,
+        fetchLivePrice: async () => {
+          fetchLivePriceCalled = true
+          return 0.5
+        },
+        fetchOrderbook: async () => {
+          fetchOrderbookCalled = true
+          return { asks: [{ price: '0.5', size: '1' }], bids: [{ price: '0.4', size: '1' }] }
+        },
+      },
+      { marketId: 'm1' },
+    )
+    expect(result.found).toBe(true)
+    expect(result.livePrice).toBeNull()
+    expect(result.orderbook).toEqual({ bestBid: null, bestAsk: null, spread: null })
+    expect(fetchLivePriceCalled).toBe(false)
+    expect(fetchOrderbookCalled).toBe(false)
+  })
+
+  it('reports probabilityYes as 0 instead of throwing when outcomePrices is malformed', async () => {
+    const mkt = fakeMarket({ id: 'm1', outcomePrices: 'not json' })
+    const store = { getMarkets: async () => [mkt] }
+    const result = await getMarket(
+      { store, fetchLivePrice: async () => null, fetchOrderbook: async () => ({ asks: [], bids: [] }) },
+      { marketId: 'm1' },
+    )
+    expect(result.found).toBe(true)
+    expect(result.market?.probabilityYes).toBe(0)
+  })
 })
