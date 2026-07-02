@@ -1,4 +1,5 @@
 import type { PolyMarket } from './types'
+import type { RawOrderbook } from './orderbook'
 
 function authHeaders(workerSecret: string): HeadersInit {
   return { 'X-Actually-Auth': workerSecret, 'Content-Type': 'application/json' }
@@ -125,5 +126,28 @@ export async function fetchLivePrice(
     return data.price ? parseFloat(data.price) : null
   } catch {
     return null
+  }
+}
+
+/**
+ * Fetch the raw CLOB orderbook via the worker's unauthenticated-to-CLOB proxy
+ * (public order-book data — no signer or wallet needed). Returns an empty
+ * book rather than throwing on failure so callers can degrade gracefully
+ * (e.g. get_market still returns market info without a live orderbook).
+ */
+export async function fetchOrderbookJson(
+  tokenId: string,
+  workerUrl: string,
+  workerSecret: string,
+): Promise<RawOrderbook> {
+  try {
+    const params = new URLSearchParams({ token_id: tokenId })
+    const res = await fetch(`${workerUrl}/orderbook?${params}`, {
+      headers: authHeaders(workerSecret),
+    })
+    if (!res.ok) return { asks: [], bids: [] }
+    return (await res.json()) as RawOrderbook
+  } catch {
+    return { asks: [], bids: [] }
   }
 }
