@@ -35,4 +35,18 @@ describe('placeOrder', () => {
     expect(result.ok).toBe(false)
     expect(result.error).toBe('insufficient_balance')
   })
+
+  it('does not throw when signAndSubmit rejects', async () => {
+    const result = await placeOrder(
+      {
+        privateKey: '0xabc',
+        signAndSubmit: async () => {
+          throw new Error('builder_code_not_configured')
+        },
+      },
+      { marketId: 'm1', tokenId: 'tok-yes', side: 'BUY_YES', sizeUsd: 10, price: 0.5, orderType: 'MARKET', negRisk: false },
+    )
+    expect(result.ok).toBe(false)
+    expect(result.error).toBeDefined()
+  })
 })
