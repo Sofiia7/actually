@@ -19,8 +19,16 @@ export interface OrderbookSnapshot {
 /** Pure book-level math — no fetch, no signer. Shared by the extension's
  * wallet-bound orderbook path and the MCP server's unauthenticated one. */
 export function parseOrderbook(book: RawOrderbook): OrderbookSnapshot {
-  const asks = (book.asks ?? []).map((l) => ({ price: Number(l.price), size: Number(l.size) }))
-  const bids = (book.bids ?? []).map((l) => ({ price: Number(l.price), size: Number(l.size) }))
+  // A malformed level (non-numeric price/size from a flaky upstream response)
+  // would otherwise poison sort/spread/estimateBuy with NaN — which
+  // JSON.stringify silently renders as `null`, indistinguishable from "no
+  // orderbook data" to a caller. Drop the level instead of propagating NaN.
+  const asks = (book.asks ?? [])
+    .map((l) => ({ price: Number(l.price), size: Number(l.size) }))
+    .filter((l) => Number.isFinite(l.price) && Number.isFinite(l.size))
+  const bids = (book.bids ?? [])
+    .map((l) => ({ price: Number(l.price), size: Number(l.size) }))
+    .filter((l) => Number.isFinite(l.price) && Number.isFinite(l.size))
   asks.sort((a, b) => a.price - b.price)
   bids.sort((a, b) => b.price - a.price)
 
