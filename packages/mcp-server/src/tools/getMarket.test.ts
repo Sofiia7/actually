@@ -86,4 +86,68 @@ describe('getMarket', () => {
     expect(result.found).toBe(true)
     expect(result.market?.probabilityYes).toBe(0)
   })
+
+  it('falls back to fetchMarketById when the market is outside the cache', async () => {
+    const store = { getMarkets: async () => [fakeMarket({ id: 'other' })] }
+    let fallbackCalledWith: string | undefined
+    const result = await getMarket(
+      {
+        store,
+        fetchLivePrice: async () => 0.4,
+        fetchOrderbook: async () => ({ asks: [], bids: [] }),
+        fetchMarketById: async (id) => {
+          fallbackCalledWith = id
+          return {
+            id: 'm-uncached',
+            slug: 'uncached',
+            question: 'Uncached market?',
+            outcomePrices: '["0.4","0.6"]',
+            outcomes: '["Yes","No"]',
+            volume: 1,
+            liquidity: 1,
+            active: true,
+            closed: false,
+            clobTokenIds: ['tok-yes-u', 'tok-no-u'],
+          }
+        },
+      },
+      { marketId: 'm-uncached' },
+    )
+    expect(fallbackCalledWith).toBe('m-uncached')
+    expect(result.found).toBe(true)
+    expect(result.market?.marketId).toBe('m-uncached')
+  })
+
+  it('stays found=false when the fallback also misses', async () => {
+    const store = { getMarkets: async () => [] }
+    const result = await getMarket(
+      {
+        store,
+        fetchLivePrice: async () => null,
+        fetchOrderbook: async () => ({ asks: [], bids: [] }),
+        fetchMarketById: async () => null,
+      },
+      { marketId: 'unknown' },
+    )
+    expect(result.found).toBe(false)
+  })
+
+  it('does not call the fallback when the cache already has the market', async () => {
+    const mkt = fakeMarket({ id: 'm1' })
+    const store = { getMarkets: async () => [mkt] }
+    let fallbackCalled = false
+    await getMarket(
+      {
+        store,
+        fetchLivePrice: async () => null,
+        fetchOrderbook: async () => ({ asks: [], bids: [] }),
+        fetchMarketById: async () => {
+          fallbackCalled = true
+          return null
+        },
+      },
+      { marketId: 'm1' },
+    )
+    expect(fallbackCalled).toBe(false)
+  })
 })

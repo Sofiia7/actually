@@ -1,7 +1,7 @@
 {
   "name": "actually-mcp-server",
   "version": "0.1.0",
-  "private": true,
+  "private": false,
   "type": "module",
   "bin": {
     "actually-mcp-server": "dist/index.js"
