@@ -47,6 +47,24 @@ Keep `MARKET_CACHE_WRITE_SECRET` out of version control — store it in the
 env file referenced above with permissions restricted to the user running
 the cron job.
 
+### No dedicated server? Use the bundled GitHub Actions workflow
+
+This repo has no always-on server of its own, so
+`.github/workflows/market-cache-cron.yml` runs this script on a schedule
+instead — every 2 hours (not 30 min: GitHub Actions minutes are metered on a
+private repo, and 30-minute cadence would burn through the free tier on this
+job alone). It needs three **repository secrets** (Settings → Secrets and
+variables → Actions → New repository secret — or `gh secret set NAME`):
+
+| Secret | Value |
+|---|---|
+| `ACTUALLY_WORKER_URL` | Same worker URL as everything else. |
+| `ACTUALLY_WORKER_SHARED_SECRET` | The same `WORKER_SHARED_SECRET` configured on the worker. |
+| `ACTUALLY_MARKET_CACHE_WRITE_SECRET` | The same `MARKET_CACHE_WRITE_SECRET` configured on the worker — **not** the shared secret above, a distinct private one. |
+
+Trigger a run manually from the Actions tab (`workflow_dispatch`) to
+smoke-test before waiting for the schedule.
+
 ## Reading the log when something fails
 
 The script tracks which stage it's in (`read_env`, `fetch_markets`,
