@@ -127,11 +127,21 @@ time by `npm run fonts:fetch` and bundled into the .crx as woff2 files.
   the Hugging Face CDN pinned in our CSP — not attacker-controlled. The
   `@ethersproject/*` signing primitives ship via `clob-client-v2`, but we sign
   exclusively through the user's wallet (WalletConnect), so those paths aren't hit.
+- **`ws` (via `@walletconnect/jsonrpc-ws-connection` → `viem`), high severity —
+  bundled but unreachable.** `npm run build` compiles this package's transport
+  selection literally: `typeof self.WebSocket !== 'undefined' ? self.WebSocket
+  : require('ws')` — verified present as a string in `dist/assets/offscreen-*.js`.
+  The offscreen document always has a real `self.WebSocket` (it's a full DOM
+  context, unlike a bare Node service worker), so the `require('ws')` branch
+  never executes in the shipped extension; the vulnerable code ships as dead
+  bytes, not a live code path. Re-check this reasoning if WalletConnect's
+  transport-selection logic changes in an upstream bump.
 
 No `npm audit fix --force` is applied because every "fix" is a breaking
 downgrade of a runtime-critical dependency. Bundling the model weights into the
-.crx (planned v1.1) removes the Hugging Face fetch and closes this surface
-entirely.
+.crx (planned v1.1) removes the Hugging Face fetch and closes the protobufjs
+surface entirely; the `ws` branch stays dead code regardless since it's gated
+on an environment check, not a version bump.
 
 Re-triage when `clob-client-v2` ships an ethers v6 release or
 `@xenova/transformers` v3 (server-side ONNX) lands.

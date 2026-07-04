@@ -1,11 +1,23 @@
 # Actually — Roadmap to v1 (post-audit)
 
-**Status date:** 2026-06-23
+**Status date:** 2026-07-05 (re-verified against code — see per-sprint notes below;
+original write-up was 2026-06-23 and had drifted from what had actually landed).
 **Canonical source of truth for remaining work.** Spec sprints 0–5 are done
 (see `actually-extension-spec.md` §16). This document supersedes the "pending"
 rows of spec §16 and folds in the post-audit findings.
 
 Legend — "green" = `npx tsc --noEmit` + `npx vitest run` + `npm run build` all clean.
+
+**2026-07-05 re-verification: Sprints 6–10 are ALL DONE**, confirmed by reading
+the actual current code (not just trusting this doc), with one real gap found
+and fixed in the same pass (10.7 — SECURITY.md was missing the `ws`/viem
+WalletConnect-transport advisory chain; added). **Sprint 11 (beta + CWS) is the
+only sprint below still open**, and it's non-code (human process). Since this
+doc was last written, an unrelated agentic MCP-server layer (`packages/core`,
+`packages/mcp-server`, `packages/market-cache-builder`) was also built on top
+of the shared matching engine — see
+`docs/superpowers/specs/2026-06-30-agentic-layer-design.md` — it does not
+change anything below.
 
 ## Locked product decisions
 
@@ -48,7 +60,7 @@ prod. CI is green on Node 24 / npm 11. The remaining gates to public launch are
 
 ---
 
-## Sprint 6 — Trading correctness + order ticket 🔴 release blocker
+## Sprint 6 — Trading correctness + order ticket ✅ done (verified 2026-07-05)
 
 | ID | Exact change | Files | Acceptance |
 |---|---|---|---|
@@ -62,9 +74,11 @@ prod. CI is green on Node 24 / npm 11. The remaining gates to public launch are
 | 6.8 | `order_submitted` meta: add `order_type`, `maker_taker` | `background/trade.ts` | Events carry order type |
 | 6.9 | New-user (POLY_1271): on `funder_not_found` show explicit "v1 supports existing Polymarket Safe; deposit wallets (POLY_1271) coming soon". Full sigType-3 support only if cheap; else → Post-v1 | `background/clob.ts`, `popup_new/TradeTabWired.tsx` | New user gets a clear message |
 
-Tests (TDD): `orderMath` (shares/payout/return, tick, maker/taker, FOK cap).
+Tests (TDD): `orderMath` (shares/payout/return, tick, maker/taker, FOK cap). ✅
+`orderMath.test.ts` (19 tests) + `TradeTabWired.test.tsx` cover wallet-gating,
+slippage>20% disable, and the confirm-before-sign step.
 
-## Sprint 7 — Worker hardening 🔴 release blocker
+## Sprint 7 — Worker hardening ✅ done (verified 2026-07-05)
 
 | ID | Exact change | Files |
 |---|---|---|
@@ -73,7 +87,10 @@ Tests (TDD): `orderMath` (shares/payout/return, tick, maker/taker, FOK cap).
 | 7.3 | `/telemetry` persist to Analytics Engine or D1 (not `console.log`); add binding | `worker/index.ts`, `worker/wrangler.toml(.example)` |
 | 7.4 | `console.warn` once when `RATE_LIMITS` KV unbound (fail-open visibility) | `worker/index.ts` |
 
-## Sprint 8 — Secrets, geo posture, build hygiene 🔴 release blocker (light)
+All four confirmed live in `worker/index.ts`, covered by `worker.test.ts`/
+`embeddings-validation.test.ts`/`market-cache-validation.test.ts` (46 tests total).
+
+## Sprint 8 — Secrets, geo posture, build hygiene ✅ done (verified 2026-07-05)
 
 | ID | Exact change | Files |
 |---|---|---|
@@ -82,7 +99,15 @@ Tests (TDD): `orderMath` (shares/payout/return, tick, maker/taker, FOK cap).
 | 8.3 | Add telemetry `geo_unknown`; emit in `connectWallet`/`placeOrder` on unknown | `shared/types.ts`, `background/trade.ts` |
 | 8.4 | Pin Node 20 (`engines.node`); README note on non-ASCII/OneDrive build paths | `package.json`, `README.md` |
 
-## Sprint 9 — Tests & CI (finishes spec Sprint 6) 🟠
+**2026-07-05 addendum (found during re-verification, not in the original
+8.x list):** the CA-ON check in `/geo` read `CF-Region-Code` as an HTTP
+*header* — Cloudflare never sends region as a header to a Worker, only via
+`request.cf.regionCode`. Ontario would silently never have been geo-blocked
+in production despite the existing test passing (the test injected the same
+wrong header). Fixed in `worker/index.ts` + regression test added in
+`worker.test.ts` asserting a spoofed `CF-Region-Code` header is ignored.
+
+## Sprint 9 — Tests & CI (finishes spec Sprint 6) ✅ done (verified 2026-07-05)
 
 | ID | Exact change | Files |
 |---|---|---|
@@ -90,7 +115,12 @@ Tests (TDD): `orderMath` (shares/payout/return, tick, maker/taker, FOK cap).
 | 9.2 | Component tests (RTL): CheckTab links, YES/NO map, ticket math, slippage>20% disable, analytics gated by wallet, Limit/Market toggle | `popup_new/*.test.tsx` (new) |
 | 9.3 | `matcher.test.ts` imports real functions instead of copy-paste | `background/matcher.ts`, `matcher.test.ts` |
 
-## Sprint 10 — Cleanup & honesty 🟡
+9.3 is moot rather than done-as-written: the matcher moved to `@actually/core`
+entirely during the agentic-layer work (dependency-injected `findMatch`), so
+there's no extension-local `matcher.ts`/`matcher.test.ts` left to deduplicate —
+its tests live in `packages/core/src/matcher.test.ts` (13 tests) instead.
+
+## Sprint 10 — Cleanup & honesty ✅ done (verified 2026-07-05)
 
 | ID | Exact change | Files |
 |---|---|---|
@@ -103,7 +133,17 @@ Tests (TDD): `orderMath` (shares/payout/return, tick, maker/taker, FOK cap).
 | 10.7 | Correct npm-audit triage in SECURITY.md (onnx exercised, trusted CDN) | `SECURITY.md` |
 | 10.8 | Remove dead `popup_new/Popup.tsx` if unused; resolve untracked `design/` | `popup_new/Popup.tsx`, `.gitignore` |
 
-## Sprint 11 — Beta + CWS (spec Sprint 7) ⚪
+10.1–10.6 and 10.8 were already landed and re-verified clean by grep (no
+`personal_sign`, no dead `popup_new/Popup.tsx`, no untracked `design/`, TTL
+wired). **10.7 had a real gap**, fixed 2026-07-05: `npm audit` on the live
+tree shows a high-severity `ws` chain via
+`@walletconnect/jsonrpc-ws-connection` → `viem` that SECURITY.md didn't
+address at all. Confirmed the vulnerable `require('ws')` branch is present as
+dead bytes in the built `offscreen-*.js` (string-verified) but unreachable at
+runtime — the offscreen document always has `self.WebSocket`. Documented in
+`SECURITY.md`'s npm-audit-triage section.
+
+## Sprint 11 — Beta + CWS (spec Sprint 7) ⚪ still open — non-code, human process
 
 1. Prod build with rotated `.env.local`; verify dist CSP single origin + host_permissions = clob only.
 2. Clean-Chrome smoke per updated `release-checklist.md` (discovery → connect → limit → market FOK → disconnect&wipe → telemetry off).
@@ -120,4 +160,7 @@ Tests (TDD): `orderMath` (shares/payout/return, tick, maker/taker, FOK cap).
 
 ## Critical path
 
-Sprint 6 → 7 → 8 (blockers) → 9/10 (parallel) → 11. ≈ 7–9 working days.
+Sprints 6–10 are done. **Sprint 11 (beta + CWS) is the entire remaining
+critical path** to public launch — it is a human/process gate (recruit
+testers, capture screenshots, submit to the Chrome Web Store, run the closed
+beta), not an engineering task. No further code changes block it.
