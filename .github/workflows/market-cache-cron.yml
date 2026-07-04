@@ -1,0 +1,47 @@
+name: Market cache precompute
+
+# Substitutes for "your own always-on infra" mentioned in
+# packages/market-cache-builder/README.md — this project has no dedicated
+# server, so the precompute cron runs here instead. Cadence is every 2 hours
+# rather than the extension's 30-minute CACHE_TTL_MINUTES: this is a PRIVATE
+# repo, so GitHub Actions minutes are metered (2,000 free min/month on the
+# Free plan) — running every 30 min would burn ~3-4x that budget on this job
+# alone. Tighten the schedule (or move to real cron infra) if you upgrade
+# your GitHub plan or need fresher data than a 2-hour-stale cache.
+on:
+  schedule:
+    - cron: '17 */2 * * *' # odd minute to avoid the GH-wide top-of-hour pile-up
+  workflow_dispatch: {} # manual "run now" button in the Actions tab
+
+jobs:
+  build-cache:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - name: Install
+        run: npm ci
+
+      # transformers.js caches the ~33MB MiniLM ONNX model under ./.cache
+      # relative to cwd (see @xenova/transformers env.js DEFAULT_CACHE_DIR).
+      # Without this, every single run re-downloads the model from
+      # huggingface.co, which is slow and adds load to their CDN for nothing.
+      - name: Cache the local embedding model
+        uses: actions/cache@v4
+        with:
+          path: packages/market-cache-builder/.cache
+          key: minilm-l12-v2-${{ hashFiles('packages/core/src/constants.ts') }}
+
+      - name: Precompute and push the market cache
+        working-directory: packages/market-cache-builder
+        env:
+          WORKER_URL: ${{ secrets.ACTUALLY_WORKER_URL }}
+          WORKER_SHARED_SECRET: ${{ secrets.ACTUALLY_WORKER_SHARED_SECRET }}
+          MARKET_CACHE_WRITE_SECRET: ${{ secrets.ACTUALLY_MARKET_CACHE_WRITE_SECRET }}
+        run: npm run build-cache
