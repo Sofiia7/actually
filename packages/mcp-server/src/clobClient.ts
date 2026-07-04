@@ -174,4 +174,94 @@ export async function submitSignedOrder(
   }
 }
 
-export { OrderType }
+export interface SellOrderArgs {
+  tokenId: string
+  /** Price per share in USDC (0..1) */
+  price: number
+  /** Shares to sell (not USD notional) */
+  size: number
+  negRisk?: boolean
+  tickSize?: string
+}
+
+/** Sign-only step for a resting (GTC) SELL — the position-closing mirror of signBuyOrder. */
+export async function signSellOrder(client: ClobClient, args: SellOrderArgs): Promise<unknown> {
+  if (!BUILDER_CODE) throw new Error('builder_code_not_configured')
+  const opts = {
+    tickSize: args.tickSize ?? fallbackTick(args.negRisk),
+    negRisk: args.negRisk ?? false,
+  } as Parameters<ClobClient['createOrder']>[1]
+  return client.createOrder(
+    { tokenID: args.tokenId, price: args.price, size: args.size, side: Side.SELL, builderCode: BUILDER_CODE },
+    opts,
+  )
+}
+
+export interface MarketSellOrderArgs {
+  tokenId: string
+  /** Shares to sell — the SDK's `amount` field means USD for BUY market orders but SHARES for SELL. */
+  sizeShares: number
+  /** Worst-acceptable price floor (0..1) so a FOK can't fill below it. */
+  capPrice?: number
+  negRisk?: boolean
+  tickSize?: string
+}
+
+/** Sign-only step for a MARKET (FOK) SELL — the position-closing mirror of signMarketBuyOrder. */
+export async function signMarketSellOrder(client: ClobClient, args: MarketSellOrderArgs): Promise<unknown> {
+  if (!BUILDER_CODE) throw new Error('builder_code_not_configured')
+  const opts = {
+    tickSize: args.tickSize ?? fallbackTick(args.negRisk),
+    negRisk: args.negRisk ?? false,
+  } as Parameters<ClobClient['createMarketOrder']>[1]
+  return client.createMarketOrder(
+    {
+      tokenID: args.tokenId,
+      amount: args.sizeShares,
+      side: Side.SELL,
+      orderType: OrderType.FOK,
+      builderCode: BUILDER_CODE,
+      ...(args.capPrice != null ? { price: args.capPrice } : {}),
+    },
+    opts,
+  )
+}
+
+/** Cancel a single resting order by id. */
+export async function cancelOrder(client: ClobClient, orderId: string): Promise<{ success: boolean; error?: string }> {
+  try {
+    const res = (await client.cancelOrder({ orderID: orderId })) as { success?: boolean; errorMsg?: string } | undefined
+    if (res && res.success === false) return { success: false, error: res.errorMsg ?? 'cancel_rejected' }
+    return { success: true }
+  } catch (err) {
+    return { success: false, error: String(err) }
+  }
+}
+
+export interface OpenOrderSummary {
+  orderId: string
+  marketId: string
+  tokenId: string
+  side: string
+  price: string
+  originalSize: string
+  sizeMatched: string
+  status: string
+}
+
+/** List the signer's resting orders, optionally filtered to one market. */
+export async function listOpenOrders(client: ClobClient, marketId?: string): Promise<OpenOrderSummary[]> {
+  const orders = await client.getOpenOrders(marketId ? { market: marketId } : undefined)
+  return orders.map((o) => ({
+    orderId: o.id,
+    marketId: o.market,
+    tokenId: o.asset_id,
+    side: o.side,
+    price: o.price,
+    originalSize: o.original_size,
+    sizeMatched: o.size_matched,
+    status: o.status,
+  }))
+}
+
+export { OrderType, Side }

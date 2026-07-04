@@ -16,9 +16,21 @@ export interface SignAndSubmitResult {
   error?: string
 }
 
+export interface SpendGuardLike {
+  check(sizeUsd: number): { ok: true } | { ok: false; error: string }
+  record(sizeUsd: number): void
+}
+
 export interface PlaceOrderDeps {
   privateKey: string | undefined
   signAndSubmit: (args: PlaceOrderInput) => Promise<SignAndSubmitResult>
+  /**
+   * Backstop against a prompt-injected or buggy calling agent placing
+   * unbounded real-money orders. Optional only so existing unit tests that
+   * don't care about spend limits stay minimal — index.ts always wires a
+   * real one in production.
+   */
+  spendGuard?: SpendGuardLike
 }
 
 export interface PlaceOrderOutput {
@@ -39,6 +51,13 @@ export async function placeOrder(deps: PlaceOrderDeps, input: PlaceOrderInput): 
     return { ok: false, error: 'not_configured' }
   }
 
+  if (deps.spendGuard) {
+    const guard = deps.spendGuard.check(input.sizeUsd)
+    if (!guard.ok) {
+      return { ok: false, error: guard.error }
+    }
+  }
+
   let result: SignAndSubmitResult
   try {
     result = await deps.signAndSubmit(input)
@@ -49,6 +68,10 @@ export async function placeOrder(deps: PlaceOrderDeps, input: PlaceOrderInput): 
   if (!result.success) {
     return { ok: false, error: result.error ?? 'unknown_error' }
   }
+
+  // Only a CONFIRMED submit counts against the daily total — a rejected or
+  // failed order (caught above) must not consume the operator's budget.
+  deps.spendGuard?.record(input.sizeUsd)
 
   return { ok: true, orderId: result.orderId }
 }

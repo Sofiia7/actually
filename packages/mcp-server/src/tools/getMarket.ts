@@ -1,4 +1,11 @@
-import { findOutcomeIndex, parseOrderbook, priceFromOutcomes, type MarketStore, type RawOrderbook } from '@actually/core'
+import {
+  findOutcomeIndex,
+  parseOrderbook,
+  priceFromOutcomes,
+  type MarketStore,
+  type PolyMarket,
+  type RawOrderbook,
+} from '@actually/core'
 
 export interface GetMarketInput {
   marketId: string
@@ -24,6 +31,14 @@ export interface GetMarketDeps {
   store: MarketStore
   fetchLivePrice: (tokenId: string) => Promise<number | null>
   fetchOrderbook: (tokenId: string) => Promise<RawOrderbook>
+  /**
+   * Fallback lookup against Gamma directly when `marketId` isn't in the
+   * precomputed cache — the cache only holds the top MAX_MARKETS_CACHE
+   * markets by volume, so a valid id outside that cut would otherwise
+   * always report found:false. Optional so cache-only callers/tests are
+   * unaffected.
+   */
+  fetchMarketById?: (marketId: string) => Promise<PolyMarket | null>
 }
 
 // Errors from deps.store/deps.fetchLivePrice/deps.fetchOrderbook (network
@@ -31,7 +46,10 @@ export interface GetMarketDeps {
 // layer is responsible for catching and converting to a tool-error response.
 export async function getMarket(deps: GetMarketDeps, input: GetMarketInput): Promise<GetMarketOutput> {
   const markets = await deps.store.getMarkets()
-  const market = markets.find((m) => m.id === input.marketId)
+  let market: PolyMarket | undefined = markets.find((m) => m.id === input.marketId)
+  if (!market && deps.fetchMarketById) {
+    market = (await deps.fetchMarketById(input.marketId)) ?? undefined
+  }
   if (!market) {
     return { found: false }
   }

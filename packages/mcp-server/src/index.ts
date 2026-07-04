@@ -1,15 +1,28 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 import { z } from 'zod'
-import { defaultThresholds, fetchLivePrice, fetchOrderbookJson, LOCAL_MODEL_ID } from '@actually/core'
-import { BUILDER_CODE, PRIVATE_KEY, requireWorkerConfig } from './config'
+import {
+  defaultThresholds,
+  fetchLivePrice,
+  fetchMarketById,
+  fetchOrderbookJson,
+  LOCAL_MODEL_ID,
+  resolveOrderToken,
+} from '@actually/core'
+import { DAILY_LIMIT_USD, MAX_ORDER_USD, PRIVATE_KEY, requireWorkerConfig } from './config'
 import { WorkerMarketStore } from './marketStore'
 import { LocalEmbedder } from './embedder'
+import { SpendGuard } from './spendGuard'
+import { resolveMarket } from './resolveMarket'
+import { fetchPositions } from './positions'
 import { checkNews } from './tools/checkNews'
 import { getMarket } from './tools/getMarket'
 import { placeOrder } from './tools/placeOrder'
-import { prepareOrder } from './tools/prepareOrder'
-import { makeSignAndSubmit } from './tools/placeOrderLive'
+import { sellOrder } from './tools/sellOrder'
+import { cancelOrder } from './tools/cancelOrder'
+import { getOpenOrders } from './tools/getOpenOrders'
+import { getPositions } from './tools/getPositions'
+import { makeTradingSession } from './tradingSession'
 
 const server = new McpServer({ name: 'actually-mcp-server', version: '0.1.0' })
 
@@ -31,6 +44,14 @@ function getStore(): WorkerMarketStore {
   return store
 }
 
+function resolveMarketOrThrow(marketId: string) {
+  const { workerUrl, workerSecret } = requireWorkerConfig()
+  return resolveMarket(
+    { store: getStore(), fetchMarketById: (id) => fetchMarketById(id, workerUrl, workerSecret) },
+    marketId,
+  )
+}
+
 server.registerTool(
   'check_news',
   {
@@ -50,7 +71,10 @@ server.registerTool(
 server.registerTool(
   'get_market',
   {
-    description: 'Look up a specific Polymarket market by id: details, live price, and an orderbook snapshot.',
+    description:
+      'Look up a specific Polymarket market by id: details, live price, and an ' +
+      'orderbook snapshot. Falls back to a direct Gamma lookup when the id is ' +
+      "outside the precomputed cache's top markets by volume.",
     inputSchema: { marketId: z.string().min(1) },
   },
   async ({ marketId }) => {
@@ -60,6 +84,7 @@ server.registerTool(
         store: getStore(),
         fetchLivePrice: (tokenId) => fetchLivePrice(tokenId, workerUrl, workerSecret),
         fetchOrderbook: (tokenId) => fetchOrderbookJson(tokenId, workerUrl, workerSecret),
+        fetchMarketById: (id) => fetchMarketById(id, workerUrl, workerSecret),
       },
       { marketId },
     )
@@ -67,52 +92,112 @@ server.registerTool(
   },
 )
 
-server.registerTool(
-  'prepare_order',
-  {
-    description:
-      "Build an UNSIGNED Polymarket order carrying this server's builder code, for " +
-      'callers who sign with their own wallet tooling. The builder code is only ' +
-      'preserved if the returned object is signed exactly as-is.',
-    inputSchema: {
-      tokenId: z.string().min(1),
-      side: z.enum(['BUY_YES', 'BUY_NO']),
-      sizeUsd: z.number().positive(),
-      price: z.number().min(0).max(1),
-      orderType: z.enum(['LIMIT', 'MARKET']),
-      negRisk: z.boolean(),
-      tickSize: z.string().optional(),
-    },
-  },
-  async (input) => {
-    const result = prepareOrder({ builderCode: BUILDER_CODE }, input)
-    return { content: [{ type: 'text' as const, text: JSON.stringify(result) }] }
-  },
-)
-
-// place_order is only registered when an operator has configured their own
-// signing key — no key custody happens on our side, ever (see design spec).
+// Trading tools (place_order, sell_order, cancel_order, get_open_orders,
+// get_positions) are only registered when an operator has configured their
+// own signing key — no key custody happens on our side, ever (see design
+// spec). They share one TradingSession so credential derivation happens once
+// per process, and one SpendGuard so a per-order and daily USD ceiling is
+// enforced across both buys and sells.
 if (PRIVATE_KEY) {
-  const signAndSubmit = makeSignAndSubmit(PRIVATE_KEY)
+  const session = makeTradingSession(PRIVATE_KEY)
+  const spendGuard = new SpendGuard({ maxOrderUsd: MAX_ORDER_USD, dailyLimitUsd: DAILY_LIMIT_USD })
+
   server.registerTool(
     'place_order',
     {
       description:
-        "Sign and submit a Polymarket order using this server's configured " +
-        "POLYMARKET_PRIVATE_KEY, with this server's builder code attached.",
+        "Buy YES or NO shares in a Polymarket market using this server's configured " +
+        "POLYMARKET_PRIVATE_KEY, with this server's builder code attached. The token " +
+        "to trade is resolved server-side from marketId + side — callers cannot " +
+        `supply a raw token id. Capped at $${MAX_ORDER_USD}/order and $${DAILY_LIMIT_USD}/day.`,
       inputSchema: {
         marketId: z.string().min(1),
-        tokenId: z.string().min(1),
         side: z.enum(['BUY_YES', 'BUY_NO']),
         sizeUsd: z.number().positive(),
         price: z.number().min(0).max(1),
         orderType: z.enum(['LIMIT', 'MARKET']),
-        negRisk: z.boolean(),
-        tickSize: z.string().optional(),
       },
     },
     async (input) => {
-      const result = await placeOrder({ privateKey: PRIVATE_KEY, signAndSubmit }, input)
+      const market = await resolveMarketOrThrow(input.marketId)
+      if (!market) {
+        return { content: [{ type: 'text' as const, text: JSON.stringify({ ok: false, error: 'market_not_found' }) }] }
+      }
+      const target = resolveOrderToken(market, input.side === 'BUY_YES' ? 'Yes' : 'No')
+      const result = await placeOrder(
+        { privateKey: PRIVATE_KEY, signAndSubmit: session.signAndSubmitBuy, spendGuard },
+        { marketId: input.marketId, side: input.side, sizeUsd: input.sizeUsd, price: input.price, orderType: input.orderType, ...target },
+      )
+      return { content: [{ type: 'text' as const, text: JSON.stringify(result) }] }
+    },
+  )
+
+  server.registerTool(
+    'sell_order',
+    {
+      description:
+        'Sell YES or NO shares you hold in a Polymarket market (close or reduce a ' +
+        'position), signed with this server\'s configured POLYMARKET_PRIVATE_KEY. ' +
+        `Capped at an estimated $${MAX_ORDER_USD}/order and $${DAILY_LIMIT_USD}/day ` +
+        '(shares × price), shared with place_order\'s budget.',
+      inputSchema: {
+        marketId: z.string().min(1),
+        side: z.enum(['SELL_YES', 'SELL_NO']),
+        sizeShares: z.number().positive(),
+        price: z.number().min(0).max(1),
+        orderType: z.enum(['LIMIT', 'MARKET']),
+      },
+    },
+    async (input) => {
+      const market = await resolveMarketOrThrow(input.marketId)
+      if (!market) {
+        return { content: [{ type: 'text' as const, text: JSON.stringify({ ok: false, error: 'market_not_found' }) }] }
+      }
+      const target = resolveOrderToken(market, input.side === 'SELL_YES' ? 'Yes' : 'No')
+      const result = await sellOrder(
+        { privateKey: PRIVATE_KEY, signAndSubmit: session.signAndSubmitSell, spendGuard },
+        { marketId: input.marketId, side: input.side, sizeShares: input.sizeShares, price: input.price, orderType: input.orderType, ...target },
+      )
+      return { content: [{ type: 'text' as const, text: JSON.stringify(result) }] }
+    },
+  )
+
+  server.registerTool(
+    'cancel_order',
+    {
+      description: "Cancel one of this server's resting orders by order id.",
+      inputSchema: { orderId: z.string().min(1) },
+    },
+    async (input) => {
+      const result = await cancelOrder({ privateKey: PRIVATE_KEY, cancelOrder: session.cancelOrder }, input)
+      return { content: [{ type: 'text' as const, text: JSON.stringify(result) }] }
+    },
+  )
+
+  server.registerTool(
+    'get_open_orders',
+    {
+      description: "List this server's resting orders, optionally filtered to one market.",
+      inputSchema: { marketId: z.string().optional() },
+    },
+    async (input) => {
+      const result = await getOpenOrders({ privateKey: PRIVATE_KEY, listOpenOrders: session.listOpenOrders }, input)
+      return { content: [{ type: 'text' as const, text: JSON.stringify(result) }] }
+    },
+  )
+
+  server.registerTool(
+    'get_positions',
+    {
+      description: "List this server's current Polymarket positions with cost basis and unrealized P&L.",
+      inputSchema: {},
+    },
+    async () => {
+      const result = await getPositions({
+        privateKey: PRIVATE_KEY,
+        getFunderAddress: session.getFunderAddress,
+        fetchPositions,
+      })
       return { content: [{ type: 'text' as const, text: JSON.stringify(result) }] }
     },
   )
