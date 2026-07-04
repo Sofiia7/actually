@@ -28,3 +28,4 @@ packages/market-cache-builder/market-cache-blob.json
 # Claude / agent session data
 .claude/
 .cursor/
+.deploy-secrets.local
