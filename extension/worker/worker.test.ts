@@ -43,8 +43,15 @@ function req(path: string, o: ReqOpts = {}): Request {
   if (o.origin !== null) h.set('Origin', o.origin ?? ORIGIN)
   if (o.auth !== null) h.set('X-Actually-Auth', o.auth ?? 'secret')
   if (o.country) h.set('CF-IPCountry', o.country)
-  if (o.region) h.set('CF-Region-Code', o.region)
-  return new Request(`https://w.example${path}`, { method: o.method ?? 'GET', headers: h, body: o.body })
+  const request = new Request(`https://w.example${path}`, { method: o.method ?? 'GET', headers: h, body: o.body })
+  // Region code is NOT a header Cloudflare sends to Workers — it only rides on
+  // the runtime-attached `request.cf` object (IncomingRequestCfProperties).
+  // Standard Request has no `cf` slot, so we attach one here the same way the
+  // real Workers runtime does, to catch regressions like reading it as a header.
+  if (o.region) {
+    Object.defineProperty(request, 'cf', { value: { regionCode: o.region }, writable: true })
+  }
+  return request
 }
 
 const call = (path: string, env: never, o?: ReqOpts) => worker.fetch(req(path, o), env)
@@ -133,6 +140,17 @@ describe('/geo', () => {
   it('honors EXTRA_BLOCKED_COUNTRIES from env', async () => {
     const res = await call('/geo', baseEnv({ EXTRA_BLOCKED_COUNTRIES: 'DE,NL' }), { country: 'DE' })
     expect((await res.json() as { blocked: boolean }).blocked).toBe(true)
+  })
+
+  it('regression: a CF-Region-Code HTTP header (not real Cloudflare behavior) must NOT be trusted', async () => {
+    // Cloudflare never sends region as a request header to Workers — only via
+    // request.cf.regionCode. This guards against re-introducing the header-based
+    // read, which would silently never block Ontario in production.
+    const res = await call('/geo', baseEnv(), {
+      country: 'CA',
+      headers: { 'CF-Region-Code': 'ON' },
+    })
+    expect((await res.json() as { blocked: boolean }).blocked).toBe(false)
   })
 })
 

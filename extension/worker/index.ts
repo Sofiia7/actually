@@ -377,13 +377,19 @@ export default {
         return new Response(await res.text(), { status: res.status, headers })
       }
 
-      // --- Geo check via CF headers ---------------------------------
+      // --- Geo check via CF headers / request.cf ---------------------
       if (url.pathname === '/geo' && req.method === 'GET') {
         if (!(await rateLimit(env, 'geo', ip, 10))) {
           return json({ error: 'rate_limited' }, 429, headers)
         }
         const country = (req.headers.get('CF-IPCountry') ?? '').toUpperCase()
-        const region = (req.headers.get('CF-Region-Code') ?? '').toUpperCase()
+        // Cloudflare does NOT add a CF-Region-Code *header* to Worker
+        // requests (only CF-IPCountry/CF-Connecting-IP/CF-Ray/CF-Visitor are
+        // guaranteed headers). Region-level geolocation is only available via
+        // the `cf` object the Workers runtime attaches to the incoming
+        // Request (IncomingRequestCfProperties.regionCode). Reading a header
+        // that's never sent would silently never match CA+ON.
+        const region = (req.cf?.regionCode ?? '').toString().toUpperCase()
         const extra = (env as unknown as { EXTRA_BLOCKED_COUNTRIES?: string })
           .EXTRA_BLOCKED_COUNTRIES
         const extraSet = new Set(
