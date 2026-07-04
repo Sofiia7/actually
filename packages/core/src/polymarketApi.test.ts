@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { normalizeTick } from './polymarketApi'
-import { fetchOrderbookJson } from './polymarketApi'
+import { fetchOrderbookJson, fetchMarketById } from './polymarketApi'
 
 describe('normalizeTick', () => {
   it('accepts the two CLOB-canonical tick sizes', () => {
@@ -53,5 +53,45 @@ describe('fetchOrderbookJson', () => {
     vi.stubGlobal('fetch', vi.fn(async () => new Response('{}', { status: 500 })))
     const book = await fetchOrderbookJson('tok-1', 'https://worker.example', 'secret')
     expect(book).toEqual({ asks: [], bids: [] })
+  })
+})
+
+describe('fetchMarketById', () => {
+  const rawMarket = {
+    id: 'm42',
+    slug: 'will-x',
+    question: 'Will X?',
+    outcomePrices: '["0.3","0.7"]',
+    outcomes: '["Yes","No"]',
+    volume: 10,
+    liquidity: 5,
+    active: true,
+    closed: false,
+    clobTokenIds: '["tok-yes","tok-no"]',
+  }
+
+  it('queries the worker /markets proxy filtered by id', async () => {
+    const spy = vi.fn(async (_url: string, _init: RequestInit) => new Response(JSON.stringify([rawMarket]), { status: 200 }))
+    vi.stubGlobal('fetch', spy)
+    const market = await fetchMarketById('m42', 'https://worker.example', 'secret')
+    expect(market?.id).toBe('m42')
+    expect(market?.clobTokenIds).toEqual(['tok-yes', 'tok-no'])
+    const [url] = spy.mock.calls[0]
+    expect(String(url)).toContain('/markets?id=m42')
+  })
+
+  it('returns null when Gamma returns an empty array (unknown id)', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => new Response('[]', { status: 200 })))
+    expect(await fetchMarketById('unknown', 'https://worker.example', 'secret')).toBeNull()
+  })
+
+  it('returns null on a non-ok response', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => new Response('[]', { status: 500 })))
+    expect(await fetchMarketById('m42', 'https://worker.example', 'secret')).toBeNull()
+  })
+
+  it('returns null when the record is missing required fields', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify([{ id: 'm42' }]), { status: 200 })))
+    expect(await fetchMarketById('m42', 'https://worker.example', 'secret')).toBeNull()
   })
 })

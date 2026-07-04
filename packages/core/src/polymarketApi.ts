@@ -11,6 +11,45 @@ function authHeaders(workerSecret: string): HeadersInit {
 // string, producing nonsense.
 const GAMMA_PAGE = 100
 
+type RawGammaMarket = Partial<PolyMarket> & {
+  clobTokenIds?: string | string[]
+  volumeNum?: number
+  endDate?: string
+  end_date_iso?: string
+  description?: string
+  resolutionSource?: string
+  resolution_source?: string
+  negRisk?: boolean
+  neg_risk?: boolean
+  // Gamma names this differently across versions
+  orderPriceMinTickSize?: number | string
+  tickSize?: number | string
+  minimumTickSize?: number | string
+}
+
+/** Normalize one raw Gamma market record into our `PolyMarket` shape. Returns
+ * null when required fields are missing (caller skips the record). */
+function parseGammaMarket(m: RawGammaMarket): PolyMarket | null {
+  if (!m.id || !m.question || !m.outcomePrices || !m.outcomes) return null
+  return {
+    id: String(m.id),
+    slug: m.slug ?? '',
+    question: m.question,
+    outcomePrices: m.outcomePrices,
+    outcomes: m.outcomes,
+    volume: Number(m.volumeNum ?? m.volume ?? 0),
+    liquidity: Number(m.liquidity ?? 0),
+    active: Boolean(m.active),
+    closed: Boolean(m.closed),
+    clobTokenIds: parseClobTokenIds(m.clobTokenIds),
+    endDate: m.endDate ?? m.end_date_iso,
+    description: m.description,
+    resolutionSource: m.resolutionSource ?? m.resolution_source,
+    negRisk: m.negRisk ?? m.neg_risk ?? false,
+    tickSize: normalizeTick(m.orderPriceMinTickSize ?? m.tickSize ?? m.minimumTickSize),
+  }
+}
+
 export async function fetchActiveMarkets(
   workerUrl: string,
   workerSecret: string,
@@ -40,48 +79,38 @@ export async function fetchActiveMarkets(
       await new Promise((r) => setTimeout(r, 400 * (attempt + 1)))
     }
     if (!res || !res.ok) throw new Error(`fetch_markets_failed:${res?.status ?? 'network'}`)
-    const raw = (await res.json()) as Array<Partial<PolyMarket> & {
-      clobTokenIds?: string | string[]
-      volumeNum?: number
-      endDate?: string
-      end_date_iso?: string
-      description?: string
-      resolutionSource?: string
-      resolution_source?: string
-      negRisk?: boolean
-      neg_risk?: boolean
-      // Gamma names this differently across versions
-      orderPriceMinTickSize?: number | string
-      tickSize?: number | string
-      minimumTickSize?: number | string
-    }>
+    const raw = (await res.json()) as RawGammaMarket[]
     if (raw.length === 0) break
     for (const m of raw) {
-      if (!m.id || !m.question || !m.outcomePrices || !m.outcomes) continue
-      const id = String(m.id)
-      if (seenIds.has(id)) continue
-      seenIds.add(id)
-      out.push({
-        id,
-        slug: m.slug ?? '',
-        question: m.question,
-        outcomePrices: m.outcomePrices,
-        outcomes: m.outcomes,
-        volume: Number(m.volumeNum ?? m.volume ?? 0),
-        liquidity: Number(m.liquidity ?? 0),
-        active: Boolean(m.active),
-        closed: Boolean(m.closed),
-        clobTokenIds: parseClobTokenIds(m.clobTokenIds),
-        endDate: m.endDate ?? m.end_date_iso,
-        description: m.description,
-        resolutionSource: m.resolutionSource ?? m.resolution_source,
-        negRisk: m.negRisk ?? m.neg_risk ?? false,
-        tickSize: normalizeTick(m.orderPriceMinTickSize ?? m.tickSize ?? m.minimumTickSize),
-      })
+      const parsed = parseGammaMarket(m)
+      if (!parsed || seenIds.has(parsed.id)) continue
+      seenIds.add(parsed.id)
+      out.push(parsed)
       if (out.length >= total) return out
     }
   }
   return out
+}
+
+/**
+ * Fetch a single market by id directly from Gamma (via the worker's /markets
+ * proxy), bypassing the precomputed top-N-by-volume cache. Used as a fallback
+ * when a caller has a valid marketId that didn't make the cache's volume cut
+ * (the cache only holds MAX_MARKETS_CACHE markets). Returns null if Gamma has
+ * no such market (unknown id, or it fell outside active/closed filters).
+ */
+export async function fetchMarketById(
+  marketId: string,
+  workerUrl: string,
+  workerSecret: string,
+): Promise<PolyMarket | null> {
+  const params = new URLSearchParams({ id: marketId })
+  const res = await fetch(`${workerUrl}/markets?${params}`, { headers: authHeaders(workerSecret) })
+  if (!res.ok) return null
+  const raw = (await res.json()) as RawGammaMarket[]
+  if (!Array.isArray(raw) || raw.length === 0) return null
+  const match = raw.find((m) => String(m.id) === marketId) ?? raw[0]
+  return parseGammaMarket(match)
 }
 
 /**
