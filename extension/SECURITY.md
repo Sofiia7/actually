@@ -98,6 +98,12 @@ The shipped CSP `connect-src` allows only:
   are fetched on first use. **Planned v1.1**: bundle the MiniLM-L12-v2
   weights so this entry can be removed from CSP and the .crx becomes
   fully offline-deployable.
+- `cdn.jsdelivr.net` — `onnxruntime-web`'s default `wasmPaths` (unset in
+  `src/background/embeddings.ts`) falls back to fetching its WASM binaries
+  from jsdelivr rather than bundling them. Same v1.1 fix (bundling the
+  model + runtime) removes this entry too; until then it's a real, live
+  egress point, not dead code — keep it in sync with the CSP if that
+  changes.
 - WalletConnect v2 relay hosts (`*.walletconnect.com`, `*.walletconnect.org`,
   `*.reown.com`, plus the matching wss:// entries).
 
