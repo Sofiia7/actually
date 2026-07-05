@@ -13,7 +13,31 @@ npx actually-mcp-server
 ```
 
 Or add to your MCP client config (Claude Code, Cursor, etc.) pointing at
-`npx actually-mcp-server` with the environment variables below.
+`npx actually-mcp-server` with the environment variables below. For Claude
+Desktop / Claude Code (`.mcp.json` or `claude_desktop_config.json`):
+
+```json
+{
+  "mcpServers": {
+    "actually": {
+      "command": "npx",
+      "args": ["actually-mcp-server"],
+      "env": {
+        "ACTUALLY_WORKER_URL": "https://your-worker.workers.dev",
+        "ACTUALLY_WORKER_SECRET": "replace-with-worker-shared-secret",
+        "POLYMARKET_PRIVATE_KEY": "0xyour-own-private-key-never-committed",
+        "ACTUALLY_MAX_ORDER_USD": "100",
+        "ACTUALLY_DAILY_LIMIT_USD": "500"
+      }
+    }
+  }
+}
+```
+
+Omit `POLYMARKET_PRIVATE_KEY` (and the two caps) entirely to run signal-only
+(`check_news`/`get_market`, no wallet needed). See `.env.example` in this
+package for the same variables documented for local dev/testing outside an
+MCP client.
 
 ## Tools
 

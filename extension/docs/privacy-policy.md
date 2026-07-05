@@ -71,6 +71,7 @@ Disable telemetry at any time in Settings.
 | OpenAI | Only if you switch to OpenAI embeddings | Article headline + body excerpt for embedding |
 | WalletConnect / Reown | Only after you click Connect | WC relay handshake; never sees article content |
 | HuggingFace CDN | First load of local model | Model file download (one time) |
+| jsdelivr CDN | First load of local model | WASM runtime binaries for the embedding engine (`onnxruntime-web`'s default fallback location); no article content or personal data |
 
 ## Your rights
 
