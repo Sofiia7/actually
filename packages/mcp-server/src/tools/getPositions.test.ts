@@ -19,7 +19,7 @@ describe('getPositions', () => {
       getFunderAddress: async () => '0xsafe',
       fetchPositions: async (addr) => {
         queriedAddress = addr
-        return [{ tokenId: 'tok-yes', conditionId: 'c1', size: 10, avgPrice: 0.3, curPrice: 0.4, currentValue: 4, cashPnl: 1, percentPnl: 33, outcome: 'Yes', title: 'Will X?', slug: 'x' }]
+        return [{ tokenId: 'tok-yes', conditionId: 'c1', size: 10, avgPrice: 0.3, curPrice: 0.4, currentValue: 4, cashPnl: 1, percentPnl: 33, outcome: 'Yes', outcomeIndex: 0, negativeRisk: false, redeemable: false, title: 'Will X?', slug: 'x' }]
       },
     })
     expect(queriedAddress).toBe('0xsafe')

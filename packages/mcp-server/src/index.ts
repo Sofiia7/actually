@@ -22,7 +22,9 @@ import { sellOrder } from './tools/sellOrder'
 import { cancelOrder } from './tools/cancelOrder'
 import { getOpenOrders } from './tools/getOpenOrders'
 import { getPositions } from './tools/getPositions'
+import { redeemPosition } from './tools/redeemPosition'
 import { makeTradingSession } from './tradingSession'
+import { makeRelayerSubmit } from './relayerClient'
 
 const server = new McpServer({ name: 'actually-mcp-server', version: '0.1.0' })
 
@@ -189,7 +191,9 @@ if (PRIVATE_KEY) {
   server.registerTool(
     'get_positions',
     {
-      description: "List this server's current Polymarket positions with cost basis and unrealized P&L.",
+      description:
+        "List this server's current Polymarket positions with cost basis and unrealized P&L. " +
+        'A `redeemable: true` position has resolved and is ready for redeem_position.',
       inputSchema: {},
     },
     async () => {
@@ -198,6 +202,27 @@ if (PRIVATE_KEY) {
         getFunderAddress: session.getFunderAddress,
         fetchPositions,
       })
+      return { content: [{ type: 'text' as const, text: JSON.stringify(result) }] }
+    },
+  )
+
+  const relayerSubmit = makeRelayerSubmit(PRIVATE_KEY)
+  server.registerTool(
+    'redeem_position',
+    {
+      description:
+        'Claim payout for a resolved, winning position (get its conditionId from ' +
+        'get_positions — only positions with redeemable:true can be redeemed). This ' +
+        'is an on-chain transaction submitted through the Polymarket relayer, not a ' +
+        'CLOB order — no POL/gas needed in your wallet, Polymarket covers it. ' +
+        'Not gated by the spend guard (this claims money owed to you, it does not risk new capital).',
+      inputSchema: { conditionId: z.string().min(1) },
+    },
+    async (input) => {
+      const result = await redeemPosition(
+        { privateKey: PRIVATE_KEY, getFunderAddress: session.getFunderAddress, fetchPositions, submit: relayerSubmit },
+        input,
+      )
       return { content: [{ type: 'text' as const, text: JSON.stringify(result) }] }
     },
   )
