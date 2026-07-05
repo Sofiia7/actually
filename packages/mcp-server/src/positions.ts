@@ -8,6 +8,12 @@ export interface Position {
   cashPnl: number
   percentPnl: number
   outcome: string
+  /** 0 or 1 — which binary outcome slot this position occupies. Needed to redeem neg-risk positions. */
+  outcomeIndex: number
+  /** True for neg-risk (multi-outcome) markets — redeem_position needs this to pick the right contract. */
+  negativeRisk: boolean
+  /** True once the market has resolved and this position can be redeemed for pUSD. */
+  redeemable: boolean
   title: string
   slug: string
 }
@@ -22,6 +28,9 @@ interface RawPosition {
   cashPnl?: number
   percentPnl?: number
   outcome?: string
+  outcomeIndex?: number
+  negativeRisk?: boolean
+  redeemable?: boolean
   title?: string
   slug?: string
 }
@@ -45,6 +54,9 @@ export async function fetchPositions(address: string): Promise<Position[]> {
     cashPnl: p.cashPnl ?? 0,
     percentPnl: p.percentPnl ?? 0,
     outcome: p.outcome ?? '',
+    outcomeIndex: p.outcomeIndex ?? 0,
+    negativeRisk: p.negativeRisk ?? false,
+    redeemable: p.redeemable ?? false,
     title: p.title ?? '',
     slug: p.slug ?? '',
   }))

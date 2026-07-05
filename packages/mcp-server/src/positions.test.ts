@@ -18,6 +18,9 @@ describe('fetchPositions', () => {
         cashPnl: 2,
         percentPnl: 16.6,
         outcome: 'Yes',
+        outcomeIndex: 0,
+        negativeRisk: false,
+        redeemable: true,
         title: 'Will X happen?',
         slug: 'will-x-happen',
       },
@@ -37,12 +40,24 @@ describe('fetchPositions', () => {
         cashPnl: 2,
         percentPnl: 16.6,
         outcome: 'Yes',
+        outcomeIndex: 0,
+        negativeRisk: false,
+        redeemable: true,
         title: 'Will X happen?',
         slug: 'will-x-happen',
       },
     ])
     const [url] = spy.mock.calls[0]
     expect(String(url)).toBe('https://data-api.polymarket.com/positions?user=0xabc')
+  })
+
+  it('defaults outcomeIndex/negativeRisk/redeemable when the API omits them', async () => {
+    const raw = [{ asset: 'tok-yes', conditionId: 'cond-1', size: 40 }]
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify(raw), { status: 200 })))
+    const [position] = await fetchPositions('0xabc')
+    expect(position.outcomeIndex).toBe(0)
+    expect(position.negativeRisk).toBe(false)
+    expect(position.redeemable).toBe(false)
   })
 
   it('returns an empty array when the address has no positions', async () => {
