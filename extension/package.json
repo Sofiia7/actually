@@ -16,6 +16,7 @@
     "worker:dev": "cd worker && wrangler dev",
     "worker:deploy": "cd worker && wrangler deploy",
     "fonts:fetch": "node scripts/fetch-fonts.mjs",
+    "models:fetch": "node scripts/fetch-model.mjs",
     "preflight": "node scripts/preflight.mjs",
     "smoke": "node scripts/smoke.mjs",
     "lint": "tsc --noEmit"

@@ -18,6 +18,12 @@ worker/.dev.vars
 .env.local
 *.local
 
+# Bundled model + WASM runtime (populated by `npm run models:fetch`, see
+# scripts/fetch-model.mjs). ~33MB — reproducibly fetched at build time
+# instead of committed, same rationale as node_modules/.
+public/models/
+public/onnx/
+
 # IDE
 .idea/
 .vscode/

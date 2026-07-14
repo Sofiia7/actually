@@ -44,15 +44,28 @@ export interface GeoStatus {
   errorReason?: GeoErrorReason
 }
 
+/**
+ * How long a cached verdict is trusted before `connectWallet`/`placeOrder`'s
+ * "independent" geo checks force a fresh lookup. The offscreen document
+ * (where this cache lives) is kept alive by Chrome across popup opens, so
+ * without a TTL a single verdict from early in a long session could silently
+ * outlive a location/VPN change. Short enough to catch that within one
+ * trading session, long enough that opening the Trade tab repeatedly doesn't
+ * re-hit the Worker every time.
+ */
+export const GEO_CACHE_TTL_MS = 5 * 60_000
+
 let cached: GeoStatus | null = null
+let cachedAt = 0
 
 export async function getGeoStatus(
   workerUrl: string,
   workerSecret: string,
 ): Promise<GeoStatus> {
-  if (cached) return cached
+  if (cached && Date.now() - cachedAt < GEO_CACHE_TTL_MS) return cached
   if (!workerUrl || !workerSecret) {
     cached = { country: '', blocked: true, unknown: true, errorReason: 'no_worker' }
+    cachedAt = Date.now()
     return cached
   }
   try {
@@ -66,6 +79,7 @@ export async function getGeoStatus(
         : res.status === 429 ? 'rate_limited'
         : 'http_error'
       cached = { country: '', blocked: true, unknown: true, errorReason: reason }
+      cachedAt = Date.now()
       return cached
     }
     const data = (await res.json()) as {
@@ -74,6 +88,7 @@ export async function getGeoStatus(
     }
     if (!data.country) {
       cached = { country: '', blocked: true, unknown: true, errorReason: 'no_country' }
+      cachedAt = Date.now()
       return cached
     }
     cached = {
@@ -81,9 +96,11 @@ export async function getGeoStatus(
       blocked: Boolean(data.blocked),
       unknown: false,
     }
+    cachedAt = Date.now()
     return cached
   } catch {
     cached = { country: '', blocked: true, unknown: true, errorReason: 'network' }
+    cachedAt = Date.now()
     return cached
   }
 }
@@ -91,4 +108,5 @@ export async function getGeoStatus(
 /** Used by tests / popup hot-reload. */
 export function _resetGeoCache(): void {
   cached = null
+  cachedAt = 0
 }
