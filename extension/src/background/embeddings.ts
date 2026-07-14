@@ -1,8 +1,12 @@
 /**
  * Pluggable embedding provider — local (transformers.js, free) or OpenAI fallback.
  *
- * - `local`:  Xenova/all-MiniLM-L12-v2 — 384 dims, runs in the offscreen document via WASM. First call
- *             downloads ~33MB to extension cache; subsequent calls ~100ms.
+ * - `local`:  Xenova/all-MiniLM-L12-v2 — 384 dims, runs in the offscreen document via WASM.
+ *             Model weights + the onnxruntime-web WASM runtime are bundled into the .crx
+ *             (see scripts/fetch-model.mjs, `npm run models:fetch`) — no huggingface.co or
+ *             cdn.jsdelivr.net fetch at runtime, fully offline-installable. First call still
+ *             takes longer than subsequent ones (ONNX session init), but there's no network
+ *             round-trip.
  * - `openai`: text-embedding-3-small — 1536 dims, ~$0.02 per 1M tokens, via Worker.
  *
  * The matcher only requires that *the same provider* be used for both the article
@@ -31,9 +35,22 @@ async function getLocalPipeline() {
   if (!localPipelinePromise) {
     localPipelinePromise = (async () => {
       const { pipeline, env } = await import('@xenova/transformers')
-      // Tell transformers.js where to cache models — extension storage.
-      env.allowLocalModels = false
-      env.useBrowserCache = true
+      // Model weights + tokenizer files are bundled into the .crx under
+      // public/models/ (see scripts/fetch-model.mjs) instead of fetched from
+      // huggingface.co at runtime. allowRemoteModels=false means a missing
+      // bundled file fails loudly instead of silently falling back to a
+      // network fetch — CSP no longer allows huggingface.co/*.hf.co anyway.
+      env.allowLocalModels = true
+      env.allowRemoteModels = false
+      env.localModelPath = chrome.runtime.getURL('models/')
+      env.useBrowserCache = false
+      // Same for onnxruntime-web's WASM binaries: bundled under public/onnx/
+      // instead of the default cdn.jsdelivr.net fetch.
+      try {
+        env.backends.onnx.wasm.wasmPaths = chrome.runtime.getURL('onnx/')
+      } catch {
+        /* ignore if shape differs */
+      }
       // Service workers don't have multi-threading; single-thread WASM only.
       // Also disable proxy mode which uses Web Workers (not allowed in SW).
       try {

@@ -45,6 +45,21 @@ jobs:
         working-directory: extension
         run: npm run fonts:fetch
 
+      # public/models/ + public/onnx/ (~34MB) are gitignored — too large to
+      # commit — and fetched here the same way local devs run
+      # `npm run models:fetch` before a release build (see SECURITY.md).
+      - name: Cache the local embedding model + WASM runtime
+        uses: actions/cache@v4
+        with:
+          path: |
+            extension/public/models
+            extension/public/onnx
+          key: minilm-l12-v2-onnx-${{ hashFiles('extension/scripts/fetch-model.mjs') }}
+
+      - name: Fetch model + WASM runtime
+        working-directory: extension
+        run: npm run models:fetch
+
       - name: Build extension (with CI-stub env)
         working-directory: extension
         env:

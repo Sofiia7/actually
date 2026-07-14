@@ -86,4 +86,30 @@ describe('getGeoStatus', () => {
     await getGeoStatus('https://w.example', 'sec')
     expect((fetchMock as unknown as { mock: { calls: unknown[] } }).mock.calls.length).toBe(1)
   })
+
+  it('re-checks once the cache TTL has elapsed, instead of reusing a stale verdict forever', async () => {
+    vi.useFakeTimers()
+    try {
+      const fetchMock = vi.fn(async () =>
+        new Response(JSON.stringify({ country: 'DE', blocked: false }), { status: 200 }),
+      ) as unknown as typeof fetch
+      globalThis.fetch = fetchMock
+      await getGeoStatus('https://w.example', 'sec')
+      expect((fetchMock as unknown as { mock: { calls: unknown[] } }).mock.calls.length).toBe(1)
+
+      // Still within TTL — reuses the cached verdict.
+      await vi.advanceTimersByTimeAsync(60_000)
+      await getGeoStatus('https://w.example', 'sec')
+      expect((fetchMock as unknown as { mock: { calls: unknown[] } }).mock.calls.length).toBe(1)
+
+      // Past TTL — a session-long-open popup (or an offscreen doc kept alive
+      // across popup opens) must re-verify rather than trust a verdict from
+      // before a location/VPN change.
+      await vi.advanceTimersByTimeAsync(5 * 60_000)
+      await getGeoStatus('https://w.example', 'sec')
+      expect((fetchMock as unknown as { mock: { calls: unknown[] } }).mock.calls.length).toBe(2)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
 })

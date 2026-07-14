@@ -333,7 +333,11 @@ const TradeReady: React.FC<ReadyProps> = ({
           />
         </>
       ) : (
-        <ConnectPanel onConnect={onConnect} onOpenSettings={onOpenSettings} />
+        <ConnectPanel
+          onConnect={onConnect}
+          onOpenSettings={onOpenSettings}
+          workerConfigured={Boolean(settings.workerUrl && settings.workerSecret)}
+        />
       )}
     </Panel>
   )
@@ -342,10 +346,11 @@ const TradeReady: React.FC<ReadyProps> = ({
 // =============================================================
 // Connect panel — shown when no wallet session restored
 // =============================================================
-const ConnectPanel: React.FC<{ onConnect: () => void; onOpenSettings: () => void }> = ({
-  onConnect,
-  onOpenSettings,
-}) => (
+const ConnectPanel: React.FC<{
+  onConnect: () => void
+  onOpenSettings: () => void
+  workerConfigured: boolean
+}> = ({ onConnect, onOpenSettings, workerConfigured }) => (
   <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
     <Etched size={12} weight={300} color="rgba(35,45,70,.6)">
       Connect a wallet to place a builder-attributed order in one signature.
@@ -355,9 +360,11 @@ const ConnectPanel: React.FC<{ onConnect: () => void; onOpenSettings: () => void
       Sign in once at polymarket.com first — fresh deposit wallets aren't supported yet.
     </Etched>
     <GlassButton size="md" full onClick={onConnect}>Connect wallet</GlassButton>
-    <div style={{ textAlign: 'center' }}>
-      <LinkAction onClick={onOpenSettings}>Configure Worker first →</LinkAction>
-    </div>
+    {!workerConfigured && (
+      <div style={{ textAlign: 'center' }}>
+        <LinkAction onClick={onOpenSettings}>Configure Worker first →</LinkAction>
+      </div>
+    )}
   </div>
 )
 

@@ -36,7 +36,7 @@
   },
 
   "content_security_policy": {
-    "extension_pages": "script-src 'self' 'wasm-unsafe-eval'; object-src 'self'; connect-src 'self' https://*.workers.dev https://clob.polymarket.com https://gamma-api.polymarket.com https://data-api.polymarket.com https://api.openai.com https://huggingface.co https://*.hf.co https://cdn.jsdelivr.net https://*.walletconnect.com https://*.walletconnect.org https://*.reown.com wss://*.walletconnect.com wss://*.walletconnect.org wss://*.reown.com; img-src 'self' data: https:; style-src 'self' 'unsafe-inline'; font-src 'self'"
+    "extension_pages": "script-src 'self' 'wasm-unsafe-eval'; object-src 'self'; connect-src 'self' https://*.workers.dev https://clob.polymarket.com https://gamma-api.polymarket.com https://data-api.polymarket.com https://api.openai.com https://*.walletconnect.com https://*.walletconnect.org https://*.reown.com wss://*.walletconnect.com wss://*.walletconnect.org wss://*.reown.com; img-src 'self' data: https:; style-src 'self' 'unsafe-inline'; font-src 'self'"
   },
 
   "icons": {
