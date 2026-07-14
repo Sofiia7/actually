@@ -90,6 +90,17 @@ slippage>20% disable, and the confirm-before-sign step.
 All four confirmed live in `worker/index.ts`, covered by `worker.test.ts`/
 `embeddings-validation.test.ts`/`market-cache-validation.test.ts` (46 tests total).
 
+**2026-07-08 addendum:** 7.2's KV-based `openai_chars_day` counter (and the
+per-IP limiter it shared a pattern with) had a non-atomic read-then-write —
+concurrent requests could both read the same stale count and increment from
+it, letting a determined caller exceed the nominal limit several times over
+under concurrency. Replaced with `RateLimiterDO`, a Durable Object that does
+an atomic check-and-increment (Cloudflare guarantees one instance processes
+one request at a time, closing the race with no extra locking code). `env.RATE_LIMITS`
+KV binding removed; `env.RATE_LIMITER_DO` added, wired via `wrangler.toml`'s
+`[[durable_objects.bindings]]` + `[[migrations]]`. Requires the Workers Paid
+plan (Durable Objects aren't on Workers Free) — see `README.md`.
+
 ## Sprint 8 — Secrets, geo posture, build hygiene ✅ done (verified 2026-07-05)
 
 | ID | Exact change | Files |
@@ -153,10 +164,20 @@ runtime — the offscreen document always has `self.WebSocket`. Documented in
 
 ## Post-v1 (parked)
 
-- **v1.1:** bundle MiniLM-L12 weights into .crx → drop `huggingface.co` from CSP; closes npm-audit critical/high surface; offline-installable.
+- ~~**v1.1:** bundle MiniLM-L12 weights into .crx → drop `huggingface.co` from CSP~~ —
+  **landed 2026-07-07.** `npm run models:fetch` bundles the model weights +
+  onnxruntime-web WASM; `huggingface.co`/`*.hf.co`/`cdn.jsdelivr.net` removed
+  from CSP; extension is fully offline-installable.
 - **v1.2:** HMAC `X-Actually-Auth` (timestamp+nonce+body) + Worker `POST /clob/order` proxy → remove clob `host_permissions`; server-side geo re-check on submit.
 - Full POLY_1271 / deposit-wallet support (if deferred from 6.9).
 - Full EIP-55 checksum in `wallet.ts`.
+- In-page Shadow-DOM widget (spec §15, opt-in via explicit `chrome.permissions.request` if revived).
+
+This list is engineering-scope only (auth/geo/wallet hardening). The separate
+product-feature backlog (order status polling, sell-to-close, position list,
+multi-market per page, Safari port, in-page widget toggle) lives in
+`README.md`'s Roadmap section, deliberately un-numbered there to avoid the
+same version label meaning two different things in two documents again.
 
 ## Critical path
 

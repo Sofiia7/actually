@@ -60,17 +60,11 @@ and let them optionally trade on those markets in one click.
   active tab's headline + excerpt, used in-memory to match a market; not stored
   or transmitted as page content).
 - "Personally identifiable / financial / health / authentication info?" → **No.**
-- "Do you use remote code?" → **Yes, WASM only, no eval/remote JS.** No
-  `eval()`, no remotely-hosted `.js`. Two remote fetches at first use:
-  (1) `huggingface.co` — the MiniLM-L12-v2 model weights, data not code;
-  (2) `cdn.jsdelivr.net` — `onnxruntime-web`'s default WASM binaries (the
-  local embedding runtime itself). WASM is executable, so disclose it
-  honestly as remote code rather than folding it into the "it's just data"
-  answer above — CWS's remote-code policy is specifically about scripts/code,
-  and reviewers do check CSP `connect-src` against this answer. Point to
-  SECURITY.md → "Network egress" for both. **Planned v1.1**: bundle the model
-  weights + WASM runtime into the package, removing both entries and this
-  disclosure entirely.
+- "Do you use remote code?" → **No.** The MiniLM-L12-v2 model weights and the
+  onnxruntime-web WASM runtime are bundled into the package at build time
+  (`npm run models:fetch`, see `SECURITY.md` → "Network egress") — no
+  `eval()`, no remotely-hosted `.js`, and no runtime fetch to `huggingface.co`
+  or `cdn.jsdelivr.net` (removed from CSP `connect-src` once bundled).
 - "Is data sold to third parties / used for unrelated purposes / used for
   creditworthiness?" → **No** to all.
 - Anonymous usage telemetry is opt-out in Settings and keyed by a random install
