@@ -1,13 +1,16 @@
 // Defaults are provider-aware. Local MiniLM gives lower cosine values for
 // semantically-related texts than OpenAI's models, so its thresholds must be
-// proportionally lower. Empirically calibrated against 300 real markets and a
-// basket of news articles (Trump/Iran, Russia/Ukraine, Fed, Bitcoin). MiniLM-L6
-// cosine scores for the best genuinely-related matches land in 0.42–0.56;
-// unrelated matches stay below 0.30.
+// proportionally lower. Recalibrated 2026-07-13 against the live 794-market
+// cache: genuinely-right matches (Fed/Iran/Ukraine/World Cup) score raw
+// 0.53–0.67; topically-adjacent-but-wrong matches (Apple→"xAI best model",
+// Taylor Swift→"Rihanna album") land at 0.42–0.49. The old 0.45 threshold let
+// that junk band through as CONFIDENT; 0.50 pushes it into the low-confidence
+// UI treatment, and floor 0.35 trims the sub-junk tail (nothing legitimate
+// was observed below 0.48).
 export const CONFIDENCE_THRESHOLD_OPENAI = 0.82
 export const LOW_CONFIDENCE_FLOOR_OPENAI = 0.70
-export const CONFIDENCE_THRESHOLD_LOCAL = 0.45
-export const LOW_CONFIDENCE_FLOOR_LOCAL = 0.30
+export const CONFIDENCE_THRESHOLD_LOCAL = 0.50
+export const LOW_CONFIDENCE_FLOOR_LOCAL = 0.35
 
 export const COLOR_THRESHOLDS = {
   blue: 0.30,
