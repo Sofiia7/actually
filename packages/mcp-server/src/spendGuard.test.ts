@@ -1,4 +1,7 @@
 import { describe, expect, it, vi, afterEach } from 'vitest'
+import { mkdtempSync, rmSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { SpendGuard } from './spendGuard'
 
 afterEach(() => {
@@ -42,5 +45,26 @@ describe('SpendGuard', () => {
 
     vi.setSystemTime(new Date('2026-07-05T00:01:00Z'))
     expect(guard.check(100)).toEqual({ ok: true })
+  })
+
+  it('persists recorded spend to statePath and honors it across a fresh instance (process restart)', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'spend-guard-test-'))
+    const statePath = join(dir, 'spend-guard.json')
+    try {
+      vi.useFakeTimers()
+      vi.setSystemTime(new Date('2026-07-04T12:00:00Z'))
+
+      const first = new SpendGuard({ maxOrderUsd: 100, dailyLimitUsd: 150, statePath })
+      first.record(100)
+
+      // A brand-new instance (as if the MCP client just respawned the
+      // process) must see the same day's spend from disk, not start at $0.
+      const second = new SpendGuard({ maxOrderUsd: 100, dailyLimitUsd: 150, statePath })
+      const result = second.check(60)
+      expect(result.ok).toBe(false)
+      expect(!result.ok && result.error).toContain('daily_limit_exceeded')
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
   })
 })

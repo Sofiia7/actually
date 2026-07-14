@@ -17,7 +17,11 @@ export interface CheckNewsMarket {
 export interface CheckNewsOutput {
   hasMarket: boolean
   market?: CheckNewsMarket
-  /** Objective market YES price — never a synthesized "implied probability" from tone. */
+  /**
+   * Objective market YES price — never a synthesized "implied probability"
+   * from tone. Sourced from the precomputed /market-cache blob, which can be
+   * up to ~2h stale (cron precompute cadence); call get_market for a live price.
+   */
   marketProbabilityYes?: number
   confidence?: number
   lowConfidence?: boolean
