@@ -31,17 +31,27 @@ defense above.
 - **Fail-closed auth**: the Worker returns 503 if `WORKER_SHARED_SECRET` is
   unset, unless `WORKER_DEV_MODE=true` is explicitly opted in.
 - **Fail-closed origin allowlist**: 503 if `ALLOWED_EXTENSION_ID` is unset.
-- **Fail-closed rate-limit backstop**: 503 if the `RATE_LIMITS` KV namespace is
-  not bound. Because the shared secret is publicly extractable from the build,
-  the per-IP rate limit and the OpenAI daily cap are the *real* abuse defense —
-  so a prod Worker without KV refuses authenticated routes rather than silently
-  fail-open. `WORKER_DEV_MODE=true` bypasses this for local work.
+- **Fail-closed rate-limit backstop**: 503 if the `RATE_LIMITER_DO` Durable
+  Object binding is not bound. Because the shared secret is publicly
+  extractable from the build, the per-IP rate limit and the OpenAI daily cap
+  are the *real* abuse defense — so a prod Worker without it refuses
+  authenticated routes rather than silently fail-open. `WORKER_DEV_MODE=true`
+  bypasses this for local work.
 - **CORS denial**: when the allowlist is empty, the Worker echoes a
   guaranteed-invalid origin (`https://__actually_misconfigured__.invalid`)
   rather than `*` or `null` — browsers never match the response and operators
   see the value in DevTools.
 - Per-IP rate limits on every authenticated route; global per-day cap on
-  `/embeddings` to protect the operator's OpenAI bill.
+  `/embeddings` to protect the operator's OpenAI bill. Both are enforced by
+  `RateLimiterDO` (`worker/index.ts`), a Durable Object that does an atomic
+  check-and-increment per counter — **fixed 2026-07-08**: the previous KV-based
+  counter did a `get` then `put` with no atomicity guarantee, so concurrent
+  requests could read the same stale count and both increment from it,
+  letting a determined caller exceed the nominal limit by several times under
+  concurrency. A Durable Object instance processes one request at a time
+  (Cloudflare's platform guarantee), which closes that race without any extra
+  locking code. **Requires the Workers Paid plan** (Durable Objects aren't
+  available on Workers Free) — see `README.md` → "Deploy the Worker".
 
 ## Geo-fence posture (build-flag controlled)
 
@@ -94,18 +104,19 @@ The shipped CSP `connect-src` allows only:
   for market data and order routing.
 - `api.openai.com` (only used by the centralized embedding fallback, and
   only via the Worker — the extension itself never sees the OpenAI key).
-- `huggingface.co` + `*.hf.co` — the `@xenova/transformers` model files
-  are fetched on first use. **Planned v1.1**: bundle the MiniLM-L12-v2
-  weights so this entry can be removed from CSP and the .crx becomes
-  fully offline-deployable.
-- `cdn.jsdelivr.net` — `onnxruntime-web`'s default `wasmPaths` (unset in
-  `src/background/embeddings.ts`) falls back to fetching its WASM binaries
-  from jsdelivr rather than bundling them. Same v1.1 fix (bundling the
-  model + runtime) removes this entry too; until then it's a real, live
-  egress point, not dead code — keep it in sync with the CSP if that
-  changes.
 - WalletConnect v2 relay hosts (`*.walletconnect.com`, `*.walletconnect.org`,
   `*.reown.com`, plus the matching wss:// entries).
+
+**v1.1 landed:** `huggingface.co`/`*.hf.co` (MiniLM-L12-v2 model weights) and
+`cdn.jsdelivr.net` (`onnxruntime-web`'s default WASM binaries) are no longer
+in CSP or fetched at runtime. `npm run models:fetch` (`scripts/fetch-model.mjs`)
+downloads both into `public/models/` and `public/onnx/` at build time —
+gitignored (too large to commit, ~34MB), so this must run before every build
+(wired into CI, see `.github/workflows/ci.yml`). `src/background/embeddings.ts`
+sets `env.allowRemoteModels = false` and points `localModelPath`/`wasmPaths`
+at `chrome.runtime.getURL(...)`, so a missing bundled file fails loudly
+instead of silently falling back to a network fetch. The extension is now
+fully offline-installable after first load.
 
 Fonts: the Google Fonts `@import` was removed. Fonts are fetched at install
 time by `npm run fonts:fetch` and bundled into the .crx as woff2 files.
@@ -114,9 +125,19 @@ time by `npm run fonts:fetch` and bundled into the .crx as woff2 files.
 
 - `.env.local` is gitignored; the only place real `VITE_WORKER_SECRET` and
   `VITE_WC_PROJECT_ID` live locally.
-- `worker/wrangler.toml` ships with `REPLACE_WITH_KV_NAMESPACE_ID` /
-  `REPLACE_WITH_EXTENSION_ID` placeholders. Operators copy `wrangler.toml.example`
-  to start. **Verified clean in this branch.**
+- `worker/wrangler.toml.example` ships with `REPLACE_WITH_KV_NAMESPACE_ID` /
+  `REPLACE_WITH_EXTENSION_ID` placeholders — operators copy it to start.
+  **Verified clean in this branch.**
+- The real, tracked `worker/wrangler.toml` is *not* placeholder-only — it
+  deliberately commits this project's actual `MARKET_CACHE` KV namespace id
+  and `ALLOWED_EXTENSION_ID` (see `docs/release-checklist.md`'s "Do not strip
+  `manifest.json`'s `key` field" section for why the extension ID is pinned
+  and checked against this exact file by `npm run preflight`). Neither value
+  is a secret: a KV namespace id grants no access without the Cloudflare
+  account credentials, and the extension ID becomes public the moment the
+  item is listed on the Chrome Web Store. `WORKER_SHARED_SECRET` and
+  `OPENAI_API_KEY` are correctly absent from this file — they're set via
+  `wrangler secret put`, never committed.
 - `scripts/*.mjs` read URL + secret from `process.env`. None hardcode
   real values. **Verified clean in this branch.**
 
@@ -129,8 +150,9 @@ time by `npm run fonts:fetch` and bundled into the .crx as woff2 files.
 - **Runtime, but low-risk given the input.** The `@xenova/transformers` →
   `onnxruntime-web` → `protobufjs` chain **is** exercised — it parses the local
   embedding model. The advisories concern malformed protobuf/ONNX input, but the
-  only bytes we ever decode are the MiniLM-L12 weights fetched over HTTPS from
-  the Hugging Face CDN pinned in our CSP — not attacker-controlled. The
+  only bytes we ever decode are the MiniLM-L12 weights, bundled into the .crx
+  at build time by `npm run models:fetch` from the Hugging Face repo — not
+  attacker-controlled, and (since v1.1) not even fetched at runtime. The
   `@ethersproject/*` signing primitives ship via `clob-client-v2`, but we sign
   exclusively through the user's wallet (WalletConnect), so those paths aren't hit.
 - **`ws` (via `@walletconnect/jsonrpc-ws-connection` → `viem`), high severity —

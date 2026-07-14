@@ -19,7 +19,7 @@ The following never leaves your device:
 - **Local history** of the last 10 articles you matched. Clear at any time from the History tab.
 - **WalletConnect session topic** (once connected) and **Polymarket CLOB API credentials** (key, secret, passphrase) — used to authenticate order submissions. Never transmitted except to the CLOB itself.
 
-The embedding model (`Xenova/all-MiniLM-L12-v2`, ~33 MB) is downloaded once from HuggingFace's CDN and cached by Chrome. Subsequent runs are fully offline for the local-embedding path.
+The embedding model (`Xenova/all-MiniLM-L12-v2`, ~33 MB) and its WASM runtime are bundled into the extension package at build time — nothing is downloaded from HuggingFace or any other CDN at install or runtime. The local-embedding path is fully offline from the first run.
 
 ## What is sent off your device
 
@@ -70,8 +70,10 @@ Disable telemetry at any time in Settings.
 | Polymarket (`gamma-api`, `clob`, `data-api`) | All discovery + trading | Public market data requests; signed order payloads (trading only) |
 | OpenAI | Only if you switch to OpenAI embeddings | Article headline + body excerpt for embedding |
 | WalletConnect / Reown | Only after you click Connect | WC relay handshake; never sees article content |
-| HuggingFace CDN | First load of local model | Model file download (one time) |
-| jsdelivr CDN | First load of local model | WASM runtime binaries for the embedding engine (`onnxruntime-web`'s default fallback location); no article content or personal data |
+
+The local embedding model and its WASM runtime are bundled into the extension
+itself (no HuggingFace/jsdelivr fetch at install or runtime) — article text
+never leaves your device when using local embeddings (the default).
 
 ## Your rights
 

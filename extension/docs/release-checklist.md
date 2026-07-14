@@ -10,6 +10,11 @@ risk.
 
 - [ ] `npm run fonts:fetch` on a clean checkout (run on the build machine,
       not assumed from prior runs).
+- [ ] `npm run models:fetch` on a clean checkout — populates `public/models/`
+      (~34MB ONNX weights) and `public/onnx/` (WASM runtime), both gitignored.
+      Without this the build still succeeds but the shipped extension's local
+      embedder has no model to load (remote fallback is intentionally
+      disabled — see `SECURITY.md`).
 - [ ] `npm ci && npm run lint && npm test` all green.
 - [ ] `npm run build` with **production** `.env.local`:
   - `VITE_BUILDER_CODE` is your real bytes32 from polymarket.com builder
@@ -26,6 +31,23 @@ risk.
       See also `docs/cws-listing.md` for ready-to-paste store copy.
 - [ ] Smoke-load `dist/` as an unpacked extension in a clean Chrome profile
       and walk through the **manual smoke** below.
+
+## Do not strip `manifest.json`'s `key` field
+
+`extension/manifest.json` carries a `key` (RSA public key) that deliberately
+reserves a stable Chrome extension ID — computed once so the ID the Chrome
+Web Store assigns on this item's first-ever publish matches
+`ALLOWED_EXTENSION_ID` in `worker/wrangler.toml` (already `lljnfdfoieiodiiaglimlfjlebljdmhb`,
+verified 2026-07-07 by hashing the key: `sha256(key)[0:16]` mapped a–p equals
+that ID). Removing `key` before upload would forfeit the reservation — CWS
+would assign a random new ID instead, and the Worker would 401 every
+store-installed user until someone notices and updates the allowlist.
+`npm run preflight` now verifies the key still resolves to that ID.
+
+**After the first successful publish**, add the CWS-assigned ID to
+`ALLOWED_EXTENSION_ID` as a second comma-separated entry if it ever differs
+(e.g. `lljnfd...,newid...`), verified against a real install from the store —
+don't assume the reservation held without checking.
 
 ## Rotate the Worker secret before shipping
 
@@ -76,10 +98,13 @@ After the new secret is live, optionally add the old token to a blacklist in
   - **Category:** Productivity (primary).
   - **Privacy practices** form:
     - "I collect website content" → No (only on click, only the active tab).
-    - "I use remote code" → No (no eval, no remote scripts; the embedding
-      model is data, not executable code — but if the reviewer flags
-      `huggingface.co`, point them to `SECURITY.md` and the planned bundle
-      in v1.1).
+    - "I use remote code" → **No.** Model weights (MiniLM-L12-v2) and the
+      onnxruntime-web WASM runtime are bundled at build time (`npm run
+      models:fetch`) — no `huggingface.co`/`cdn.jsdelivr.net` fetch at
+      runtime, no eval, no remote `.js`. Run `npm run models:fetch` before
+      every release build (see Pre-flight above) — the answer here is only
+      true if that step actually ran. See `SECURITY.md` → "Network egress"
+      and `docs/cws-listing.md`.
     - Justify `activeTab` and `scripting`: "read the headline + first 500
       chars of the active tab on user click, to find a matching market".
     - Justify `host_permissions: clob.polymarket.com`: "send signed orders

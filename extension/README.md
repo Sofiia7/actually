@@ -17,7 +17,7 @@ Security triage: [`SECURITY.md`](SECURITY.md)
 **Verify it's real in 60 seconds** — no wallet, worker, or secret needed:
 
 ```bash
-cd extension && npm install && npm test   # 129 unit + component tests, all green
+cd extension && npm install && npm test   # 94 unit + component tests, all green
 ```
 
 What the extension actually does is walked through in [How matching works](#how-matching-works); full setup is below.
@@ -44,7 +44,7 @@ What the extension actually does is walked through in [How matching works](#how-
 | Trade analytics: sparkline / orderbook / resolution card | ✅ |
 | Self-hosted Marck Script font (no remote fetch) | ✅ |
 | Privacy policy + ToS | ✅ |
-| Unit + component tests (vitest, 129 passing) | ✅ |
+| Unit + component tests (vitest, 94 passing) | ✅ |
 | Build-integrity smoke gate (`npm run smoke`) | ✅ |
 
 ---
@@ -123,11 +123,16 @@ npm run fonts:fetch        # downloads Marck Script woff2 → public/fonts/
 > `~/src/` (mac/Linux) and build there.
 
 ### 3. Deploy the Worker
+
+> **Durable Objects require the Workers Paid plan** ($5/mo), not the Free
+> plan. Rate limiting + the OpenAI daily cap are backed by a Durable Object
+> (`RATE_LIMITER_DO`, see `worker/index.ts`) for atomicity — check your
+> Cloudflare account tier before deploying, or `wrangler deploy` will fail on
+> the `[[durable_objects.bindings]]` / `[[migrations]]` entries in
+> `wrangler.toml`.
+
 ```bash
 cd worker
-
-# Create the KV namespace for rate limits; paste the returned id into wrangler.toml
-npx wrangler kv:namespace create RATE_LIMITS
 
 # Generate a strong shared secret (used by the extension to authenticate to your Worker)
 openssl rand -hex 32 | npx wrangler secret put WORKER_SHARED_SECRET
@@ -135,7 +140,8 @@ openssl rand -hex 32 | npx wrangler secret put WORKER_SHARED_SECRET
 # (Optional) Centralized OpenAI key, only if you offer the OpenAI embedding path
 npx wrangler secret put OPENAI_API_KEY
 
-# Deploy
+# Deploy — this also creates the RATE_LIMITER_DO Durable Object namespace via
+# the [[migrations]] block in wrangler.toml, no separate creation step needed.
 npx wrangler deploy
 # → copy the printed URL, e.g. https://actually-api.<you>.workers.dev
 ```
@@ -181,7 +187,7 @@ The builderCode is baked into the extension at build time and used by **every** 
 ```bash
 npm run dev              # Vite watch mode → outputs to dist/
 npm run worker:dev       # Wrangler local dev for the API (uses WORKER_DEV_MODE)
-npm test                 # Vitest unit + component tests (129 passing)
+npm test                 # Vitest unit + component tests (94 passing)
 npm run lint             # tsc --noEmit type check
 npm run fonts:fetch      # (re)download Marck Script woff2 → public/fonts/
 ```
@@ -268,8 +274,9 @@ These deliberate deviations from a "pure" spec are documented in
 - **No content script in v1.** Page reading goes via `chrome.scripting.executeScript`
   under `activeTab`. In-page widget deferred to v1.2.
 - **Baked-in `WORKER_SHARED_SECRET`** treated as a client token (spec §13).
-  Real defense is per-IP rate limit (the Worker fails closed — 503 — if its
-  `RATE_LIMITS` KV is unbound in prod). HMAC-signed auth in v1.2.
+  Real defense is per-IP rate limit, atomically enforced by a Durable Object
+  (the Worker fails closed — 503 — if `RATE_LIMITER_DO` is unbound in prod).
+  HMAC-signed auth in v1.2.
 - **Geo posture is build-flagged.** Production builds fail *closed* when the
   region can't be confirmed; dev/beta builds fail open. Confirmed-restricted
   countries are always blocked. See `GEO_FAIL_OPEN` in `src/shared/constants.ts`
@@ -313,9 +320,15 @@ Subsequent orders: skip steps 5-9 — the popup restores the WC session and CLOB
 ## Roadmap
 
 - **v1.0** — current. Discovery + WalletConnect trading + builder attribution. Goal: 500 installs by Week 6, $10k/week attributed volume by Week 12.
-- **v1.1** — Order status polling, sell-to-close, position list, multi-market per page
-- **v1.2** — Safari port
-- **v1.3** — In-page widget (toggle), bigger cache, advanced order types
+- **Post-v1 (engineering status, canonical)** — see [`docs/ROADMAP.md`](docs/ROADMAP.md) for
+  what's actually shipped vs. parked, verified against code (bundled embedding model: shipped;
+  HMAC-signed Worker auth + `/clob/order` proxy, full POLY_1271 support, full EIP-55 checksum:
+  parked). That document is the source of truth for version labels — don't infer status from
+  numbers in this section, since this list and ROADMAP.md's have drifted before.
+- **Post-v1 (product backlog, not yet started, not version-numbered)** — order status polling
+  (surfacing the fill/cancel/expire status `background/clob.ts` already polls for, but the UI
+  doesn't show yet), sell-to-close, position list, multi-market per page, Safari port, in-page
+  widget (toggle), bigger cache, advanced order types.
 
 See [`actually-growth-strategy.md`](../actually-growth-strategy.md) for full KPI targets.
 
@@ -332,7 +345,8 @@ binary-market filter, the confirm-before-sign step, and the release gates
 Implementation was done with heavy AI assistance (Claude) acting as a pair-programmer
 under her review — turning each audit finding and design decision into code, tests,
 and docs. Every change was gated by her acceptance criteria and by the test suite
-(129 passing) + CI before it landed.
+(94 passing here; 274 across the whole monorepo, including the `@actually/core` and
+`actually-mcp-server` workspaces) + CI before it landed.
 
 In short: the *what* and the *why* — product, design, decisions, audit — are Sofiia's;
 the AI accelerated the *how*.

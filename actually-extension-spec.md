@@ -184,8 +184,12 @@ extension/
 │   └── test-{match,final}.mjs / compare-models.mjs   # offline matcher iteration
 │
 └── worker/
-    ├── wrangler.toml         # placeholders only — real ids never committed
-    ├── wrangler.toml.example
+    ├── wrangler.toml         # commits this project's real (non-secret) KV
+    │                         #   namespace id + ALLOWED_EXTENSION_ID — see
+    │                         #   SECURITY.md → "Secret hygiene"; real
+    │                         #   secrets (WORKER_SHARED_SECRET etc.) are set
+    │                         #   via `wrangler secret put`, never here
+    ├── wrangler.toml.example # placeholders only, for a fresh operator setup
     └── index.ts
 ```
 
@@ -251,7 +255,6 @@ messages via the SW router.
       "connect-src 'self' https://<your-worker>.workers.dev " +
       "  https://clob.polymarket.com https://gamma-api.polymarket.com " +
       "  https://data-api.polymarket.com https://api.openai.com " +
-      "  https://huggingface.co https://*.hf.co " +
       "  https://*.walletconnect.com https://*.walletconnect.org https://*.reown.com " +
       "  wss://*.walletconnect.com wss://*.walletconnect.org wss://*.reown.com; " +
       "img-src 'self' data: https:; style-src 'self' 'unsafe-inline'; font-src 'self'"
@@ -569,13 +572,14 @@ For v1, lazy refresh (check TTL on each match, refresh if stale, non-blocking) i
 | Risk | Mitigation |
 |---|---|
 | `WORKER_SHARED_SECRET` baked into every public extension build | **Acknowledged.** This token is a client-side anti-accidental-load defense, NOT a secret. Per-IP rate limit and global per-day OpenAI cap are the real backstops. Planned v1.2: HMAC-signed `X-Actually-Auth` (timestamp + nonce + body MAC). See `SECURITY.md` for full threat model. |
-| Previously: hardcoded secret in `scripts/probe.mjs` + real KV id / extension id in `wrangler.toml` | Rotated, scripts now read from env, wrangler placeholders + `wrangler.toml.example` committed. Verified clean. |
+| Previously: hardcoded secret in `scripts/probe.mjs` | Rotated; `scripts/*.mjs` now read URL + secret from `process.env`, none hardcode real values. Verified clean. |
+| Real KV namespace id / extension id committed in `wrangler.toml` | **Intentional, not a leak** — neither value is a secret (see SECURITY.md → "Secret hygiene"): a KV id grants no access without Cloudflare account credentials, and the extension id is public once listed on the Chrome Web Store. `wrangler.toml.example` remains placeholder-only for a fresh setup. |
 | Worker accepted unauthenticated requests when secret unset | Fail-closed: 503 if unset, explicit `WORKER_DEV_MODE=true` for dev. |
 | CORS defaulted to `*` when `ALLOWED_EXTENSION_ID` unset | Fail-closed: echoes `https://__actually_misconfigured__.invalid` (never matches). |
 | Content script on `<all_urls>` would inflate CWS permission prompt | Removed; popup-only UX with `activeTab` on click. Widget deferred to v1.2. |
 | `*.workers.dev` wildcard in CSP `connect-src` | Replaced at build time (`VITE_WORKER_URL`) with the exact production Worker origin. Dist manifest contains a single concrete host. |
 | Remote Google Fonts `@import` at runtime | Removed. Self-hosted Marck Script woff2 via `npm run fonts:fetch`. `font-src 'self'`. |
-| Remote model download from HuggingFace at runtime (`env.allowLocalModels = false`) | Acceptable for v1 (one-time, cached). Planned v1.1: bundle the MiniLM-L12-v2 weights into the .crx to remove `huggingface.co` from CSP. |
+| Remote model download from HuggingFace at runtime | **v1.1 landed:** MiniLM-L12-v2 weights + onnxruntime-web WASM are bundled into the .crx via `npm run models:fetch` (`scripts/fetch-model.mjs`); `huggingface.co`/`*.hf.co`/`cdn.jsdelivr.net` removed from CSP, `env.allowRemoteModels = false`. |
 | User signs arbitrary EIP-712 from extension | Order payload (side, size, price) shown in the form before "Place order — sign in wallet" CTA. We never request `eth_sign`. |
 | Wallet credentials (`clobApiKey/secret/passphrase`) in `chrome.storage.local` | Encrypted at rest by Chrome profile keyring. **Settings → Wallet → "Disconnect & wipe"** clears creds + WC session on demand. |
 | Telemetry queue growing unbounded if Worker unreachable | Capped at 1000 most-recent events in `chrome.storage.local`. |
