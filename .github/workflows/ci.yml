@@ -1,17 +1,26 @@
 name: CI
 
 on:
+  # Root package.json / package-lock.json are in the filters because a
+  # lockfile-only change can absolutely break the build (the 2026-07-05..14
+  # red streak was a Windows-generated lock missing Linux rollup binaries —
+  # and its fix commit didn't trigger CI under the old filters).
   pull_request:
     paths:
       - 'extension/**'
       - 'packages/**'
+      - 'package.json'
+      - 'package-lock.json'
       - '.github/workflows/ci.yml'
   push:
     branches: [main]
     paths:
       - 'extension/**'
       - 'packages/**'
+      - 'package.json'
+      - 'package-lock.json'
       - '.github/workflows/ci.yml'
+  workflow_dispatch:
 
 jobs:
   test:
