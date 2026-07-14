@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { extractKeywords, findMatch, keywordOverlapBonus } from './matcher'
+import { extractKeywords, extractNumericTokens, findMatch, keywordOverlapBonus, numberOverlapScore } from './matcher'
 import type { CachedMarket } from './types'
 import { floatArrayToB64 } from './util'
 
@@ -81,6 +81,91 @@ describe('keywordOverlapBonus — uranium vs Pahlavi case', () => {
     const specific = 'Will Trump impose 50%+ tariffs on China by July?'
     const generic = 'Will Trump win the election?'
     expect(keywordOverlapBonus(headline, specific)).toBeGreaterThan(keywordOverlapBonus(headline, generic))
+  })
+
+  it('treats month names as low-value overlap (shared "July" is time noise, not topic)', () => {
+    const headline = extractKeywords('Bitcoin rally expected in July')
+    // Only 'july' overlaps — a month name must score like 'year'/'week' (0.01),
+    // not like a topical noun (0.04), or every same-month market gets boosted.
+    expect(keywordOverlapBonus(headline, 'Will Ethereum ETF launch in July?')).toBeCloseTo(0.01, 6)
+  })
+})
+
+describe('extractNumericTokens', () => {
+  it('normalizes prices with $ and thousands separators', () => {
+    const n = extractNumericTokens('Bitcoin climbs above $120,000 as spot ETF inflows accelerate')
+    expect(n.has('120000')).toBe(true)
+  })
+
+  it('expands k-suffix and strips % and currency decoration', () => {
+    const n = extractNumericTokens('BTC to $120k? Fed odds at 60%')
+    expect(n.has('120000')).toBe(true)
+    expect(n.has('60')).toBe(true)
+  })
+
+  it('keeps decimals canonical', () => {
+    const n = extractNumericTokens('rate cut of 0.50 points')
+    expect(n.has('0.5')).toBe(true)
+  })
+
+  it('returns an empty set for text without digits', () => {
+    expect(extractNumericTokens('no numbers in this headline').size).toBe(0)
+  })
+})
+
+describe('numberOverlapScore', () => {
+  it('rewards a shared specific price', () => {
+    const h = extractNumericTokens('Bitcoin climbs above $120,000')
+    const score = numberOverlapScore(h, 'Will Bitcoin reach $120,000 by December 31, 2026?')
+    expect(score).toBeGreaterThanOrEqual(0.08)
+  })
+
+  it('penalizes conflicting specific prices (the live $120k→"dip to $57,500" failure)', () => {
+    const h = extractNumericTokens('Bitcoin climbs above $120,000')
+    expect(numberOverlapScore(h, 'Will Bitcoin dip to $57,500 in July?')).toBeLessThan(0)
+  })
+
+  it('is neutral when the market question has no numbers', () => {
+    const h = extractNumericTokens('Bitcoin climbs above $120,000')
+    expect(numberOverlapScore(h, 'Will Bitcoin hit a new all-time high?')).toBe(0)
+  })
+
+  it('is neutral when the headline has no numbers', () => {
+    expect(numberOverlapScore(new Set<string>(), 'Will Bitcoin dip to $57,500 in July?')).toBe(0)
+  })
+
+  it('treats bare years as weak: shared year is a tiny bonus, differing years are not a conflict', () => {
+    const h = extractNumericTokens('What 2026 holds for world markets')
+    expect(numberOverlapScore(h, 'Will X happen in 2027?')).toBe(0)
+    expect(numberOverlapScore(h, 'Will X happen in 2026?')).toBeCloseTo(0.01, 6)
+  })
+})
+
+describe('findMatch — number-aware ranking', () => {
+  const thresholds = { confidenceThreshold: 0.8, lowConfidenceFloor: 0.3 }
+
+  it('ranks the market sharing the headline price above a closer-by-cosine market with a conflicting price', async () => {
+    // Reproduces the live failure: "$120,000" headline confidently matched
+    // "dip to $57,500" because the encoder can't tell price levels apart and
+    // digits were invisible to the keyword bonus.
+    const wrong = fakeMarket({
+      id: 'dip',
+      question: 'Will Bitcoin dip to $57,500 in July?',
+      vec: [1, 0, 0],
+    })
+    const right = fakeMarket({
+      id: 'reach',
+      question: 'Will Bitcoin reach $120,000 by December 31, 2026?',
+      vec: [0.995, 0.0999, 0], // slightly worse cosine than 'dip'
+    })
+    const store = { getMarkets: async () => [wrong, right] }
+    const embedder = { embed: async () => new Float32Array([1, 0, 0]) }
+    const result = await findMatch(
+      'Bitcoin climbs above $120,000 as spot ETF inflows accelerate',
+      '',
+      { store, embedder, thresholds },
+    )
+    expect(result?.market.id).toBe('reach')
   })
 })
 

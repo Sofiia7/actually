@@ -58,6 +58,7 @@ const LOW_VALUE_OVERLAP = new Set([
   'pres', 'gove', 'lead', 'mini', 'admi', // generic political roles
   'mark', 'pric', 'rate', 'cost', // generic econ
   'year', 'mont', 'week', // generic time
+  'janu', 'febr', 'marc', 'apri', 'june', 'july', 'augu', 'sept', 'octo', 'nove', 'dece', // month stems (≥4 chars; short forms drop out at the regex)
   'will', // shouldn't appear thanks to STOPWORDS but safety
 ])
 
@@ -94,6 +95,56 @@ function stem(w: string): string {
   return w.slice(0, 4)
 }
 
+/**
+ * Extract numeric tokens, canonicalized so headline and question spellings
+ * compare equal: thousands separators stripped ("$120,000" → "120000"),
+ * k-suffix expanded ("120k" → "120000"), %/currency decoration dropped,
+ * decimals normalized via Number ("0.50" → "0.5").
+ */
+export function extractNumericTokens(text: string): Set<string> {
+  const out = new Set<string>()
+  const tokens = text.match(/\d[\d,]*(?:\.\d+)?[kK]?%?/g) ?? []
+  for (const t of tokens) {
+    const kSuffix = /[kK]%?$/.test(t)
+    const n = Number(t.replace(/[,%kK]/g, ''))
+    if (!Number.isFinite(n)) continue
+    out.add(String(kSuffix ? n * 1000 : n))
+  }
+  return out
+}
+
+/** Bare years and single digits carry almost no discriminating signal. */
+function isWeakNumber(tok: string): boolean {
+  return /^(19|20)\d\d$/.test(tok) || /^\d$/.test(tok)
+}
+
+/**
+ * Number-overlap score. Specific numbers (price levels, bps, thresholds) are
+ * the strongest cheap discriminator news text offers — the embedding model is
+ * nearly blind to them ("dip to $57,500" and "reach $120,000" embed almost
+ * identically). Shared specific number: +0.08 each (capped with weak bonuses
+ * at 0.15). Shared weak number (bare year, single digit): +0.01. When BOTH
+ * sides commit to specific numbers and share none, -0.05 — enough to break a
+ * near-tie in favor of a level-consistent market, small enough that a clearly
+ * better semantic match survives.
+ */
+export function numberOverlapScore(headlineNums: Set<string>, marketQuestion: string): number {
+  if (headlineNums.size === 0) return 0
+  const marketNums = extractNumericTokens(marketQuestion)
+  if (marketNums.size === 0) return 0
+  let bonus = 0
+  let sharedStrong = 0
+  for (const t of headlineNums) {
+    if (!marketNums.has(t)) continue
+    if (isWeakNumber(t)) bonus += 0.01
+    else { bonus += 0.08; sharedStrong++ }
+  }
+  if (bonus > 0) return Math.min(0.15, bonus)
+  const headlineHasStrong = [...headlineNums].some((t) => !isWeakNumber(t))
+  const marketHasStrong = [...marketNums].some((t) => !isWeakNumber(t))
+  return headlineHasStrong && marketHasStrong && sharedStrong === 0 ? -0.05 : 0
+}
+
 export async function findMatch(
   headline: string,
   bodyText: string,
@@ -113,11 +164,13 @@ export async function findMatch(
   // generically-Iran markets. Cosine alone treats every "Iran"-mentioning
   // market as similarly close, so we add a lexical-overlap boost on top.
   const headlineKeywords = extractKeywords(headline)
+  const headlineNumbers = extractNumericTokens(headline)
 
-  // Score every market. Three additive components:
+  // Score every market. Four additive components:
   //   1. raw cosine similarity (semantic relatedness)
   //   2. lexical-overlap bonus (see keywordOverlapBonus)
-  //   3. small volume bonus (capped +0.015) — tiebreaker for genuine ties
+  //   3. number-overlap score (see numberOverlapScore — can be negative)
+  //   4. small volume bonus (capped +0.015) — tiebreaker for genuine ties
   const scored: { market: CachedMarket; score: number; raw: number }[] = []
   for (const m of cache) {
     if (!m.embeddingB64) continue
@@ -125,8 +178,9 @@ export async function findMatch(
     if (v.length !== articleVec.length) continue
     const raw = cosineSimilarity(articleVec, v)
     const kwBonus = keywordOverlapBonus(headlineKeywords, m.question)
+    const numScore = numberOverlapScore(headlineNumbers, m.question)
     const volBonus = m.volume > 0 ? Math.min(0.015, 0.002 * Math.log10(m.volume)) : 0
-    scored.push({ market: m, score: raw + kwBonus + volBonus, raw })
+    scored.push({ market: m, score: raw + kwBonus + numScore + volBonus, raw })
   }
   scored.sort((a, b) => b.score - a.score)
   const top = scored[0]
