@@ -10,9 +10,14 @@
     "node": ">=20"
   },
   "_comments": {
-    "devDependencies.jsdom": "Root has no tests of its own — this exists only so npm hoists jsdom to the same node_modules level as the shared vitest package. Without it, vitest's internal bare import('jsdom') can't resolve (extension's jsdom devDependency stays nested instead of hoisting), silently dropping the 2 jsdom-environment test files from extension's suite. Do not remove as 'unused'. See commit 95951c5."
+    "devDependencies.jsdom": "Root has no tests of its own — this exists only so npm hoists jsdom to the same node_modules level as the shared vitest package. Without it, vitest's internal bare import('jsdom') can't resolve (extension's jsdom devDependency stays nested instead of hoisting), silently dropping the 2 jsdom-environment test files from extension's suite. Do not remove as 'unused'. See commit 95951c5.",
+    "optionalDependencies": "Workaround for npm's optional-deps lockfile bug (npm/cli#4828): a package-lock generated on Windows records ONLY win32 native binaries, so `npm ci` on the Linux CI runner can't load rollup/esbuild and every vitest/vite step fails (CI was red from 2026-07-05 to 2026-07-14 because of this). Listing the Linux x64 binaries as direct optional deps forces them into the lockfile on every platform; npm skips installing them locally on Windows. Versions must track rollup's and vite's bundled esbuild (0.21.x for vite 5) — `npm ls rollup esbuild` when bumping."
   },
   "devDependencies": {
     "jsdom": "^29.1.1"
+  },
+  "optionalDependencies": {
+    "@rollup/rollup-linux-x64-gnu": "^4.62.2",
+    "@esbuild/linux-x64": "0.21.5"
   }
 }
