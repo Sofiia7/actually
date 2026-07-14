@@ -1,10 +1,16 @@
 # Copy this file to wrangler.toml and fill in real values LOCALLY.
 # Do NOT commit your real KV namespace id, extension id, or account id.
 #
+# Requires the Workers PAID plan (not Free) — RATE_LIMITER_DO is a Durable
+# Object, which Cloudflare doesn't offer on the Free tier. `wrangler deploy`
+# will fail on the [[migrations]] block below if you're on Free.
+#
 # Steps:
 #   1. cp wrangler.toml.example wrangler.toml
 #   2. npx wrangler login                               # CF auth
-#   3. npx wrangler kv namespace create RATE_LIMITS     # copy returned id below
+#   3. npx wrangler kv namespace create MARKET_CACHE     # copy returned id below
+#      (RATE_LIMITER_DO needs no separate creation step — `wrangler deploy`
+#      provisions it from the [[migrations]] block below.)
 #   4. Edit the `id =` line below with the returned id
 #   5. Set ALLOWED_EXTENSION_ID to your unpacked / CWS extension id
 #      (chrome://extensions → toggle Developer mode → copy ID).
@@ -23,9 +29,17 @@ workers_dev = true
 # Optional: pin to a specific CF account. Otherwise inherits from wrangler login.
 # account_id = "YOUR_CF_ACCOUNT_ID"
 
-[[kv_namespaces]]
-binding = "RATE_LIMITS"
-id = "YOUR_KV_NAMESPACE_ID"
+# Atomic rate limiting + OpenAI daily cap (see worker/index.ts's RateLimiterDO).
+# Durable Object storage is provisioned automatically by `wrangler deploy` via
+# the [[migrations]] block — no `wrangler kv namespace create`-style manual
+# step needed, unlike the KV namespaces below.
+[[durable_objects.bindings]]
+name = "RATE_LIMITER_DO"
+class_name = "RateLimiterDO"
+
+[[migrations]]
+tag = "v1-rate-limiter" # bump the tag if RateLimiterDO's class ever changes shape
+new_sqlite_classes = ["RateLimiterDO"]
 
 [[kv_namespaces]]
 binding = "MARKET_CACHE"
