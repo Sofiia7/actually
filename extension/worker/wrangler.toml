@@ -6,17 +6,32 @@ compatibility_flags = ["nodejs_compat"]
 # locally (do not commit). See wrangler.toml.example for the expected shape.
 workers_dev = true
 
-[[kv_namespaces]]
-binding = "RATE_LIMITS"
-# Create with: npx wrangler kv namespace create RATE_LIMITS
-# Then paste the returned id here LOCALLY ONLY — do not commit your real id.
-id = "REPLACE_WITH_KV_NAMESPACE_ID"
+# Atomic rate limiting + OpenAI daily cap (see worker/index.ts's RateLimiterDO).
+# Requires the Workers PAID plan — Durable Objects aren't on Workers Free.
+# Provisioned automatically by `wrangler deploy` via [[migrations]] below, no
+# manual `wrangler kv namespace create`-style step needed.
+[[durable_objects.bindings]]
+name = "RATE_LIMITER_DO"
+class_name = "RateLimiterDO"
+
+[[migrations]]
+tag = "v1-rate-limiter" # bump the tag if RateLimiterDO's class ever changes shape
+new_sqlite_classes = ["RateLimiterDO"]
+
+# Telemetry persistence (bound via dashboard 2026-07-13; keep this block in
+# sync — a future `wrangler deploy` without it would silently DROP the
+# dashboard-added binding).
+[[analytics_engine_datasets]]
+binding = "TELEMETRY"
+dataset = "actually_telemetry"
 
 [[kv_namespaces]]
 binding = "MARKET_CACHE"
 # Create with: npx wrangler kv namespace create MARKET_CACHE
-# Then paste the returned id here LOCALLY ONLY — do not commit your real id.
-id = "REPLACE_WITH_KV_NAMESPACE_ID"
+# The real id is committed deliberately: a KV namespace id is not a secret
+# (useless without an account API token) — see SECURITY.md. Fork operators
+# replace it with their own namespace's id.
+id = "e1c0e2aa31b94900847aca14def4b261"
 
 [vars]
 # Non-secret defaults — override in CF dashboard or `wrangler secret put`.
@@ -25,7 +40,7 @@ id = "REPLACE_WITH_KV_NAMESPACE_ID"
 #   Required for production. Set this to your Chrome extension ID (from
 #   chrome://extensions or the Web Store listing). Worker fails 503 without it
 #   unless WORKER_DEV_MODE=true. Comma-separated list supported.
-ALLOWED_EXTENSION_ID = "REPLACE_WITH_EXTENSION_ID"
+ALLOWED_EXTENSION_ID = "lljnfdfoieiodiiaglimlfjlebljdmhb"
 #
 # WORKER_DEV_MODE
 #   Set to "true" ONLY for local dev. Bypasses the requirement to have
