@@ -13,8 +13,23 @@ npx actually-mcp-server
 ```
 
 Or add to your MCP client config (Claude Code, Cursor, etc.) pointing at
-`npx actually-mcp-server` with the environment variables below. For Claude
-Desktop / Claude Code (`.mcp.json` or `claude_desktop_config.json`):
+`npx actually-mcp-server`. The published package already has the maintainer's
+Worker URL + shared secret baked in (same mechanism as the builder code
+below), so `check_news`/`get_market` work with **zero required env vars**.
+For Claude Desktop / Claude Code (`.mcp.json` or `claude_desktop_config.json`):
+
+```json
+{
+  "mcpServers": {
+    "actually": {
+      "command": "npx",
+      "args": ["actually-mcp-server"]
+    }
+  }
+}
+```
+
+To enable trading (`place_order`/`sell_order`/etc.), add your own key:
 
 ```json
 {
@@ -23,8 +38,6 @@ Desktop / Claude Code (`.mcp.json` or `claude_desktop_config.json`):
       "command": "npx",
       "args": ["actually-mcp-server"],
       "env": {
-        "ACTUALLY_WORKER_URL": "https://your-worker.workers.dev",
-        "ACTUALLY_WORKER_SECRET": "replace-with-worker-shared-secret",
         "POLYMARKET_PRIVATE_KEY": "0xyour-own-private-key-never-committed",
         "ACTUALLY_MAX_ORDER_USD": "100",
         "ACTUALLY_DAILY_LIMIT_USD": "500"
@@ -34,10 +47,11 @@ Desktop / Claude Code (`.mcp.json` or `claude_desktop_config.json`):
 }
 ```
 
-Omit `POLYMARKET_PRIVATE_KEY` (and the two caps) entirely to run signal-only
-(`check_news`/`get_market`, no wallet needed). See `.env.example` in this
-package for the same variables documented for local dev/testing outside an
-MCP client.
+Omit `POLYMARKET_PRIVATE_KEY` (and the two caps) entirely to run signal-only.
+Only set `ACTUALLY_WORKER_URL`/`ACTUALLY_WORKER_SECRET` if you're running your
+own Worker instead of the shared default one. See `.env.example` in this
+package for all variables documented for local dev/testing outside an MCP
+client.
 
 ## Tools
 
@@ -78,17 +92,38 @@ that tradeoff is acceptable for your deployment) and adds noticeable cold-start
 latency: server startup went from near-instant to **~2.6s** in local testing
 because of this dependency's size, even when `redeem_position` is never called.
 
+**Triage (checked 2026-07-08):** `@polymarket/builder-relayer-client`'s latest
+published version (`0.0.10`, already what installs today) still pins
+`axios@^0.27.2` directly — there is no newer release to upgrade to, and this
+project has no way to patch a third party's dependency choice. We did **not**
+force an `overrides` bump of the transitive `axios`/`ethers` versions: axios
+0.27→1.x is a semver-major jump with breaking changes to request/transform
+behavior, and silently overriding it on the one code path that submits a real
+on-chain transaction — one this README already flags as never tested against
+real mainnet funds — is a worse risk than the advisories themselves without a
+dedicated live test to confirm nothing broke. Most of axios's current
+advisories require an attacker-influenced request URL or response body to be
+reachable (SSRF via absolute/attacker URLs, prototype pollution via
+untrusted response merging); `relayerClient.ts` only ever calls a hardcoded
+`https://relayer-v2.polymarket.com/` (see `RELAYER_URL`), never a caller- or
+market-supplied URL, which narrows the practically-exploitable surface here
+considerably even though the advisories remain unpatched upstream. Operators
+who want the axios/ethers versions bumped regardless should pin an
+`overrides` entry in their own `package.json` and re-run the manual
+`redeem_position` mainnet test above before trusting it.
+
 **Removed:** `prepare_order` (returning an "unsigned order to sign elsewhere") was cut before publish — `@polymarket/clob-client-v2`'s `createOrder`/`createMarketOrder` sign internally with no public API to construct genuine unsigned EIP-712 typed data, so the tool could never honestly deliver on "sign this exact object unchanged." If you need a sign-elsewhere flow, run your own `ClobClient` with a custom signer instead.
 
 ## Environment variables
 
 | Variable | Required | Notes |
 |---|---|---|
-| `ACTUALLY_WORKER_URL` | Yes | The backing worker's base URL. |
-| `ACTUALLY_WORKER_SECRET` | Yes | Shared read secret for the worker's proxy routes. This is public-by-design (the same posture as the browser extension's baked secret) — the real backstop is server-side rate limiting, not secrecy. |
+| `ACTUALLY_WORKER_URL` | No | Overrides the baked-in default Worker base URL — only needed if you run your own Worker. |
+| `ACTUALLY_WORKER_SECRET` | No | Overrides the baked-in default shared read secret. This is public-by-design (the same posture as the browser extension's baked secret) — the real backstop is server-side rate limiting, not secrecy. |
 | `POLYMARKET_PRIVATE_KEY` | No | Your own Polygon EOA private key. **We never see this** — it stays in your own process environment. Enables `place_order`/`sell_order`/`cancel_order`/`get_open_orders`/`get_positions`. Never commit it; never share it with anyone, including us. |
 | `ACTUALLY_MAX_ORDER_USD` | No | Per-order cap for `place_order`/`sell_order` (default **$100**). Rejects any single order above this notional before it's ever signed. |
-| `ACTUALLY_DAILY_LIMIT_USD` | No | Rolling UTC-day cap shared by `place_order`+`sell_order` (default **$500**). In-memory only — resets on process restart, not a substitute for real accounting. |
+| `ACTUALLY_DAILY_LIMIT_USD` | No | Rolling UTC-day cap shared by `place_order`+`sell_order` (default **$500**). Persisted to `ACTUALLY_SPEND_STATE_PATH` (see below) so it survives a process restart — still not a substitute for real accounting. |
+| `ACTUALLY_SPEND_STATE_PATH` | No | Where the daily-spend counter is persisted (default `~/.actually-mcp-server/spend-guard.json`). Most MCP clients spawn this server as a fresh subprocess per session, so without persistence the "daily" limit reset on every restart, not just once a day. Override for a custom deployment layout or to isolate multiple operators on one machine. |
 
 These two caps exist because an MCP server that signs real orders on an agent's behalf is exposed to prompt injection: a compromised or buggy calling agent could otherwise try to place unbounded orders. Set both explicitly for any unattended/production use — do not rely on the defaults for anything beyond testing.
 
@@ -119,7 +154,7 @@ eagerly at module load — this is a one-time-per-process cost, not per-call.
 - [x] Confirm `actually-mcp-server` is available on the public npm registry — verified 2026-07-05 (`registry.npmjs.org/actually-mcp-server` → 404).
 - [x] Flip `"private": true` to `"private": false` in `packages/mcp-server/package.json` — done.
 - [x] Build + `npm pack --dry-run` sanity check (3 files, `dist/index.js` ~33KB with `@actually/core` bundled in, `node dist/index.js < /dev/null` starts and exits clean) — verified 2026-07-05.
-- [ ] Set `ACTUALLY_BUILDER_CODE` to the real production builder code before running `npm run build` — **needs the maintainer's own Polymarket builder-program registration** (`polymarket.com/settings?tab=builder`); not something anyone else can do on your behalf.
+- [ ] Set `ACTUALLY_BUILDER_CODE`, `ACTUALLY_WORKER_URL`, and `ACTUALLY_WORKER_SECRET` (same values as `extension/.env.local`'s `VITE_BUILDER_CODE`/`VITE_WORKER_URL`/`VITE_WORKER_SECRET`) before running `npm run build` — these are read once by `tsup.config.ts` at build time and baked into `dist/index.js` so a plain `npx actually-mcp-server` works with zero required env vars. The builder code **needs the maintainer's own Polymarket builder-program registration** (`polymarket.com/settings?tab=builder`); not something anyone else can do on your behalf.
 - [ ] Confirm the R1 open risk from the design spec (Polymarket builder-program ToS re: baking the code into a third-party-operated open-source server) has been checked — see `docs/superpowers/specs/2026-06-30-agentic-layer-design.md`. **Not blocking** for publishing the signal-only tools (`check_news`/`get_market`), only for shipping a non-empty builder code.
 - [ ] `npm login` (or set an `NPM_TOKEN`), then `npm publish` from `packages/mcp-server`.
 - [ ] Submit to MCP marketplaces (mcpmarket.com, playbooks.com, claudemarketplaces.com) per the original packaging discussion.

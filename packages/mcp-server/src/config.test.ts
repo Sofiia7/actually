@@ -11,7 +11,11 @@ describe('requireWorkerConfig', () => {
     process.env = { ...ORIGINAL_ENV }
   })
 
-  it('throws when ACTUALLY_WORKER_URL and ACTUALLY_WORKER_SECRET are not set', async () => {
+  // In the published package, __DEFAULT_WORKER_URL__/__DEFAULT_WORKER_SECRET__
+  // are baked in by tsup (see tsup.config.ts) so this only throws in an
+  // unbuilt/test context where those defines don't exist — the typeof guard
+  // in config.ts falls back to '', reproducing the pre-bake behavior here.
+  it('throws when no env vars are set and no default was baked in', async () => {
     delete process.env.ACTUALLY_WORKER_URL
     delete process.env.ACTUALLY_WORKER_SECRET
 
@@ -22,7 +26,7 @@ describe('requireWorkerConfig', () => {
     )
   })
 
-  it('does not throw and returns the values when both are set', async () => {
+  it('env vars override the baked-in default when both are set', async () => {
     process.env.ACTUALLY_WORKER_URL = 'https://worker.example.com'
     process.env.ACTUALLY_WORKER_SECRET = 'test-secret'
 
@@ -68,5 +72,30 @@ describe('spend limit env vars', () => {
     const { MAX_ORDER_USD, DAILY_LIMIT_USD } = await import('./config')
     expect(MAX_ORDER_USD).toBe(100)
     expect(DAILY_LIMIT_USD).toBe(500)
+  })
+})
+
+describe('SPEND_GUARD_STATE_PATH', () => {
+  const ORIGINAL_ENV = { ...process.env }
+
+  beforeEach(() => {
+    vi.resetModules()
+  })
+
+  afterEach(() => {
+    process.env = { ...ORIGINAL_ENV }
+  })
+
+  it('defaults to spend-guard.json under a per-user actually-mcp-server directory', async () => {
+    delete process.env.ACTUALLY_SPEND_STATE_PATH
+    const { SPEND_GUARD_STATE_PATH } = await import('./config')
+    expect(SPEND_GUARD_STATE_PATH).toContain('actually-mcp-server')
+    expect(SPEND_GUARD_STATE_PATH.endsWith('spend-guard.json')).toBe(true)
+  })
+
+  it('honors an operator-configured override path', async () => {
+    process.env.ACTUALLY_SPEND_STATE_PATH = '/custom/path/state.json'
+    const { SPEND_GUARD_STATE_PATH } = await import('./config')
+    expect(SPEND_GUARD_STATE_PATH).toBe('/custom/path/state.json')
   })
 })

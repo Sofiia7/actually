@@ -9,7 +9,7 @@ import {
   LOCAL_MODEL_ID,
   resolveOrderToken,
 } from '@actually/core'
-import { DAILY_LIMIT_USD, MAX_ORDER_USD, PRIVATE_KEY, requireWorkerConfig } from './config'
+import { DAILY_LIMIT_USD, MAX_ORDER_USD, PRIVATE_KEY, SPEND_GUARD_STATE_PATH, requireWorkerConfig } from './config'
 import { WorkerMarketStore } from './marketStore'
 import { LocalEmbedder } from './embedder'
 import { SpendGuard } from './spendGuard'
@@ -26,7 +26,8 @@ import { redeemPosition } from './tools/redeemPosition'
 import { makeTradingSession } from './tradingSession'
 import { makeRelayerSubmit } from './relayerClient'
 
-const server = new McpServer({ name: 'actually-mcp-server', version: '0.1.0' })
+// Keep in sync with package.json "version" (checked by config.test.ts).
+const server = new McpServer({ name: 'actually-mcp-server', version: '0.1.1' })
 
 const embedder = new LocalEmbedder()
 const thresholds = defaultThresholds('local')
@@ -61,7 +62,10 @@ server.registerTool(
       'Map a piece of news text to the relevant Polymarket market and return its ' +
       'objective YES probability. Does not classify whether the news is dramatized ' +
       'or accurate relative to the market — that interpretation is left to the ' +
-      'calling agent, which has both the original text and this market anchor.',
+      'calling agent, which has both the original text and this market anchor. ' +
+      'The probability comes from a precomputed cache refreshed on a cron cadence ' +
+      '(can be up to ~2 hours stale) — for a live price before trading, call ' +
+      'get_market with the returned marketId.',
     inputSchema: { text: z.string().min(1).max(8000) },
   },
   async ({ text }) => {
@@ -102,7 +106,11 @@ server.registerTool(
 // enforced across both buys and sells.
 if (PRIVATE_KEY) {
   const session = makeTradingSession(PRIVATE_KEY)
-  const spendGuard = new SpendGuard({ maxOrderUsd: MAX_ORDER_USD, dailyLimitUsd: DAILY_LIMIT_USD })
+  const spendGuard = new SpendGuard({
+    maxOrderUsd: MAX_ORDER_USD,
+    dailyLimitUsd: DAILY_LIMIT_USD,
+    statePath: SPEND_GUARD_STATE_PATH,
+  })
 
   server.registerTool(
     'place_order',
