@@ -17,12 +17,68 @@ function fakeKV() {
   } as unknown as KVNamespace
 }
 
+/**
+ * Fake RateLimiterDO namespace. Models the two properties that matter for
+ * the atomicity regression test below:
+ *
+ * 1. Real Durable Object storage reads/writes are genuine async I/O with
+ *    real latency — the same latency that made the OLD KV-based rateLimit()
+ *    racy (env.RATE_LIMITS.get() then .put() were two real network round
+ *    trips, with a real yield gap between them). `handleIncrement` below
+ *    inserts an explicit `await` between its read and its write to
+ *    reproduce that same yield gap, instead of silently completing
+ *    synchronously (which would make this fake "accidentally atomic" for
+ *    reasons that have nothing to do with the actual fix).
+ * 2. Cloudflare's real guarantee — a single Durable Object instance
+ *    processes one request to completion before starting the next — is
+ *    modeled with a promise-chain queue keyed by instance name. That queue
+ *    is the thing actually being tested: remove it and the yield gap in (1)
+ *    lets concurrent calls interleave and over-admit past the limit, the
+ *    exact bug this Durable Object replaces KV to fix.
+ */
+function fakeRateLimiterDO() {
+  const stores = new Map<string, { windowStart: number; count: number }>()
+  const queues = new Map<string, Promise<unknown>>()
+
+  async function handleIncrement(name: string, windowMs: number, limit: number, amount: number) {
+    const now = Date.now()
+    const windowStart = Math.floor(now / windowMs) * windowMs
+    await Promise.resolve() // yield — models the storage read's I/O latency
+    const existing = stores.get(name)
+    const bucket = existing && existing.windowStart === windowStart ? existing : { windowStart, count: 0 }
+    if (bucket.count + amount > limit) return { allowed: false, count: bucket.count }
+    await Promise.resolve() // yield — models the storage write's I/O latency
+    bucket.count += amount
+    stores.set(name, bucket)
+    return { allowed: true, count: bucket.count }
+  }
+
+  return {
+    idFromName: (name: string) => ({ __name: name, toString: () => name }),
+    get: (id: { __name: string }) => ({
+      fetch: async (_url: string, init: { body: string }) => {
+        const { windowMs, limit, amount } = JSON.parse(init.body) as {
+          windowMs: number
+          limit: number
+          amount: number
+        }
+        const name = id.__name
+        const prior = queues.get(name) ?? Promise.resolve()
+        const turn = prior.then(() => handleIncrement(name, windowMs, limit, amount))
+        queues.set(name, turn)
+        const result = await turn
+        return new Response(JSON.stringify(result))
+      },
+    }),
+  } as unknown as DurableObjectNamespace
+}
+
 function baseEnv(over: Record<string, unknown> = {}) {
   return {
     WORKER_SHARED_SECRET: 'secret',
     ALLOWED_EXTENSION_ID: EXT,
     OPENAI_API_KEY: 'sk-test',
-    RATE_LIMITS: fakeKV(),
+    RATE_LIMITER_DO: fakeRateLimiterDO(),
     MARKET_CACHE: fakeKV(),
     ...over,
   } as never
@@ -81,25 +137,47 @@ describe('health + auth', () => {
     expect(res.status).toBe(200)
   })
 
-  it('returns 503 when RATE_LIMITS KV is not bound in prod (fail-closed backstop)', async () => {
-    const res = await call('/geo', baseEnv({ RATE_LIMITS: undefined }), { country: 'RS' })
+  it('returns 503 when RATE_LIMITER_DO is not bound in prod (fail-closed backstop)', async () => {
+    const res = await call('/geo', baseEnv({ RATE_LIMITER_DO: undefined }), { country: 'RS' })
     expect(res.status).toBe(503)
-    expect((await res.json() as { reason?: string }).reason).toBe('worker_misconfigured_no_kv')
+    expect((await res.json() as { reason?: string }).reason).toBe('worker_misconfigured_no_rate_limiter')
   })
 
-  it('dev mode bypasses missing KV', async () => {
-    const res = await call('/geo', baseEnv({ RATE_LIMITS: undefined, WORKER_DEV_MODE: 'true' }), { country: 'RS' })
+  it('dev mode bypasses missing RATE_LIMITER_DO', async () => {
+    const res = await call('/geo', baseEnv({ RATE_LIMITER_DO: undefined, WORKER_DEV_MODE: 'true' }), { country: 'RS' })
     expect(res.status).toBe(200)
   })
 
-  it('/health stays up even without KV (liveness must not depend on the backstop)', async () => {
-    const res = await call('/health', baseEnv({ RATE_LIMITS: undefined }), { auth: null, origin: null })
+  it('/health stays up even without RATE_LIMITER_DO (liveness must not depend on the backstop)', async () => {
+    const res = await call('/health', baseEnv({ RATE_LIMITER_DO: undefined }), { auth: null, origin: null })
     expect(res.status).toBe(200)
   })
 
   it('rejects an origin not in the allow-list', async () => {
     const res = await call('/geo', baseEnv(), { origin: 'chrome-extension://someoneelse' })
     expect(res.status).toBe(401)
+  })
+
+  it('allows a request with no Origin header when the shared secret is valid (server-side clients)', async () => {
+    // Origin is a browser-enforced signal: pages can't forge it, but any
+    // non-browser attacker can trivially SET it — so rejecting its absence
+    // (tried 2026-07-08, deployed 2026-07-14) stopped no real attacker while
+    // breaking both legitimate server-side clients in prod: the market-cache
+    // cron builder and the MCP server, neither of which is a browser. The
+    // secret gates access; the DO rate limiter is the abuse backstop. A
+    // PRESENT-but-wrong Origin (a foreign web page) is still rejected above.
+    const res = await call('/geo', baseEnv(), { origin: null, country: 'RS' })
+    expect(res.status).toBe(200)
+  })
+
+  it('allows /market-cache GET with no Origin (the MCP server and cache builder are not browsers)', async () => {
+    const env = baseEnv()
+    await (env as { MARKET_CACHE: KVNamespace }).MARKET_CACHE.put(
+      'blob',
+      JSON.stringify({ model: 'Xenova/all-MiniLM-L12-v2', builtAt: 1, markets: [] }),
+    )
+    const res = await call('/market-cache', env, { origin: null })
+    expect(res.status).toBe(200)
   })
 })
 
@@ -164,6 +242,27 @@ describe('rate limiting', () => {
     }
     expect(statuses.slice(0, 10).every((s) => s === 200)).toBe(true)
     expect(statuses[10]).toBe(429)
+  })
+
+  it('atomicity: concurrent requests never exceed the limit (regression for the old KV race)', async () => {
+    // Sequential calls (above) never exercised concurrency at all — each
+    // `await call(...)` fully resolved before the next started, so the old
+    // KV-based rateLimit()'s get-then-put race never had a chance to fire in
+    // that test. Firing every call before awaiting any of them is what
+    // actually reproduces the race: with the old KV counter this would let
+    // meaningfully more than 10 through; with RateLimiterDO's per-instance
+    // serialization (modeled by fakeRateLimiterDO's queue), exactly the
+    // limit gets admitted no matter how many arrive at once.
+    const env = baseEnv()
+    const limit = 10 // /geo = 10/min
+    const concurrency = 30
+    const results = await Promise.all(
+      Array.from({ length: concurrency }, () => call('/geo', env, { country: 'RS' })),
+    )
+    const allowed = results.filter((r) => r.status === 200).length
+    const limited = results.filter((r) => r.status === 429).length
+    expect(allowed).toBe(limit)
+    expect(limited).toBe(concurrency - limit)
   })
 })
 

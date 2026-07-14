@@ -16,7 +16,16 @@ interface Env {
   /** Hard daily cap of embedded CHARACTERS across all clients. Default 5,000,000. */
   OPENAI_DAILY_CHAR_LIMIT?: string
   POLYMARKET_BUILDER_CODE?: string
-  RATE_LIMITS?: KVNamespace
+  /**
+   * Atomic per-IP rate limiting + the OpenAI daily character cap — see
+   * RateLimiterDO below. Replaced a KV read-then-write counter (see git
+   * history) that had a race window: concurrent requests could read the same
+   * stale count and both increment from it, letting a determined caller
+   * exceed the nominal limit by several times. A Durable Object instance
+   * processes one request at a time (Cloudflare's core DO guarantee), so the
+   * read-then-write here is genuinely atomic with no extra locking needed.
+   */
+  RATE_LIMITER_DO?: DurableObjectNamespace
   /** Optional Analytics Engine dataset for telemetry persistence. */
   TELEMETRY?: AnalyticsEngineDataset
   /** Precomputed market-cache blob storage — see /market-cache routes. */
@@ -30,20 +39,51 @@ interface Env {
 }
 
 /**
- * Per-day spend cap for OpenAI requests, enforced via KV counter shared across
- * all users. Protects the operator from a single bad actor draining the key.
- * Returns true if the request is allowed, false if the daily quota is exhausted.
+ * One Durable Object instance per rate-limit counter (e.g. "rl:markets:1.2.3.4"
+ * or "openai-daily-cap"), addressed via idFromName so the same logical counter
+ * always routes to the same instance. The instance holds a single {windowStart,
+ * count} record and resets itself the moment `now` crosses into a new window —
+ * no explicit TTL/expiry needed, and no per-window instance proliferation
+ * (unlike embedding the window into the DO name, which would mint a fresh,
+ * permanently-stored instance every single minute).
+ *
+ * Atomicity comes from the platform, not from code in this class: Cloudflare
+ * guarantees a given Durable Object instance processes one request to
+ * completion before starting the next (the "input gate"), so the
+ * get-then-put below can never interleave with a concurrent call to the same
+ * instance the way the old KV-based version could.
+ */
+export class RateLimiterDO implements DurableObject {
+  constructor(private readonly state: DurableObjectState) {}
+
+  async fetch(request: Request): Promise<Response> {
+    const { windowMs, limit, amount } = (await request.json()) as {
+      windowMs: number
+      limit: number
+      amount: number
+    }
+    const now = Date.now()
+    const windowStart = Math.floor(now / windowMs) * windowMs
+    const existing = await this.state.storage.get<{ windowStart: number; count: number }>('bucket')
+    const bucket = existing && existing.windowStart === windowStart ? existing : { windowStart, count: 0 }
+    if (bucket.count + amount > limit) {
+      return new Response(JSON.stringify({ allowed: false, count: bucket.count }))
+    }
+    bucket.count += amount
+    await this.state.storage.put('bucket', bucket)
+    return new Response(JSON.stringify({ allowed: true, count: bucket.count }))
+  }
+}
+
+/**
+ * Per-day spend cap for OpenAI requests, enforced via the atomic
+ * RateLimiterDO counter, shared across all users. Protects the operator from
+ * a single bad actor draining the key. Returns true if the request is
+ * allowed, false if the daily quota is exhausted.
  */
 async function openAiCharCap(env: Env, chars: number): Promise<boolean> {
-  if (!env.RATE_LIMITS) return true
   const limit = parseInt(env.OPENAI_DAILY_CHAR_LIMIT ?? '5000000', 10)
-  const day = new Date().toISOString().slice(0, 10) // YYYY-MM-DD
-  const key = `openai_chars_day:${day}`
-  const cur = parseInt((await env.RATE_LIMITS.get(key)) ?? '0', 10)
-  if (cur + chars > limit) return false
-  // 25 hour TTL covers the rollover and lets the value GC itself
-  await env.RATE_LIMITS.put(key, String(cur + chars), { expirationTtl: 90_000 })
-  return true
+  return checkRateLimit(env, 'openai-daily-cap', 86_400_000, limit, chars)
 }
 
 /**
@@ -187,7 +227,44 @@ function json(body: unknown, status: number, headers: HeadersInit): Response {
   return new Response(JSON.stringify(body), { status, headers })
 }
 
-let warnedNoKv = false
+let warnedNoDo = false
+
+/**
+ * Shared entry point for both per-IP rate limiting and the OpenAI daily
+ * cap: routes a check-and-increment of `amount` (default 1) against the
+ * named counter's Durable Object instance. `name` fully identifies the
+ * counter (e.g. `rl:markets:1.2.3.4` or `openai-daily-cap`) — the window
+ * itself is NOT embedded in the name; RateLimiterDO tracks and resets its
+ * own window internally so the same counter instance is reused forever
+ * instead of minting a new persisted instance every window.
+ */
+async function checkRateLimit(
+  env: Env,
+  name: string,
+  windowMs: number,
+  limit: number,
+  amount = 1,
+): Promise<boolean> {
+  if (!env.RATE_LIMITER_DO) {
+    if (!warnedNoDo) {
+      warnedNoDo = true
+      console.warn(
+        '[actually] RATE_LIMITER_DO is not bound — per-IP rate limiting and the ' +
+          'OpenAI daily quota are DISABLED (fail-open). This is only reachable in ' +
+          'WORKER_DEV_MODE; production refuses authenticated routes without it (see checkAuth).',
+      )
+    }
+    return true
+  }
+  const id = env.RATE_LIMITER_DO.idFromName(name)
+  const stub = env.RATE_LIMITER_DO.get(id)
+  const res = await stub.fetch('https://rate-limiter/increment', {
+    method: 'POST',
+    body: JSON.stringify({ windowMs, limit, amount }),
+  })
+  const data = (await res.json()) as { allowed: boolean }
+  return data.allowed
+}
 
 async function rateLimit(
   env: Env,
@@ -195,23 +272,7 @@ async function rateLimit(
   ip: string,
   perMinute: number,
 ): Promise<boolean> {
-  if (!env.RATE_LIMITS) {
-    if (!warnedNoKv) {
-      warnedNoKv = true
-      console.warn(
-        '[actually] RATE_LIMITS KV is not bound — per-IP rate limiting and the ' +
-          'OpenAI daily quota are DISABLED (fail-open). This is only reachable in ' +
-          'WORKER_DEV_MODE; production refuses authenticated routes without KV (see checkAuth).',
-      )
-    }
-    return true
-  }
-  const window = Math.floor(Date.now() / 60_000)
-  const key = `rl:${bucket}:${ip}:${window}`
-  const cur = parseInt((await env.RATE_LIMITS.get(key)) ?? '0', 10)
-  if (cur >= perMinute) return false
-  await env.RATE_LIMITS.put(key, String(cur + 1), { expirationTtl: 120 })
-  return true
+  return checkRateLimit(env, `rl:${bucket}:${ip}`, 60_000, perMinute)
 }
 
 /**
@@ -228,13 +289,13 @@ function checkAuth(req: Request, env: Env): { ok: boolean; status?: number; reas
   if (!env.ALLOWED_EXTENSION_ID && env.WORKER_DEV_MODE !== 'true') {
     return { ok: false, status: 503, reason: 'worker_misconfigured_no_extension_id' }
   }
-  // The rate-limit KV is the real abuse backstop — the shared secret is
-  // publicly extractable from the shipped build (see SECURITY.md), so without
-  // KV every per-IP limit and the OpenAI daily cap silently fail-open. Refuse
-  // to serve authenticated routes in prod until RATE_LIMITS is bound; dev mode
+  // RateLimiterDO is the real abuse backstop — the shared secret is publicly
+  // extractable from the shipped build (see SECURITY.md), so without it every
+  // per-IP limit and the OpenAI daily cap silently fail-open. Refuse to serve
+  // authenticated routes in prod until RATE_LIMITER_DO is bound; dev mode
   // (WORKER_DEV_MODE=true) still allows running without it for local work.
-  if (!env.RATE_LIMITS && env.WORKER_DEV_MODE !== 'true') {
-    return { ok: false, status: 503, reason: 'worker_misconfigured_no_kv' }
+  if (!env.RATE_LIMITER_DO && env.WORKER_DEV_MODE !== 'true') {
+    return { ok: false, status: 503, reason: 'worker_misconfigured_no_rate_limiter' }
   }
 
   const auth = req.headers.get('X-Actually-Auth')
@@ -244,6 +305,15 @@ function checkAuth(req: Request, env: Env): { ok: boolean; status?: number; reas
 
   const origin = req.headers.get('Origin')
   if (env.ALLOWED_EXTENSION_ID && origin) {
+    // Origin is validated only when PRESENT. Browsers set it and pages can't
+    // forge it, so a mismatched Origin (a foreign website's fetch) is safely
+    // rejected. Its ABSENCE, however, is normal for the worker's legitimate
+    // non-browser clients — the market-cache cron builder and the published
+    // MCP server — and rejecting it (tried 2026-07-08, deployed 2026-07-14)
+    // broke both in production the same day while stopping no real attacker:
+    // any curl caller can set the header. The shared secret gates access;
+    // the RateLimiterDO per-IP limits + OpenAI daily cap are the abuse
+    // backstop (see SECURITY.md threat model).
     const allowed = allowedOrigins(env.ALLOWED_EXTENSION_ID)
     if (!allowed.has(origin)) return { ok: false, status: 401, reason: 'bad_origin' }
   }
