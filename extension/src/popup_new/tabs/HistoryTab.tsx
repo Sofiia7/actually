@@ -23,16 +23,18 @@ export type HistoryState =
 export interface HistoryTabProps {
   state: HistoryState;
   onSelect: (row: HistoryRow) => void;
+  onOpenArticle: (row: HistoryRow) => void;
   onClear: () => void;
 }
 
 // =============================================================
-const Row: React.FC<HistoryRow & { onClick?: () => void }> = ({
+const Row: React.FC<HistoryRow & { onClick?: () => void; onOpenArticle?: () => void }> = ({
   pct,
   q,
   src,
   when,
   onClick,
+  onOpenArticle,
 }) => (
   <IceCard
     pct={pct}
@@ -70,6 +72,28 @@ const Row: React.FC<HistoryRow & { onClick?: () => void }> = ({
         {src} · {when}
       </span>
     </div>
+    <button
+      type="button"
+      title="Open original article"
+      onClick={(e) => {
+        e.stopPropagation();
+        onOpenArticle?.();
+      }}
+      style={{
+        appearance: 'none',
+        background: 'none',
+        border: 'none',
+        padding: 4,
+        margin: 0,
+        cursor: 'pointer',
+        fontSize: 13,
+        lineHeight: 1,
+        color: 'rgba(35,45,70,.45)',
+        flexShrink: 0,
+      }}
+    >
+      ↗
+    </button>
     <PctChip pct={pct} />
   </IceCard>
 );
@@ -78,6 +102,7 @@ const Row: React.FC<HistoryRow & { onClick?: () => void }> = ({
 export const HistoryTab: React.FC<HistoryTabProps> = ({
   state,
   onSelect,
+  onOpenArticle,
   onClear,
 }) => {
   if (state.kind === 'loading') {
@@ -139,7 +164,7 @@ export const HistoryTab: React.FC<HistoryTabProps> = ({
       </div>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
         {state.items.map((m, i) => (
-          <Row key={i} {...m} onClick={() => onSelect(m)} />
+          <Row key={i} {...m} onClick={() => onSelect(m)} onOpenArticle={() => onOpenArticle(m)} />
         ))}
       </div>
       <div style={{ marginTop: 12 }}>

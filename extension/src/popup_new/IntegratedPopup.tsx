@@ -471,6 +471,18 @@ export const IntegratedPopup: React.FC<IntegratedPopupProps> = ({
                     setTab('Trade')
                   })()
                 }}
+                onOpenArticle={(row) => {
+                  void (async () => {
+                    const r = (await sendToBackground({ type: 'GET_HISTORY' })) as Extract<
+                      ResponseMessage,
+                      { type: 'HISTORY_RESPONSE' }
+                    >
+                    const item = r.items.find(
+                      (x) => x.question === row.q && x.pageDomain === row.src,
+                    )
+                    if (item?.pageUrl) window.open(item.pageUrl, '_blank', 'noopener,noreferrer')
+                  })()
+                }}
                 onClear={() => {
                   void (async () => {
                     await sendToBackground({ type: 'CLEAR_HISTORY' })

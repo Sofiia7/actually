@@ -141,16 +141,18 @@ select.thin-glass{
    GLASS BUTTON — flat at rest, convex on hover.
    Hover state = gradient highlight (top light / bottom dark) +
    inset highlights + lifted shadow + 0.5px lift.
-   No cursor-tracking effects on buttons (kept intentionally calm).
+   Tinted with the same cold blue as the ProbDot ramp's 0% stop
+   (#1E5FD7) — was pure white/grey, reading as nothing to grab
+   onto against the rest of the "ice" palette.
    ============================================================ */
 .glass-btn{
   position:relative;
   display:inline-flex; align-items:center; justify-content:center; gap:8px;
   font-family:inherit; font-weight:400; letter-spacing:-.005em;
-  color: rgba(18,26,48,.85);
+  color: rgba(20,40,80,.9);
   text-shadow:0 1px 0 rgba(255,255,255,.5);
-  background: rgba(255,255,255,.09);
-  border:1px solid rgba(255,255,255,.32);
+  background: rgba(64,120,215,.11);
+  border:1px solid rgba(64,120,215,.38);
   backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
   box-shadow: none;
   cursor:pointer;
@@ -164,23 +166,23 @@ select.thin-glass{
 .glass-btn::before{
   content:''; position:absolute; inset:0; border-radius:inherit; pointer-events:none;
   background: linear-gradient(180deg,
-    rgba(255,255,255,.55) 0%,
-    rgba(255,255,255,.18) 38%,
+    rgba(255,255,255,.5)  0%,
+    rgba(255,255,255,.16) 38%,
     rgba(255,255,255,0)   55%,
-    rgba(20,30,60,.06)    100%);
+    rgba(20,40,90,.08)    100%);
   opacity:0; transition: opacity .22s ease;
 }
 .glass-btn:hover{
-  background: rgba(255,255,255,.13);
-  border-color: rgba(255,255,255,.55);
+  background: rgba(64,120,215,.18);
+  border-color: rgba(64,120,215,.6);
   box-shadow:
-    inset 0 1px 0 rgba(255,255,255,.7),
-    inset 0 -1px 0 rgba(20,30,60,.08),
-    0 8px 22px -10px rgba(20,40,90,.28),
-    0 2px 6px -3px rgba(20,40,90,.18);
+    inset 0 1px 0 rgba(255,255,255,.6),
+    inset 0 -1px 0 rgba(20,40,90,.1),
+    0 8px 22px -10px rgba(20,60,140,.32),
+    0 2px 6px -3px rgba(20,60,140,.22);
   transform: translateY(-.5px);
 }
 .glass-btn:hover::before{ opacity:1; }
-.glass-btn:active{ transform: translateY(.5px); box-shadow: inset 0 1px 2px rgba(20,30,60,.18); }
+.glass-btn:active{ transform: translateY(.5px); box-shadow: inset 0 1px 2px rgba(20,40,90,.2); }
 .glass-btn:active::before{ opacity:.4; }
 .glass-btn > span{ position:relative; z-index:1; }
