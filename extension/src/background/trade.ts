@@ -22,12 +22,14 @@ import {
   cancelOrder as clobCancelOrder,
   deriveCredentials,
   fetchOrderBook,
+  listOpenOrders,
   makeClient,
   pollOrderStatus,
   signBuyOrder,
   signMarketBuyOrder,
   submitSignedOrder,
 } from './clob'
+import type { OpenOrderSummary } from '../shared/types'
 import {
   type ActiveSession,
   WCSigner,
@@ -320,6 +322,21 @@ export async function cancelOrder(
   }
   void trackEvent('order_cancelled', settings)
   return { ok: true }
+}
+
+/** List the connected wallet's resting orders, optionally filtered to one market. */
+export async function getOpenOrders(
+  state: WalletState,
+  marketId?: string,
+): Promise<{ ok: boolean; orders?: OpenOrderSummary[]; error?: string }> {
+  try {
+    const signer = new WCSigner(state.topic, state.address)
+    const client = makeClient({ signer, funderAddress: state.safeAddress, creds: state.creds })
+    const orders = await listOpenOrders(client, marketId)
+    return { ok: true, orders }
+  } catch (err) {
+    return { ok: false, error: String(err) }
+  }
 }
 
 function sizeBucket(usd: number): string {

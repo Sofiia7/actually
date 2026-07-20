@@ -65,6 +65,33 @@ export interface TelemetryEvent {
   meta?: Record<string, string | number | boolean>
 }
 
+export interface OpenOrderSummary {
+  orderId: string
+  marketId: string
+  tokenId: string
+  side: string
+  price: string
+  originalSize: string
+  sizeMatched: string
+  status: string
+}
+
+export interface Position {
+  tokenId: string
+  conditionId: string
+  size: number
+  avgPrice: number
+  curPrice: number
+  currentValue: number
+  cashPnl: number
+  percentPnl: number
+  outcome: string
+  title: string
+  slug: string
+  /** True once the market has resolved and this position can be redeemed. */
+  redeemable: boolean
+}
+
 export interface TestKeysResult {
   worker: { ok: boolean; error?: string }
   openai?: { ok: boolean; error?: string }
