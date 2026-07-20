@@ -24,6 +24,12 @@ export const BLOCKED_COUNTRIES = new Set<string>([
   'PL', // Poland
   // Ontario (Canada) is restricted but country-level data is too coarse to
   // express. Worker handles ON sub-region when CF returns the region header.
+  // Comprehensively OFAC-sanctioned jurisdictions — a stricter, separate
+  // obligation from Polymarket's own market-access list above.
+  'IR', // Iran
+  'KP', // North Korea
+  'CU', // Cuba
+  'SY', // Syria
 ])
 
 /** Why a geo check failed, when it failed. */

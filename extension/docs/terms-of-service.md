@@ -16,7 +16,7 @@ Trading is opt-in. It only becomes available after you connect a wallet you cont
 
 ### 2.1 Eligibility and geographic restrictions
 
-Polymarket is not available to residents of certain jurisdictions, including (non-exhaustively) the United States, United Kingdom, France, Belgium, Australia, Singapore, Thailand, Taiwan, Poland, and Ontario (Canada). The Extension performs a best-effort country check before showing the Trading tab; if your country is on the restricted list, Trading is disabled. **You are solely responsible for determining whether prediction markets are legal where you live.** The Extension's geo check is not a substitute for that determination.
+Polymarket is not available to residents of certain jurisdictions, including (non-exhaustively) the United States, United Kingdom, France, Belgium, Australia, Singapore, Thailand, Taiwan, Poland, and Ontario (Canada). The Extension additionally blocks comprehensively sanctioned jurisdictions, including Iran, North Korea, Cuba, and Syria. The Extension performs a best-effort country check before showing the Trading tab; if your country is on the restricted list, Trading is disabled. **You are solely responsible for determining whether prediction markets are legal where you live.** The Extension's geo check is not a substitute for that determination.
 
 ### 2.2 No advice, no warranty of execution
 

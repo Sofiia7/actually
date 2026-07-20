@@ -1,5 +1,5 @@
 import type { PolyMarket } from './types'
-import { findOutcomeIndex } from './util'
+import { findOutcomeIndex, isBinaryOutcomes } from './util'
 
 export type Outcome = 'Yes' | 'No'
 
@@ -17,8 +17,19 @@ export interface OrderTarget {
  * side fills. negRisk/tickSize are market properties, not order intent, so
  * they ride along here rather than being separately caller-supplied (which
  * would let a caller spoof them too).
+ *
+ * Markets reached via the market-cache are pre-filtered to Yes/No by
+ * isBinaryOutcomes at build time, but the MCP server's Gamma fallback
+ * (resolveMarket.ts, for a marketId outside the cache's top-N-by-volume cut)
+ * applies no such filter. Without this check, findOutcomeIndex's silent
+ * positional fallback (no 'Yes'/'No' label found → index 0/1) would sign a
+ * real order against whatever outcome happens to sit at that index on a
+ * market like ["Over","Under"] — never validated against caller intent.
  */
 export function resolveOrderToken(market: PolyMarket, outcome: Outcome): OrderTarget {
+  if (!isBinaryOutcomes(market.outcomes)) {
+    throw new Error('market_not_binary')
+  }
   const idx = findOutcomeIndex(market.outcomes, outcome)
   const tokenId = market.clobTokenIds[idx]
   if (!tokenId) {

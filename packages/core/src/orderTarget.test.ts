@@ -53,4 +53,21 @@ describe('resolveOrderToken', () => {
     const m = market({ clobTokenIds: ['tok-yes'] }) // No-slot missing
     expect(() => resolveOrderToken(m, 'No')).toThrow('market_missing_token_for_outcome:No')
   })
+
+  it('rejects a non-binary market instead of silently resolving to a positional token (Over/Under)', () => {
+    // findOutcomeIndex would otherwise fall back to index 0/1 for a market
+    // with no 'Yes'/'No' label — signing a real order for an outcome the
+    // caller never chose. This must never reach that fallback.
+    const m = market({ outcomes: '["Over","Under"]', clobTokenIds: ['tok-over', 'tok-under'] })
+    expect(() => resolveOrderToken(m, 'Yes')).toThrow('market_not_binary')
+    expect(() => resolveOrderToken(m, 'No')).toThrow('market_not_binary')
+  })
+
+  it('rejects a categorical (>2 outcome) market', () => {
+    const m = market({
+      outcomes: '["Candidate A","Candidate B","Candidate C"]',
+      clobTokenIds: ['tok-a', 'tok-b', 'tok-c'],
+    })
+    expect(() => resolveOrderToken(m, 'Yes')).toThrow('market_not_binary')
+  })
 })

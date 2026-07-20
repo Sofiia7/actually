@@ -172,8 +172,15 @@ export async function findMatch(
   //   3. number-overlap score (see numberOverlapScore — can be negative)
   //   4. small volume bonus (capped +0.015) — tiebreaker for genuine ties
   const scored: { market: CachedMarket; score: number; raw: number }[] = []
+  const now = Date.now()
   for (const m of cache) {
     if (!m.embeddingB64) continue
+    // A resolved/closed market must never be offered as a live, tradeable
+    // match — the cache can be up to ~2h stale (worker cron) or days stale
+    // (extension's lazy refresh), so a market that closed inside that window
+    // is otherwise indistinguishable from a live one at scoring time.
+    if (m.closed) continue
+    if (m.endDate && Date.parse(m.endDate) < now) continue
     const v = b64ToFloatArray(m.embeddingB64)
     if (v.length !== articleVec.length) continue
     const raw = cosineSimilarity(articleVec, v)

@@ -13,8 +13,9 @@ function fakeMarket(over: Partial<CachedMarket> & { vec: number[] }): CachedMark
     outcomes: rest.outcomes ?? '["Yes","No"]',
     volume: rest.volume ?? 0,
     liquidity: rest.liquidity ?? 0,
-    active: true,
-    closed: false,
+    active: rest.active ?? true,
+    closed: rest.closed ?? false,
+    endDate: rest.endDate,
     clobTokenIds: rest.clobTokenIds ?? ['tok-yes', 'tok-no'],
     embeddingB64: floatArrayToB64(new Float32Array(vec)),
     questionHash: 'hash',
@@ -217,5 +218,46 @@ describe('findMatch', () => {
     expect(result).not.toBeNull()
     expect(result?.confidence).toBeCloseTo(0.6, 6)
     expect(result?.lowConfidence).toBe(true)
+  })
+
+  it('never returns a closed market, even as the only/best cosine match', async () => {
+    const closed = fakeMarket({ id: 'closed', closed: true, vec: [1, 0, 0] })
+    const store = { getMarkets: async () => [closed] }
+    const embedder = { embed: async () => new Float32Array([1, 0, 0]) }
+    const result = await findMatch('anything', '', { store, embedder, thresholds })
+    expect(result).toBeNull()
+  })
+
+  it('never returns a market whose endDate has already passed', async () => {
+    const resolved = fakeMarket({
+      id: 'resolved',
+      vec: [1, 0, 0],
+      endDate: new Date(Date.now() - 60_000).toISOString(),
+    })
+    const store = { getMarkets: async () => [resolved] }
+    const embedder = { embed: async () => new Float32Array([1, 0, 0]) }
+    const result = await findMatch('anything', '', { store, embedder, thresholds })
+    expect(result).toBeNull()
+  })
+
+  it('falls through to the next-best live market when the top cosine match is closed', async () => {
+    const closed = fakeMarket({ id: 'closed', closed: true, vec: [1, 0, 0] })
+    const live = fakeMarket({ id: 'live', vec: [0.9, 0.436, 0] }) // still above the 0.5 floor
+    const store = { getMarkets: async () => [closed, live] }
+    const embedder = { embed: async () => new Float32Array([1, 0, 0]) }
+    const result = await findMatch('anything', '', { store, embedder, thresholds })
+    expect(result?.market.id).toBe('live')
+  })
+
+  it('still returns a market with a future endDate', async () => {
+    const upcoming = fakeMarket({
+      id: 'upcoming',
+      vec: [1, 0, 0],
+      endDate: new Date(Date.now() + 86_400_000).toISOString(),
+    })
+    const store = { getMarkets: async () => [upcoming] }
+    const embedder = { embed: async () => new Float32Array([1, 0, 0]) }
+    const result = await findMatch('anything', '', { store, embedder, thresholds })
+    expect(result?.market.id).toBe('upcoming')
   })
 })
