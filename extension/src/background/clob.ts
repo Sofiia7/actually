@@ -224,6 +224,20 @@ export async function submitSignedOrder(
   }
 }
 
+/** Cancel a single resting order by id. Mirrors packages/mcp-server/src/clobClient.ts. */
+export async function cancelOrder(
+  client: ClobClient,
+  orderId: string,
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    const res = (await client.cancelOrder({ orderID: orderId })) as { success?: boolean; errorMsg?: string } | undefined
+    if (res && res.success === false) return { success: false, error: res.errorMsg ?? 'cancel_rejected' }
+    return { success: true }
+  } catch (err) {
+    return { success: false, error: String(err) }
+  }
+}
+
 /**
  * Poll the CLOB for an order's filled status. Used to fire the `order_filled`
  * telemetry event after a successful submit. The SDK's method name has drifted

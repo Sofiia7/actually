@@ -21,6 +21,7 @@ import { addToHistory } from '../background/history'
 import { trackEvent } from '../background/telemetry'
 import { _resetGeoCache, getGeoStatus } from '../background/geo'
 import {
+  cancelOrder,
   connectWallet,
   disconnectWallet,
   getOrderbookSnapshot,
@@ -287,6 +288,13 @@ async function handle(msg: OffscreenRequest): Promise<OffscreenResponse> {
         orderType: msg.args.orderType,
         makerTaker: msg.args.makerTaker,
       })
+      return { type: 'OS_ORDER_RESULT', ...r }
+    }
+
+    case 'OS_CANCEL_ORDER': {
+      const w = await rehydrateWallet()
+      if (!w) return { type: 'OS_ORDER_RESULT', ok: false, error: 'no_wallet' }
+      const r = await cancelOrder(w, msg.orderId)
       return { type: 'OS_ORDER_RESULT', ...r }
     }
 

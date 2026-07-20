@@ -19,6 +19,7 @@ import { OrderType, type ApiKeyCreds } from '@polymarket/clob-client-v2'
 import { deriveSafeAddress } from '@actually/core'
 import { BUILDER_CODE, GEO_FAIL_OPEN } from '../shared/constants'
 import {
+  cancelOrder as clobCancelOrder,
   deriveCredentials,
   fetchOrderBook,
   makeClient,
@@ -295,6 +296,30 @@ export async function placeOrder(args: PlaceOrderArgs): Promise<OrderSubmitResul
   }
 
   return { ok: true, orderId: result.orderId }
+}
+
+/**
+ * Cancel a previously-placed resting order. No geo gate — cancelling only
+ * ever reduces risk, never places new exposure.
+ */
+export async function cancelOrder(
+  state: WalletState,
+  orderId: string,
+): Promise<{ ok: boolean; error?: string }> {
+  const settings = await getSettings()
+  const signer = new WCSigner(state.topic, state.address)
+  const client = makeClient({
+    signer,
+    funderAddress: state.safeAddress,
+    creds: state.creds,
+  })
+  const result = await clobCancelOrder(client, orderId)
+  if (!result.success) {
+    void trackEvent('order_cancel_failed', settings, { reason: result.error ?? 'unknown' })
+    return { ok: false, error: result.error ?? 'unknown_error' }
+  }
+  void trackEvent('order_cancelled', settings)
+  return { ok: true }
 }
 
 function sizeBucket(usd: number): string {

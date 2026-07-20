@@ -66,6 +66,7 @@ export type OffscreenRequest =
   | { target: 'offscreen'; type: 'OS_START_CONNECT' }
   | { target: 'offscreen'; type: 'OS_POLL_CONNECT'; sessionId: string }
   | { target: 'offscreen'; type: 'OS_PLACE_ORDER'; args: OffscreenPlaceOrderArgs }
+  | { target: 'offscreen'; type: 'OS_CANCEL_ORDER'; orderId: string }
   | { target: 'offscreen'; type: 'OS_ORDERBOOK_SNAPSHOT'; tokenId: string; sizeShares?: number }
   | { target: 'offscreen'; type: 'OS_PRICE_HISTORY'; marketIdOrTokenId: string; days?: number }
 
