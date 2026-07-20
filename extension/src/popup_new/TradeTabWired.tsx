@@ -161,6 +161,14 @@ export const TradeTabWired: React.FC<TradeTabWiredProps> = ({
   if (!match) {
     return (
       <Panel>
+        {wallet && (
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
+            <Etched size={12} weight={300} color="rgba(35,45,70,.55)">
+              Connected: {wallet.address.slice(0, 6)}…{wallet.address.slice(-4)}
+            </Etched>
+            <LinkAction onClick={doDisconnect}>Disconnect wallet</LinkAction>
+          </div>
+        )}
         <Etched
           size={14}
           weight={300}
