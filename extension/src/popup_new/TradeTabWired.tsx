@@ -501,7 +501,6 @@ const OrderFormWired: React.FC<OrderFormProps> = ({
   const [estimate, setEstimate] = useState<{ effectivePrice: number; slippage: number } | null>(null)
   const [submitting, setSubmitting] = useState(false)
   const [result, setResult] = useState<{ ok: boolean; msg: string; orderId?: string } | null>(null)
-  const [cancelState, setCancelState] = useState<'idle' | 'cancelling' | 'cancelled' | 'error'>('idle')
   // Confirm step before the wallet signature prompt (ТЗ §6.5) — a misclick on
   // "Place order" opens this summary, not the wallet, so the user reviews
   // side/size/price/payout before committing to a signature.
@@ -581,7 +580,6 @@ const OrderFormWired: React.FC<OrderFormProps> = ({
     if (!tokenId || price == null || !Number.isFinite(price)) return
     setSubmitting(true)
     setResult(null)
-    setCancelState('idle')
     try {
       const r = await placeOrderViaOffscreen({
         tokenId,
@@ -606,17 +604,6 @@ const OrderFormWired: React.FC<OrderFormProps> = ({
     }
   }
 
-  async function onCancelOrder() {
-    if (!result?.orderId) return
-    setCancelState('cancelling')
-    try {
-      const r = await cancelOrderViaOffscreen(result.orderId)
-      setCancelState(r.ok ? 'cancelled' : 'error')
-      if (r.ok) onPortfolioChanged?.()
-    } catch {
-      setCancelState('error')
-    }
-  }
 
   const fmtC = (v: number | null | undefined) => (v == null ? '—' : `${(v * 100).toFixed(1)}¢`)
   const tickN = parseFloat(tick)
@@ -784,27 +771,12 @@ const OrderFormWired: React.FC<OrderFormProps> = ({
           color={result.ok ? 'rgba(30,110,60,.9)' : 'rgba(160,40,40,.9)'}
         >
           {result.msg}
-        </Etched>
-      )}
-
-      {/* Only GTC limit orders rest on the book — a FOK market order has
-          already filled or failed by the time we get a response, nothing
-          left to cancel. */}
-      {result?.ok && result.orderId && orderType === 'LIMIT' && cancelState !== 'cancelled' && (
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <LinkAction onClick={onCancelOrder}>
-            {cancelState === 'cancelling' ? 'Cancelling…' : 'Cancel this order'}
-          </LinkAction>
-          {cancelState === 'error' && (
-            <Etched size={11} weight={300} color="rgba(160,40,40,.9)">
-              Cancel failed — try again.
-            </Etched>
-          )}
-        </div>
-      )}
-      {cancelState === 'cancelled' && (
-        <Etched size={12} weight={300} color="rgba(30,110,60,.9)">
-          Order cancelled.
+          {/* Cancel lives in "Your positions & open orders" below, not here —
+              this message is transient local state that resets if the popup
+              re-renders this component (e.g. switching tabs and back), so a
+              cancel action tied to it could silently vanish while the order
+              was still resting. The positions panel re-fetches the real
+              state from the CLOB on every mount instead. */}
         </Etched>
       )}
 
