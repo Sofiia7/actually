@@ -100,7 +100,15 @@ export type OffscreenResponse =
   | { type: 'OS_CONNECT_STARTED'; sessionId: string }
   | { type: 'OS_CONNECT_STATUS'; stage: 'pending' | 'awaiting_approval' | 'done' | 'error'; uri?: string; wallet?: SerializableWalletState; error?: string }
   | { type: 'OS_ORDER_RESULT'; ok: boolean; orderId?: string; error?: string }
-  | { type: 'OS_ORDERBOOK'; bestBid: number | null; bestAsk: number | null; spread: number | null; estimate?: { effectivePrice: number; slippage: number } | null }
+  | {
+      type: 'OS_ORDERBOOK'
+      bestBid: number | null
+      bestAsk: number | null
+      spread: number | null
+      bids: Array<{ price: number; size: number }>
+      asks: Array<{ price: number; size: number }>
+      estimate?: { effectivePrice: number; slippage: number } | null
+    }
   | { type: 'OS_PRICE_HISTORY'; points: Array<{ t: number; p: number }> }
   | { type: 'OS_HISTORY_MARKET_RESOLVED'; market: PolyMarket | null; error?: 'not_found' | 'closed' }
   | { type: 'OS_OPEN_ORDERS_RESULT'; ok: boolean; orders?: OpenOrderSummary[]; error?: string }

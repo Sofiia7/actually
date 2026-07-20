@@ -347,10 +347,22 @@ function sizeBucket(usd: number): string {
   return 'gt_1k'
 }
 
+export interface OrderbookLevel {
+  price: number
+  size: number
+}
+
+/** How many levels of depth to surface past best bid/ask — enough for a glance, not a full ladder. */
+const DEPTH_LEVELS = 5
+
 export interface OrderbookSnapshot {
   bestBid: number | null
   bestAsk: number | null
   spread: number | null
+  /** Top DEPTH_LEVELS bids, best (highest) first. */
+  bids: OrderbookLevel[]
+  /** Top DEPTH_LEVELS asks, best (lowest) first. */
+  asks: OrderbookLevel[]
   /** Estimated effective price for a market buy of `sizeShares`. */
   estimateBuy: (sizeShares: number) => { effectivePrice: number; slippage: number } | null
 }
@@ -380,6 +392,8 @@ export async function getOrderbookSnapshot(
     bestBid,
     bestAsk,
     spread,
+    bids: bids.slice(0, DEPTH_LEVELS),
+    asks: asks.slice(0, DEPTH_LEVELS),
     estimateBuy: (sizeShares) => {
       if (asks.length === 0 || bestAsk == null) return null
       let remaining = sizeShares

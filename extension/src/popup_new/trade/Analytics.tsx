@@ -100,11 +100,18 @@ export const Sparkline: React.FC<{ tokenId: string; days?: number }> = ({
 // =============================================================
 // Orderbook — best bid / best ask / spread.
 // =============================================================
+interface OrderbookLevel {
+  price: number
+  size: number
+}
+
 export const Orderbook: React.FC<{ tokenId: string }> = ({ tokenId }) => {
   const [snap, setSnap] = useState<{
     bestBid: number | null
     bestAsk: number | null
     spread: number | null
+    bids: OrderbookLevel[]
+    asks: OrderbookLevel[]
   } | null>(null)
 
   useEffect(() => {
@@ -126,9 +133,88 @@ export const Orderbook: React.FC<{ tokenId: string }> = ({ tokenId }) => {
         <Cell label="Best ask" value={fmt(snap?.bestAsk ?? null)} />
         <Cell label="Spread" value={fmt(snap?.spread ?? null)} />
       </div>
+      {snap && (snap.bids.length > 0 || snap.asks.length > 0) && (
+        <DepthLadder bids={snap.bids} asks={snap.asks} />
+      )}
     </Block>
   )
 }
+
+/**
+ * Compact depth ladder beyond top-of-book — bids and asks side by side, each
+ * row's bar width scaled to that side's deepest level so relative size reads
+ * at a glance. Previously the order form only ever showed best bid/ask, with
+ * no way to see how much size sat behind them.
+ */
+const DepthLadder: React.FC<{ bids: OrderbookLevel[]; asks: OrderbookLevel[] }> = ({ bids, asks }) => {
+  const maxBidSize = Math.max(1, ...bids.map((l) => l.size))
+  const maxAskSize = Math.max(1, ...asks.map((l) => l.size))
+  const rows = Math.max(bids.length, asks.length)
+
+  return (
+    <div style={{ marginTop: 8, display: 'flex', flexDirection: 'column', gap: 2 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 9.5, color: 'rgba(35,45,70,.45)', textTransform: 'uppercase', letterSpacing: '.04em' }}>
+        <span>Bids</span>
+        <span>Asks</span>
+      </div>
+      {Array.from({ length: rows }).map((_, i) => {
+        const bid = bids[i]
+        const ask = asks[i]
+        return (
+          <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11 }}>
+            <DepthBar
+              align="right"
+              color="rgba(30,110,60,.55)"
+              widthPct={bid ? (bid.size / maxBidSize) * 100 : 0}
+              label={bid ? `${(bid.price * 100).toFixed(1)}¢ · ${bid.size.toFixed(0)}` : ''}
+            />
+            <div style={{ width: 1, alignSelf: 'stretch', background: 'rgba(35,45,70,.12)' }} />
+            <DepthBar
+              align="left"
+              color="rgba(160,40,40,.5)"
+              widthPct={ask ? (ask.size / maxAskSize) * 100 : 0}
+              label={ask ? `${(ask.price * 100).toFixed(1)}¢ · ${ask.size.toFixed(0)}` : ''}
+            />
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
+const DepthBar: React.FC<{ align: 'left' | 'right'; color: string; widthPct: number; label: string }> = ({
+  align,
+  color,
+  widthPct,
+  label,
+}) => (
+  <div style={{ position: 'relative', flex: 1, height: 16, overflow: 'hidden' }}>
+    <div
+      style={{
+        position: 'absolute',
+        top: 0,
+        bottom: 0,
+        [align]: 0,
+        width: `${widthPct}%`,
+        background: color,
+        borderRadius: 3,
+      }}
+    />
+    <span
+      style={{
+        position: 'relative',
+        display: 'block',
+        textAlign: align,
+        color: 'rgba(35,45,70,.8)',
+        padding: '0 4px',
+        lineHeight: '16px',
+        whiteSpace: 'nowrap',
+      }}
+    >
+      {label}
+    </span>
+  </div>
+)
 
 const Cell: React.FC<{ label: string; value: string }> = ({ label, value }) => (
   <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
