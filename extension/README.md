@@ -17,7 +17,7 @@ Security triage: [`SECURITY.md`](SECURITY.md)
 **Verify it's real in 60 seconds** — no wallet, worker, or secret needed:
 
 ```bash
-cd extension && npm install && npm test   # 94 unit + component tests, all green
+cd extension && npm install && npm test   # 101 unit + component tests, all green
 ```
 
 What the extension actually does is walked through in [How matching works](#how-matching-works); full setup is below.
@@ -44,7 +44,7 @@ What the extension actually does is walked through in [How matching works](#how-
 | Trade analytics: sparkline / orderbook / resolution card | ✅ |
 | Self-hosted Marck Script font (no remote fetch) | ✅ |
 | Privacy policy + ToS | ✅ |
-| Unit + component tests (vitest, 94 passing) | ✅ |
+| Unit + component tests (vitest, 101 passing) | ✅ |
 | Build-integrity smoke gate (`npm run smoke`) | ✅ |
 
 ---
@@ -187,7 +187,7 @@ The builderCode is baked into the extension at build time and used by **every** 
 ```bash
 npm run dev              # Vite watch mode → outputs to dist/
 npm run worker:dev       # Wrangler local dev for the API (uses WORKER_DEV_MODE)
-npm test                 # Vitest unit + component tests (94 passing)
+npm test                 # Vitest unit + component tests (101 passing)
 npm run lint             # tsc --noEmit type check
 npm run fonts:fetch      # (re)download Marck Script woff2 → public/fonts/
 ```
@@ -345,7 +345,7 @@ binary-market filter, the confirm-before-sign step, and the release gates
 Implementation was done with heavy AI assistance (Claude) acting as a pair-programmer
 under her review — turning each audit finding and design decision into code, tests,
 and docs. Every change was gated by her acceptance criteria and by the test suite
-(94 passing here; 274 across the whole monorepo, including the `@actually/core` and
+(101 passing here; 299 across the whole monorepo, including the `@actually/core` and
 `actually-mcp-server` workspaces) + CI before it landed.
 
 In short: the *what* and the *why* — product, design, decisions, audit — are Sofiia's;

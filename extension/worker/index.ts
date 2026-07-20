@@ -174,10 +174,16 @@ export function validateMarketCacheInput(body: unknown): MarketCacheValidation {
   return { ok: true, blob: body as MarketCacheBlob }
 }
 
-// Polymarket-restricted jurisdictions. Mirrors the client list in
-// src/background/geo.ts; the Worker is the source of truth at request time.
+// Polymarket-restricted jurisdictions (commercial-availability restrictions)
+// plus comprehensively OFAC-sanctioned jurisdictions (a separate, stricter
+// obligation than Polymarket's own market-access list — the builder code
+// attached to every order means we are a monetizing counterparty, not just
+// a UI). Mirrors the client list in src/background/geo.ts; the Worker is the
+// source of truth at request time. EXTRA_BLOCKED_COUNTRIES (see wrangler.toml)
+// is for fast additions without a redeploy.
 const BLOCKED_COUNTRIES = new Set<string>([
   'US', 'GB', 'FR', 'BE', 'AU', 'SG', 'TH', 'TW', 'PL',
+  'IR', 'KP', 'CU', 'SY', // OFAC-sanctioned: Iran, North Korea, Cuba, Syria
 ])
 
 const CORS_BASE = {

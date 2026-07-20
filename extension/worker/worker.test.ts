@@ -205,6 +205,13 @@ describe('/geo', () => {
     expect((await res.json() as { blocked: boolean }).blocked).toBe(false)
   })
 
+  it('blocks comprehensively OFAC-sanctioned jurisdictions (IR, KP, CU, SY)', async () => {
+    for (const country of ['IR', 'KP', 'CU', 'SY']) {
+      const res = await call('/geo', baseEnv(), { country })
+      expect((await res.json() as { blocked: boolean }).blocked).toBe(true)
+    }
+  })
+
   it('blocks Ontario (CA + ON region)', async () => {
     const res = await call('/geo', baseEnv(), { country: 'CA', region: 'ON' })
     expect((await res.json() as { blocked: boolean }).blocked).toBe(true)

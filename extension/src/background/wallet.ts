@@ -169,14 +169,34 @@ export class WCSigner {
     types: Record<string, Array<{ name: string; type: string }>>,
     value: Record<string, unknown>,
   ): Promise<string> {
+    // clob-client-v2 deletes `types.EIP712Domain` before calling us — correct
+    // for ethers signers, which reconstruct the domain type internally, but
+    // a raw eth_signTypedData_v4 payload MUST include it per the EIP-712
+    // schema. Without it, MetaMask/eth-sig-util substitute an EMPTY domain
+    // type, hash an empty domain separator, and the signature can never
+    // verify against the real CLOB/ClobAuth domain — every connect and order
+    // sign fails. Rebuild it from whichever domain fields are actually
+    // present, in the canonical EIP-712 order.
     const payload = {
       domain,
-      types,
+      types: { EIP712Domain: buildDomainType(domain), ...types },
       primaryType: inferPrimaryType(types),
       message: value,
     }
     return signTypedData(this.topic, this.eoa, payload)
   }
+}
+
+const EIP712_DOMAIN_FIELD_TYPES: ReadonlyArray<{ name: string; type: string }> = [
+  { name: 'name', type: 'string' },
+  { name: 'version', type: 'string' },
+  { name: 'chainId', type: 'uint256' },
+  { name: 'verifyingContract', type: 'address' },
+  { name: 'salt', type: 'bytes32' },
+]
+
+export function buildDomainType(domain: Record<string, unknown>): Array<{ name: string; type: string }> {
+  return EIP712_DOMAIN_FIELD_TYPES.filter((f) => domain[f.name] !== undefined)
 }
 
 function inferPrimaryType(

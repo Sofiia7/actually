@@ -56,19 +56,45 @@ and let them optionally trade on those markets in one click.
   orders directly to Polymarket's order book when they place a trade.
 
 ## Data-use / privacy form answers
-- "Does this item collect website content?" → **No** (only on click, only the
-  active tab's headline + excerpt, used in-memory to match a market; not stored
-  or transmitted as page content).
-- "Personally identifiable / financial / health / authentication info?" → **No.**
-- "Do you use remote code?" → **No.** The MiniLM-L12-v2 model weights and the
-  onnxruntime-web WASM runtime are bundled into the package at build time
+
+The CWS dashboard's privacy tab is a series of yes/no checkboxes per data
+category, not free text — check exactly these boxes (verified against
+actual code behavior 2026-07-17, not just the intended design):
+
+- **"Website content"** → **Yes.** Only when the user opts into the OpenAI
+  embedding provider in Settings (default is **local, on-device** — this is
+  off by default and most users never trigger it): the active tab's headline
+  + up to 500 characters are sent to our Worker, which forwards them to
+  OpenAI to compute an embedding, then discards them. Never stored, never
+  used for anything but that one match. State this qualifier in the
+  dashboard's free-text justification field if it offers one.
+- **"User activity"** → **Yes.** Anonymous usage telemetry (which UI element
+  was clicked, order submitted/failed, etc.) is **opt-out** — on by default —
+  and keyed by a random per-install id. No URLs, headlines, or wallet
+  addresses are included (see `docs/privacy-policy.md` for the exact event
+  list). This is the category Google defines as "clicks and interaction
+  within the extension" — it applies regardless of how anonymous the payload
+  is.
+- **Personally identifiable / financial / health / authentication /
+  location / web history info** → **No** to all — none of these are
+  collected in any code path.
+- **"Do you use remote code?"** → **No.** The MiniLM-L12-v2 model weights and
+  the onnxruntime-web WASM runtime are bundled into the package at build time
   (`npm run models:fetch`, see `SECURITY.md` → "Network egress") — no
   `eval()`, no remotely-hosted `.js`, and no runtime fetch to `huggingface.co`
   or `cdn.jsdelivr.net` (removed from CSP `connect-src` once bundled).
-- "Is data sold to third parties / used for unrelated purposes / used for
-  creditworthiness?" → **No** to all.
-- Anonymous usage telemetry is opt-out in Settings and keyed by a random install
-  id — no URLs, headlines, or wallet addresses (see docs/privacy-policy.md).
+- **"Is data sold to third parties / used for purposes unrelated to the
+  item's core functionality / used to determine creditworthiness or for
+  lending"** → **No** to all three certification checkboxes — telemetry and
+  the opt-in OpenAI path both exist solely to run the extension's stated
+  single purpose, and OpenAI/Cloudflare are processors of that data, not
+  buyers of it.
+
+Getting "Website content" and "User activity" wrong here (i.e. leaving them
+at "No") is a real compliance risk, not a formality: Google's review can
+reject the listing or take it down post-publication if the declared
+categories don't match observed behavior, and both of ours were previously
+marked "No" while the code does collect them.
 
 ## Privacy policy URL
 Host `docs/privacy-policy.md` (GitHub Pages or your domain) and paste the URL.

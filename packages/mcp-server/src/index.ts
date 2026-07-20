@@ -13,6 +13,7 @@ import { DAILY_LIMIT_USD, MAX_ORDER_USD, PRIVATE_KEY, SPEND_GUARD_STATE_PATH, re
 import { WorkerMarketStore } from './marketStore'
 import { LocalEmbedder } from './embedder'
 import { SpendGuard } from './spendGuard'
+import { checkTradingGeoGate } from './geoGate'
 import { resolveMarket } from './resolveMarket'
 import { fetchPositions } from './positions'
 import { checkNews } from './tools/checkNews'
@@ -129,6 +130,11 @@ if (PRIVATE_KEY) {
       },
     },
     async (input) => {
+      const { workerUrl, workerSecret } = requireWorkerConfig()
+      const geo = await checkTradingGeoGate(workerUrl, workerSecret)
+      if (geo.blocked) {
+        return { content: [{ type: 'text' as const, text: JSON.stringify({ ok: false, error: 'geo_blocked' }) }] }
+      }
       const market = await resolveMarketOrThrow(input.marketId)
       if (!market) {
         return { content: [{ type: 'text' as const, text: JSON.stringify({ ok: false, error: 'market_not_found' }) }] }
@@ -159,6 +165,11 @@ if (PRIVATE_KEY) {
       },
     },
     async (input) => {
+      const { workerUrl, workerSecret } = requireWorkerConfig()
+      const geo = await checkTradingGeoGate(workerUrl, workerSecret)
+      if (geo.blocked) {
+        return { content: [{ type: 'text' as const, text: JSON.stringify({ ok: false, error: 'geo_blocked' }) }] }
+      }
       const market = await resolveMarketOrThrow(input.marketId)
       if (!market) {
         return { content: [{ type: 'text' as const, text: JSON.stringify({ ok: false, error: 'market_not_found' }) }] }

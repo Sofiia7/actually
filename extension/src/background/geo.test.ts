@@ -13,6 +13,12 @@ describe('BLOCKED_COUNTRIES', () => {
   it('does not include DE (Germany is fine for Polymarket)', () => {
     expect(BLOCKED_COUNTRIES.has('DE')).toBe(false)
   })
+
+  it('includes comprehensively OFAC-sanctioned jurisdictions', () => {
+    for (const country of ['IR', 'KP', 'CU', 'SY']) {
+      expect(BLOCKED_COUNTRIES.has(country)).toBe(true)
+    }
+  })
 })
 
 describe('getGeoStatus', () => {

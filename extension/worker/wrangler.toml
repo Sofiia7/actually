@@ -47,8 +47,18 @@ ALLOWED_EXTENSION_ID = "lljnfdfoieiodiiaglimlfjlebljdmhb"
 #   WORKER_SHARED_SECRET and ALLOWED_EXTENSION_ID set. Never enable in prod.
 WORKER_DEV_MODE = ""
 #
+# EXTRA_BLOCKED_COUNTRIES
+#   Comma-separated ISO country codes to block in addition to the hardcoded
+#   BLOCKED_COUNTRIES list in index.ts (commercial restrictions + OFAC-
+#   sanctioned jurisdictions). Use this for fast additions without a code
+#   change/redeploy. Empty by default.
+EXTRA_BLOCKED_COUNTRIES = ""
+#
 # Secrets to set via `wrangler secret put`:
 #   WORKER_SHARED_SECRET    — random 32+ chars (openssl rand -hex 32),
 #                             also baked into the extension via
 #                             VITE_WORKER_SECRET. Rotate together.
 #   OPENAI_API_KEY          — only if you offer centralized OpenAI embeddings
+#   MARKET_CACHE_WRITE_SECRET — separate secret gating PUT /market-cache,
+#                             used by the cron precompute job (never baked
+#                             into the extension or MCP server).

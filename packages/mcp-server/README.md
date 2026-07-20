@@ -59,8 +59,8 @@ client.
 |---|---|---|
 | `check_news(text)` | No | Maps arbitrary news text to the relevant Polymarket market; returns its objective YES probability, confidence, and up to 3 alternative candidate markets. Does not classify tone — that's left to you, the calling agent. |
 | `get_market(marketId)` | No | Market details, live price, and an orderbook snapshot for a market you already have the id for (e.g. from `check_news`). Falls back to a direct Gamma lookup when the id is outside the precomputed cache. |
-| `place_order(marketId, side, sizeUsd, price, orderType)` | Yes (`POLYMARKET_PRIVATE_KEY`) | Buys YES or NO shares. The token to trade is resolved **server-side** from `marketId` + `side` — you cannot pass a raw token id, so a mismatched side/token can't silently buy the wrong outcome. Capped by `ACTUALLY_MAX_ORDER_USD` / `ACTUALLY_DAILY_LIMIT_USD` (see below). |
-| `sell_order(marketId, side, sizeShares, price, orderType)` | Yes | Sells YES or NO shares you hold — closes or reduces a position. Shares the same daily budget as `place_order` (notional estimated as `sizeShares × price`). |
+| `place_order(marketId, side, sizeUsd, price, orderType)` | Yes (`POLYMARKET_PRIVATE_KEY`) | Buys YES or NO shares. The token to trade is resolved **server-side** from `marketId` + `side` — you cannot pass a raw token id, so a mismatched side/token can't silently buy the wrong outcome. Rejects non-Yes/No (categorical) markets outright rather than guessing an outcome. Gated on the same jurisdiction check as the browser extension (see below). Capped by `ACTUALLY_MAX_ORDER_USD` / `ACTUALLY_DAILY_LIMIT_USD` (see below). |
+| `sell_order(marketId, side, sizeShares, price, orderType)` | Yes | Sells YES or NO shares you hold — closes or reduces a position. Same non-binary-market rejection and jurisdiction gate as `place_order`. Shares the same daily budget as `place_order` (notional estimated as `sizeShares × price`). |
 | `cancel_order(orderId)` | Yes | Cancels one of your resting orders. |
 | `get_open_orders(marketId?)` | Yes | Lists your resting orders, optionally filtered to one market. |
 | `get_positions()` | Yes | Lists your current positions with cost basis and unrealized P&L (Polymarket data-api). A `redeemable: true` position has resolved and is ready for `redeem_position`. |
@@ -126,6 +126,17 @@ who want the axios/ethers versions bumped regardless should pin an
 | `ACTUALLY_SPEND_STATE_PATH` | No | Where the daily-spend counter is persisted (default `~/.actually-mcp-server/spend-guard.json`). Most MCP clients spawn this server as a fresh subprocess per session, so without persistence the "daily" limit reset on every restart, not just once a day. Override for a custom deployment layout or to isolate multiple operators on one machine. |
 
 These two caps exist because an MCP server that signs real orders on an agent's behalf is exposed to prompt injection: a compromised or buggy calling agent could otherwise try to place unbounded orders. Set both explicitly for any unattended/production use — do not rely on the defaults for anything beyond testing.
+
+## Jurisdiction gate
+
+`place_order`/`sell_order` check the same Worker `/geo` endpoint the browser
+extension uses before signing anything, and refuse to trade (`error:
+"geo_blocked"`) from a jurisdiction where Polymarket restricts trading, or
+where the lookup itself fails (fail-closed, matching the extension). This
+resolves the network location of wherever this server process runs — an
+operator running it on a VPS in a different country than they physically are
+should account for that. `check_news`/`get_market` are never gated; only
+order placement carries this obligation.
 
 ## The builder code
 
