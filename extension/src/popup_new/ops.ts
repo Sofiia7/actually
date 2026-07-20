@@ -118,6 +118,18 @@ export async function placeOrderViaOffscreen(
   return { ok: r.ok, orderId: r.orderId, error: r.error }
 }
 
+export async function cancelOrderViaOffscreen(
+  orderId: string,
+): Promise<{ ok: boolean; error?: string }> {
+  const r = await call<Extract<OffscreenResponse, { type: 'OS_ORDER_RESULT' }> | Extract<OffscreenResponse, { type: 'OS_ERROR' }>>({
+    target: 'offscreen',
+    type: 'OS_CANCEL_ORDER',
+    orderId,
+  })
+  if (r.type === 'OS_ERROR') return { ok: false, error: r.error }
+  return { ok: r.ok, error: r.error }
+}
+
 export async function priceHistoryViaOffscreen(
   marketIdOrTokenId: string,
   days = 7,

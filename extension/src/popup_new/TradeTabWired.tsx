@@ -17,6 +17,7 @@ import type { GeoErrorReason } from '../background/geo'
 import { MarketAnalytics } from './trade/Analytics'
 import * as om from './trade/orderMath'
 import {
+  cancelOrderViaOffscreen,
   disconnectWalletViaOffscreen,
   getGeoViaOffscreen,
   orderbookSnapshotViaOffscreen,
@@ -285,6 +286,44 @@ const TradeReady: React.FC<ReadyProps> = ({
   const pct = Math.round((match.freshPrice ?? match.probability) * 100)
   const yesTokenId = match.market.clobTokenIds[yesIdx]
 
+  // Market context card (question, %, "Open on Polymarket"). Position
+  // depends on connect state: it leads while connected (context for the
+  // order form below it), but takes a back seat to the Connect button
+  // while disconnected — otherwise it's the only prominent thing on the
+  // panel and "Open on Polymarket" reads as the primary action when it's
+  // actually a secondary escape hatch (Check tab already offers the same
+  // link).
+  const marketCard = (
+    <IceCard pct={pct} intensity={1} padding="13px 14px" borderRadius={10}>
+      <Etched
+        size={13.5}
+        weight={400}
+        style={{ display: 'block', lineHeight: 1.3, marginBottom: 6 }}
+      >
+        {match.market.question}
+      </Etched>
+      <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, marginBottom: 10 }}>
+        <span
+          style={{
+            fontFamily: 'Marck Script',
+            fontSize: 38,
+            fontWeight: 400,
+            color: toneDark(pct, 0.97),
+            letterSpacing: '-0.025em',
+            textShadow: '0 1px 0 rgba(255,255,255,.55)',
+            lineHeight: 1,
+          }}
+        >
+          {pct}%
+        </span>
+        <Etched size={12} weight={300} color="rgba(35,45,70,.55)">
+          YES chance
+        </Etched>
+      </div>
+      <LinkAction onClick={onOpenExternal}>Open on Polymarket →</LinkAction>
+    </IceCard>
+  )
+
   return (
     <Panel>
       {geoUnknown && (
@@ -301,37 +340,9 @@ const TradeReady: React.FC<ReadyProps> = ({
         onPickMatch={onPickMatch}
       />
 
-      <IceCard pct={pct} intensity={1} padding="13px 14px" borderRadius={10}>
-        <Etched
-          size={13.5}
-          weight={400}
-          style={{ display: 'block', lineHeight: 1.3, marginBottom: 6 }}
-        >
-          {match.market.question}
-        </Etched>
-        <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, marginBottom: 10 }}>
-          <span
-            style={{
-              fontFamily: 'Marck Script',
-              fontSize: 38,
-              fontWeight: 400,
-              color: toneDark(pct, 0.97),
-              letterSpacing: '-0.025em',
-              textShadow: '0 1px 0 rgba(255,255,255,.55)',
-              lineHeight: 1,
-            }}
-          >
-            {pct}%
-          </span>
-          <Etched size={12} weight={300} color="rgba(35,45,70,.55)">
-            YES chance
-          </Etched>
-        </div>
-        <LinkAction onClick={onOpenExternal}>Open on Polymarket →</LinkAction>
-      </IceCard>
-
       {wallet ? (
         <>
+          {marketCard}
           <MarketAnalytics market={match.market} yesTokenId={yesTokenId} />
           <OrderFormWired
             match={match}
@@ -341,11 +352,14 @@ const TradeReady: React.FC<ReadyProps> = ({
           />
         </>
       ) : (
-        <ConnectPanel
-          onConnect={onConnect}
-          onOpenSettings={onOpenSettings}
-          workerConfigured={Boolean(settings.workerUrl && settings.workerSecret)}
-        />
+        <>
+          <ConnectPanel
+            onConnect={onConnect}
+            onOpenSettings={onOpenSettings}
+            workerConfigured={Boolean(settings.workerUrl && settings.workerSecret)}
+          />
+          {marketCard}
+        </>
       )}
     </Panel>
   )
@@ -405,7 +419,8 @@ const OrderFormWired: React.FC<OrderFormProps> = ({
   )
   const [estimate, setEstimate] = useState<{ effectivePrice: number; slippage: number } | null>(null)
   const [submitting, setSubmitting] = useState(false)
-  const [result, setResult] = useState<{ ok: boolean; msg: string } | null>(null)
+  const [result, setResult] = useState<{ ok: boolean; msg: string; orderId?: string } | null>(null)
+  const [cancelState, setCancelState] = useState<'idle' | 'cancelling' | 'cancelled' | 'error'>('idle')
   // Confirm step before the wallet signature prompt (ТЗ §6.5) — a misclick on
   // "Place order" opens this summary, not the wallet, so the user reviews
   // side/size/price/payout before committing to a signature.
@@ -485,6 +500,7 @@ const OrderFormWired: React.FC<OrderFormProps> = ({
     if (!tokenId || price == null || !Number.isFinite(price)) return
     setSubmitting(true)
     setResult(null)
+    setCancelState('idle')
     try {
       const r = await placeOrderViaOffscreen({
         tokenId,
@@ -496,11 +512,26 @@ const OrderFormWired: React.FC<OrderFormProps> = ({
         orderType,
         makerTaker,
       })
-      setResult({ ok: r.ok, msg: r.ok ? `Order placed${r.orderId ? ` · ${r.orderId.slice(0, 10)}…` : ''}` : `Failed: ${r.error}` })
+      setResult({
+        ok: r.ok,
+        msg: r.ok ? `Order placed${r.orderId ? ` · ${r.orderId.slice(0, 10)}…` : ''}` : `Failed: ${r.error}`,
+        orderId: r.orderId,
+      })
     } catch (err) {
       setResult({ ok: false, msg: `Error: ${String(err)}` })
     } finally {
       setSubmitting(false)
+    }
+  }
+
+  async function onCancelOrder() {
+    if (!result?.orderId) return
+    setCancelState('cancelling')
+    try {
+      const r = await cancelOrderViaOffscreen(result.orderId)
+      setCancelState(r.ok ? 'cancelled' : 'error')
+    } catch {
+      setCancelState('error')
     }
   }
 
@@ -670,6 +701,27 @@ const OrderFormWired: React.FC<OrderFormProps> = ({
           color={result.ok ? 'rgba(30,110,60,.9)' : 'rgba(160,40,40,.9)'}
         >
           {result.msg}
+        </Etched>
+      )}
+
+      {/* Only GTC limit orders rest on the book — a FOK market order has
+          already filled or failed by the time we get a response, nothing
+          left to cancel. */}
+      {result?.ok && result.orderId && orderType === 'LIMIT' && cancelState !== 'cancelled' && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <LinkAction onClick={onCancelOrder}>
+            {cancelState === 'cancelling' ? 'Cancelling…' : 'Cancel this order'}
+          </LinkAction>
+          {cancelState === 'error' && (
+            <Etched size={11} weight={300} color="rgba(160,40,40,.9)">
+              Cancel failed — try again.
+            </Etched>
+          )}
+        </div>
+      )}
+      {cancelState === 'cancelled' && (
+        <Etched size={12} weight={300} color="rgba(30,110,60,.9)">
+          Order cancelled.
         </Etched>
       )}
 

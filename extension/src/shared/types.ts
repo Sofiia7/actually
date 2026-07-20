@@ -56,6 +56,8 @@ export interface TelemetryEvent {
     | 'order_submitted'
     | 'order_filled'
     | 'order_failed'
+    | 'order_cancelled'
+    | 'order_cancel_failed'
     | 'geo_blocked'
     | 'geo_unknown'
     | 'cache_refresh'
