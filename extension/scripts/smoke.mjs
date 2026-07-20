@@ -89,5 +89,32 @@ function checkHtmlScripts(htmlRel) {
 checkHtmlScripts(popup)
 checkHtmlScripts(offscreen)
 
+// 7. Local embedding model + ONNX WASM runtime are actually bundled — a
+// build run without `npm run models:fetch` first (or one where that step
+// silently failed) would otherwise pass every check above and still
+// white-screen/error at first Check click, since the offscreen document has
+// no other source for these files (see SECURITY.md's "Network egress").
+const MODEL_ID = 'Xenova/all-MiniLM-L12-v2'
+const MODEL_DIR = `models/${MODEL_ID}`
+const MIN_ONNX_BYTES = 1_000_000 // real weights are ~34MB; catches a truncated/stub file
+for (const rel of [
+  `${MODEL_DIR}/config.json`,
+  `${MODEL_DIR}/tokenizer.json`,
+  `${MODEL_DIR}/tokenizer_config.json`,
+]) {
+  exists(rel) ? ok(`model file present (${rel})`) : bad(`model file missing: ${rel} (run npm run models:fetch)`)
+}
+const onnxRel = `${MODEL_DIR}/onnx/model_quantized.onnx`
+if (!exists(onnxRel)) {
+  bad(`ONNX model missing: ${onnxRel} (run npm run models:fetch)`)
+} else if (statSync(join(DIST, onnxRel)).size < MIN_ONNX_BYTES) {
+  bad(`ONNX model at ${onnxRel} is suspiciously small (${statSync(join(DIST, onnxRel)).size} bytes) — likely truncated`)
+} else {
+  ok(`ONNX model present (${onnxRel})`)
+}
+for (const rel of ['onnx/ort-wasm.wasm', 'onnx/ort-wasm-simd.wasm']) {
+  exists(rel) ? ok(`WASM runtime present (${rel})`) : bad(`WASM runtime missing: ${rel} (run npm run models:fetch)`)
+}
+
 console.log(failures ? `\nSMOKE FAILED (${failures} issue${failures > 1 ? 's' : ''})` : '\nSMOKE PASSED')
 process.exit(failures ? 1 : 0)

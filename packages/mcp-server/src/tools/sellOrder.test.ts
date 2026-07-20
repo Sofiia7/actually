@@ -53,23 +53,36 @@ describe('sellOrder', () => {
   })
 
   it('applies the spend guard against the estimated notional (price * sizeShares)', async () => {
-    let checkedUsd: number | undefined
+    let reservedUsd: number | undefined
     const result = await sellOrder(
       {
         privateKey: '0xabc',
         signAndSubmit: async () => ({ success: true, orderId: 'x' }),
         spendGuard: {
-          check: (usd) => {
-            checkedUsd = usd
+          reserve: (usd) => {
+            reservedUsd = usd
             return { ok: false, error: 'order_exceeds_max_usd:10' }
           },
-          record: () => {},
+          release: () => {},
         },
       },
       baseInput,
     )
-    expect(checkedUsd).toBeCloseTo(12, 6) // 40 shares * 0.3
+    expect(reservedUsd).toBeCloseTo(12, 6) // 40 shares * 0.3
     expect(result.ok).toBe(false)
     expect(result.error).toBe('order_exceeds_max_usd:10')
+  })
+
+  it('releases the reserved spend when the submit fails', async () => {
+    let releasedUsd: number | undefined
+    await sellOrder(
+      {
+        privateKey: '0xabc',
+        signAndSubmit: async () => ({ success: false, error: 'insufficient_shares' }),
+        spendGuard: { reserve: () => ({ ok: true }), release: (usd) => { releasedUsd = usd } },
+      },
+      baseInput,
+    )
+    expect(releasedUsd).toBeCloseTo(12, 6)
   })
 })

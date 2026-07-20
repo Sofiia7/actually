@@ -59,7 +59,7 @@ describe('placeOrder', () => {
           signAndSubmitCalled = true
           return { success: true, orderId: 'x' }
         },
-        spendGuard: { check: () => ({ ok: false, error: 'order_exceeds_max_usd:100' }), record: () => {} },
+        spendGuard: { reserve: () => ({ ok: false, error: 'order_exceeds_max_usd:100' }), release: () => {} },
       },
       { marketId: 'm1', tokenId: 'tok-yes', side: 'BUY_YES', sizeUsd: 500, price: 0.5, orderType: 'MARKET', negRisk: false },
     )
@@ -68,29 +68,47 @@ describe('placeOrder', () => {
     expect(signAndSubmitCalled).toBe(false)
   })
 
-  it('records spend only after a confirmed successful submit', async () => {
-    let recordedUsd: number | undefined
+  it('reserves spend before submit and does not release it on a confirmed successful submit', async () => {
+    let reservedUsd: number | undefined
+    let releaseCalled = false
     await placeOrder(
       {
         privateKey: '0xabc',
         signAndSubmit: async () => ({ success: true, orderId: 'x' }),
-        spendGuard: { check: () => ({ ok: true }), record: (usd) => { recordedUsd = usd } },
+        spendGuard: {
+          reserve: (usd) => { reservedUsd = usd; return { ok: true } },
+          release: () => { releaseCalled = true },
+        },
       },
       { marketId: 'm1', tokenId: 'tok-yes', side: 'BUY_YES', sizeUsd: 25, price: 0.5, orderType: 'MARKET', negRisk: false },
     )
-    expect(recordedUsd).toBe(25)
+    expect(reservedUsd).toBe(25)
+    expect(releaseCalled).toBe(false)
   })
 
-  it('does not record spend when the submit fails', async () => {
-    let recordCalled = false
+  it('releases the reserved spend when the submit fails', async () => {
+    let releasedUsd: number | undefined
     await placeOrder(
       {
         privateKey: '0xabc',
         signAndSubmit: async () => ({ success: false, error: 'insufficient_balance' }),
-        spendGuard: { check: () => ({ ok: true }), record: () => { recordCalled = true } },
+        spendGuard: { reserve: () => ({ ok: true }), release: (usd) => { releasedUsd = usd } },
       },
       { marketId: 'm1', tokenId: 'tok-yes', side: 'BUY_YES', sizeUsd: 25, price: 0.5, orderType: 'MARKET', negRisk: false },
     )
-    expect(recordCalled).toBe(false)
+    expect(releasedUsd).toBe(25)
+  })
+
+  it('releases the reserved spend when signAndSubmit throws', async () => {
+    let releasedUsd: number | undefined
+    await placeOrder(
+      {
+        privateKey: '0xabc',
+        signAndSubmit: async () => { throw new Error('builder_code_not_configured') },
+        spendGuard: { reserve: () => ({ ok: true }), release: (usd) => { releasedUsd = usd } },
+      },
+      { marketId: 'm1', tokenId: 'tok-yes', side: 'BUY_YES', sizeUsd: 25, price: 0.5, orderType: 'MARKET', negRisk: false },
+    )
+    expect(releasedUsd).toBe(25)
   })
 })

@@ -22,26 +22,58 @@
  * anyway): only the non-threaded `ort-wasm.wasm` (scalar fallback) and
  * `ort-wasm-simd.wasm` (SIMD, used by default when the browser supports it)
  * are needed.
+ *
+ * Pinned to an exact commit (not `main`, a mutable ref) with each file's
+ * SHA-256 verified after download. `main` silently serving different bytes
+ * on a future run — whether from an upstream repo edit or a compromised
+ * mirror — would otherwise bake an unverified, unreviewed binary blob (the
+ * ONNX model) straight into the shipped extension with no one noticing.
+ * Hashes verified against both `main` and this commit at the time they were
+ * pinned (2026-07-20). To intentionally update the model: bump
+ * MODEL_REVISION to the new commit, delete public/models/, run this script
+ * once to see the FAILED hash lines it prints, review the diff is expected,
+ * then paste the new hashes into EXPECTED_SHA256 below.
  */
 import { mkdir, writeFile, copyFile } from 'node:fs/promises'
 import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { createRequire } from 'node:module'
+import { createHash } from 'node:crypto'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 const require = createRequire(import.meta.url)
 
 const MODEL_ID = 'Xenova/all-MiniLM-L12-v2'
+const MODEL_REVISION = 'beeb2e4b69e95f188a15cc2e90d09fd035dac229'
 const MODEL_OUT_DIR = resolve(HERE, '..', 'public', 'models', MODEL_ID)
 const ONNX_OUT_DIR = resolve(HERE, '..', 'public', 'onnx')
-const HF_BASE = `https://huggingface.co/${MODEL_ID}/resolve/main`
+const HF_BASE = `https://huggingface.co/${MODEL_ID}/resolve/${MODEL_REVISION}`
 
 const MODEL_FILES = ['config.json', 'tokenizer.json', 'tokenizer_config.json']
 const ONNX_FILE = 'onnx/model_quantized.onnx'
 
 const ONNX_WASM_FILES = ['ort-wasm.wasm', 'ort-wasm-simd.wasm']
 
-async function fetchFile(url, outPath) {
+const EXPECTED_SHA256 = {
+  'config.json': '98cfb098e4f623321632b32b3e62d58ea49601e90dd3c13736c42812b4533ab7',
+  'tokenizer.json': 'da0e79933b9ed51798a3ae27893d3c5fa4a201126cef75586296df9b4d2c62a0',
+  'tokenizer_config.json': '9261e7d79b44c8195c1cada2b453e55b00aeb81e907a6664974b4d7776172ab3',
+  'onnx/model_quantized.onnx': 'f51725bc66b2bf5335cacb5c005763b57bcd741172372795819741cd945a9dd9',
+}
+
+async function verifyHash(name, buf) {
+  const expected = EXPECTED_SHA256[name]
+  const actual = createHash('sha256').update(buf).digest('hex')
+  if (actual !== expected) {
+    console.error(`FAILED hash mismatch for ${name}`)
+    console.error(`  expected: ${expected}`)
+    console.error(`  actual:   ${actual}`)
+    console.error('Either the pinned model revision changed unexpectedly, or EXPECTED_SHA256 is stale — see this file\'s header comment.')
+    process.exit(1)
+  }
+}
+
+async function fetchFile(url, outPath, hashKey) {
   process.stdout.write(`- ${outPath.replace(HERE, '.')} ... `)
   const res = await fetch(url)
   if (!res.ok) {
@@ -49,18 +81,19 @@ async function fetchFile(url, outPath) {
     process.exit(1)
   }
   const buf = new Uint8Array(await res.arrayBuffer())
+  if (hashKey) await verifyHash(hashKey, buf)
   await mkdir(dirname(outPath), { recursive: true })
   await writeFile(outPath, buf)
-  console.log(`ok (${buf.byteLength} bytes)`)
+  console.log(`ok (${buf.byteLength} bytes, sha256 verified)`)
 }
 
 await mkdir(MODEL_OUT_DIR, { recursive: true })
 await mkdir(resolve(MODEL_OUT_DIR, 'onnx'), { recursive: true })
 
 for (const f of MODEL_FILES) {
-  await fetchFile(`${HF_BASE}/${f}`, resolve(MODEL_OUT_DIR, f))
+  await fetchFile(`${HF_BASE}/${f}`, resolve(MODEL_OUT_DIR, f), f)
 }
-await fetchFile(`${HF_BASE}/${ONNX_FILE}`, resolve(MODEL_OUT_DIR, ONNX_FILE))
+await fetchFile(`${HF_BASE}/${ONNX_FILE}`, resolve(MODEL_OUT_DIR, ONNX_FILE), ONNX_FILE)
 
 // onnxruntime-web's WASM binaries are copied from the installed npm package
 // (pinned by @xenova/transformers' dependency range), not fetched remotely —

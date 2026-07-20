@@ -17,7 +17,7 @@ import {
   DEFAULT_WORKER_URL,
   DEFAULT_WORKER_SECRET,
 } from '../shared/constants'
-import { COLOR_THRESHOLDS, defaultThresholds, type MatchResult } from '@actually/core'
+import { COLOR_THRESHOLDS, defaultThresholds, priceFromOutcomes, type MatchResult } from '@actually/core'
 import { sendToBackground } from '../shared/messages'
 import type { ResponseMessage } from '../shared/messages'
 import { extractActiveTabArticle } from '../popup/operations'
@@ -28,6 +28,7 @@ import { findOutcomeIndex, formatRelative } from '@actually/core'
 import {
   disconnectWalletViaOffscreen,
   refreshCacheViaOffscreen,
+  resolveHistoryMarketViaOffscreen,
   restoreWalletViaOffscreen,
   runMatchViaOffscreen,
 } from './ops'
@@ -140,6 +141,7 @@ export const IntegratedPopup: React.FC<IntegratedPopupProps> = ({
 
   // History tab state
   const [historyState, setHistoryState] = useState<HistoryState>({ kind: 'loading' })
+  const [historyResolveError, setHistoryResolveError] = useState<string | null>(null)
 
   // Settings tab state
   const [cache, setCache] = useState<{ count: number; lastUpdated: number }>({ count: 0, lastUpdated: 0 })
@@ -423,28 +425,61 @@ export const IntegratedPopup: React.FC<IntegratedPopupProps> = ({
             />
           )}
           {tab === 'History' && (
-            <HistoryTab
-              state={historyState}
-              onSelect={(row) => {
-                // Open the originating article in a new tab via stored pageUrl
-                void (async () => {
-                  const r = (await sendToBackground({ type: 'GET_HISTORY' })) as Extract<
-                    ResponseMessage,
-                    { type: 'HISTORY_RESPONSE' }
-                  >
-                  const item = r.items.find(
-                    (x) => x.question === row.q && x.pageDomain === row.src,
-                  )
-                  if (item?.pageUrl) window.open(item.pageUrl, '_blank', 'noopener,noreferrer')
-                })()
-              }}
-              onClear={() => {
-                void (async () => {
-                  await sendToBackground({ type: 'CLEAR_HISTORY' })
-                  setHistoryState({ kind: 'empty' })
-                })()
-              }}
-            />
+            <>
+              {historyResolveError && (
+                <div style={{ padding: '8px 14px', fontSize: 12, color: 'rgba(160,40,40,.9)', textAlign: 'center' }}>
+                  {historyResolveError}
+                </div>
+              )}
+              <HistoryTab
+                state={historyState}
+                onSelect={(row) => {
+                  // Jump straight into Trade with this market — no need to
+                  // revisit the original article and re-run Check.
+                  void (async () => {
+                    setHistoryResolveError(null)
+                    const r = (await sendToBackground({ type: 'GET_HISTORY' })) as Extract<
+                      ResponseMessage,
+                      { type: 'HISTORY_RESPONSE' }
+                    >
+                    const item = r.items.find(
+                      (x) => x.question === row.q && x.pageDomain === row.src,
+                    )
+                    if (!item) return
+                    const resolved = await resolveHistoryMarketViaOffscreen(item.marketId)
+                    if (!resolved.market) {
+                      setHistoryResolveError(
+                        resolved.error === 'closed'
+                          ? 'This market has since closed or resolved — no longer tradeable.'
+                          : "Couldn't find this market anymore — it may have been delisted.",
+                      )
+                      return
+                    }
+                    const market = resolved.market
+                    const probability = priceFromOutcomes(market.outcomePrices, market.outcomes)
+                    const color: MatchResult['color'] =
+                      probability < COLOR_THRESHOLDS.blue ? 'blue' : probability < COLOR_THRESHOLDS.yellow ? 'yellow' : 'red'
+                    setLastMatch({
+                      market,
+                      probability,
+                      confidence: 1,
+                      color,
+                      lowConfidence: false,
+                      alternatives: [],
+                    })
+                    setLastArticleHeadline(item.question)
+                    setTab('Trade')
+                  })()
+                }}
+                onClear={() => {
+                  void (async () => {
+                    await sendToBackground({ type: 'CLEAR_HISTORY' })
+                    setHistoryState({ kind: 'empty' })
+                    setHistoryResolveError(null)
+                  })()
+                }}
+              />
+            </>
           )}
           {tab === 'Settings' && (
             <SettingsTab

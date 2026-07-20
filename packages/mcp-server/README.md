@@ -64,9 +64,9 @@ client.
 | `cancel_order(orderId)` | Yes | Cancels one of your resting orders. |
 | `get_open_orders(marketId?)` | Yes | Lists your resting orders, optionally filtered to one market. |
 | `get_positions()` | Yes | Lists your current positions with cost basis and unrealized P&L (Polymarket data-api). A `redeemable: true` position has resolved and is ready for `redeem_position`. |
-| `redeem_position(conditionId)` | Yes | Claims payout for a resolved, winning position — get the `conditionId` from `get_positions`. **Not a CLOB order.** This is an on-chain transaction (calling either the base Conditional Tokens contract or Polymarket's NegRiskAdapter, depending on the market), submitted through Polymarket's own relayer since your positions are held by your Polymarket Safe, not your raw wallet. No POL/gas needed — Polymarket's relayer covers it, the same way it does for their own website's redeem button. Not subject to the spend guard (it claims money owed to you; it never risks new capital). |
+| `redeem_position(conditionId)` | Yes + `ACTUALLY_ENABLE_REDEEM=true` | Claims payout for a resolved, winning position — get the `conditionId` from `get_positions`. **Not a CLOB order.** This is an on-chain transaction (calling either the base Conditional Tokens contract or Polymarket's NegRiskAdapter, depending on the market), submitted through Polymarket's own relayer since your positions are held by your Polymarket Safe, not your raw wallet. No POL/gas needed — Polymarket's relayer covers it, the same way it does for their own website's redeem button. Not subject to the spend guard (it claims money owed to you; it never risks new capital). |
 
-`place_order`/`sell_order`/`cancel_order`/`get_open_orders`/`get_positions`/`redeem_position` are only registered when `POLYMARKET_PRIVATE_KEY` is set — without it, this server only exposes the two signal tools above.
+`place_order`/`sell_order`/`cancel_order`/`get_open_orders`/`get_positions` are only registered when `POLYMARKET_PRIVATE_KEY` is set — without it, this server only exposes the two signal tools above. `redeem_position` needs that **and** `ACTUALLY_ENABLE_REDEEM=true` — see the next section for why it's gated separately.
 
 ### Redeeming positions — read this before you rely on it
 
@@ -81,9 +81,15 @@ round-trips through a real `child_process` JSON-RPC exchange in development.
 
 **What has NOT been verified: an actual redeem against Polygon mainnet with a
 real wallet holding a real resolved position.** There was no such wallet
-available to test against in the environment this was built in. Before
-trusting this in an unattended agent flow, do one manual `redeem_position`
-call against a small real resolved position and confirm the payout lands.
+available to test against in the environment this was built in. Unlike
+`place_order`/`sell_order`, a bug here has no CLOB-rejection safety net — it's
+a real on-chain transaction, so a mistake risks a genuinely lost or stuck
+payout rather than just a rejected order. For that reason the tool is not
+registered at all — an agent enumerating tools won't even see it — unless you
+set `ACTUALLY_ENABLE_REDEEM=true`, a second explicit opt-in beyond just
+configuring `POLYMARKET_PRIVATE_KEY`. Before setting it, do one manual
+`redeem_position` call against a small real resolved position yourself and
+confirm the payout lands.
 
 This feature also pulls in `@polymarket/builder-relayer-client` (which
 depends on `ethers@5`, `viem`, and an old `axios@0.27` with several
@@ -114,6 +120,41 @@ who want the axios/ethers versions bumped regardless should pin an
 
 **Removed:** `prepare_order` (returning an "unsigned order to sign elsewhere") was cut before publish — `@polymarket/clob-client-v2`'s `createOrder`/`createMarketOrder` sign internally with no public API to construct genuine unsigned EIP-712 typed data, so the tool could never honestly deliver on "sign this exact object unchanged." If you need a sign-elsewhere flow, run your own `ClobClient` with a custom signer instead.
 
+## Local embedding dependency — known critical advisory, deliberately not force-fixed
+
+**Triage (checked 2026-07-20):** `check_news`'s local embedder (`@xenova/transformers@2.17.2`,
+shared with the browser extension) bundles a pinned, old `onnxruntime-web@1.14.0`,
+which pulls `onnx-proto@4.0.4` → `protobufjs@6.11.6` — `npm audit` flags
+`protobufjs<=7.6.2` as **critical** (arbitrary code execution / prototype
+pollution in generated message code). `@xenova/transformers` is itself frozen
+at `2.17.2` (its entire usable 2.x range pins this same vulnerable chain —
+`npm audit`'s own suggested fix is a *downgrade*, i.e. there is no forward
+fix within this package). The real fix is migrating to its actively
+maintained successor, `@huggingface/transformers` (currently `4.x`, a
+different package with a changed API surface) — not attempted here: it's a
+genuine migration of the code both products use for every embedding
+(matching quality, WASM loading, and the offscreen-document CSP path all
+need re-verification), and doing that same-day under launch pressure risks a
+silent regression in match quality more than it removes real risk today.
+
+**Why this is lower real-world risk than "critical" suggests for this
+specific product:** protobufjs's vulnerable code paths need attacker-supplied
+protobuf/JSON schema data reaching `.load()`/dynamic descriptor parsing at
+*runtime*. Here, protobufjs only ever parses one thing: the bundled
+`model_quantized.onnx` file, built into the extension/package at publish
+time from a fetch that now happens once, at build time, against a pinned
+model commit with SHA-256 verification (see `extension/scripts/fetch-model.mjs`).
+No request-time input — not the news text being embedded, not anything a
+website or calling agent controls — ever reaches protobufjs; only the
+inference tensors do, which is a different, unrelated code path. The
+practically-reachable attack here was always the model file's *supply
+chain* (an untrusted or swapped `.onnx` file), which the commit pin + hash
+check above closes directly — a more effective mitigation today than an
+unreviewed dependency migration. Tracked as a real fast-follow, not
+dismissed: migrate to `@huggingface/transformers` post-launch with a full
+matching-quality regression pass (`npm run eval:matching -w @actually/core`)
+before shipping it.
+
 ## Environment variables
 
 | Variable | Required | Notes |
@@ -121,6 +162,7 @@ who want the axios/ethers versions bumped regardless should pin an
 | `ACTUALLY_WORKER_URL` | No | Overrides the baked-in default Worker base URL — only needed if you run your own Worker. |
 | `ACTUALLY_WORKER_SECRET` | No | Overrides the baked-in default shared read secret. This is public-by-design (the same posture as the browser extension's baked secret) — the real backstop is server-side rate limiting, not secrecy. |
 | `POLYMARKET_PRIVATE_KEY` | No | Your own Polygon EOA private key. **We never see this** — it stays in your own process environment. Enables `place_order`/`sell_order`/`cancel_order`/`get_open_orders`/`get_positions`. Never commit it; never share it with anyone, including us. |
+| `ACTUALLY_ENABLE_REDEEM` | No | Set to exactly `true` to additionally register `redeem_position`. See "Redeeming positions" above — this is a real on-chain transaction never yet verified against mainnet, so it needs an explicit second opt-in beyond `POLYMARKET_PRIVATE_KEY`. |
 | `ACTUALLY_MAX_ORDER_USD` | No | Per-order cap for `place_order`/`sell_order` (default **$100**). Rejects any single order above this notional before it's ever signed. |
 | `ACTUALLY_DAILY_LIMIT_USD` | No | Rolling UTC-day cap shared by `place_order`+`sell_order` (default **$500**). Persisted to `ACTUALLY_SPEND_STATE_PATH` (see below) so it survives a process restart — still not a substitute for real accounting. |
 | `ACTUALLY_SPEND_STATE_PATH` | No | Where the daily-spend counter is persisted (default `~/.actually-mcp-server/spend-guard.json`). Most MCP clients spawn this server as a fresh subprocess per session, so without persistence the "daily" limit reset on every restart, not just once a day. Override for a custom deployment layout or to isolate multiple operators on one machine. |

@@ -17,8 +17,8 @@ export interface SignAndSubmitResult {
 }
 
 export interface SpendGuardLike {
-  check(sizeUsd: number): { ok: true } | { ok: false; error: string }
-  record(sizeUsd: number): void
+  reserve(sizeUsd: number): { ok: true } | { ok: false; error: string }
+  release(sizeUsd: number): void
 }
 
 export interface PlaceOrderDeps {
@@ -52,7 +52,7 @@ export async function placeOrder(deps: PlaceOrderDeps, input: PlaceOrderInput): 
   }
 
   if (deps.spendGuard) {
-    const guard = deps.spendGuard.check(input.sizeUsd)
+    const guard = deps.spendGuard.reserve(input.sizeUsd)
     if (!guard.ok) {
       return { ok: false, error: guard.error }
     }
@@ -62,16 +62,15 @@ export async function placeOrder(deps: PlaceOrderDeps, input: PlaceOrderInput): 
   try {
     result = await deps.signAndSubmit(input)
   } catch (err) {
+    deps.spendGuard?.release(input.sizeUsd)
     return { ok: false, error: String(err) }
   }
 
   if (!result.success) {
+    // Rejected/failed order — give back the budget reserve() committed.
+    deps.spendGuard?.release(input.sizeUsd)
     return { ok: false, error: result.error ?? 'unknown_error' }
   }
-
-  // Only a CONFIRMED submit counts against the daily total — a rejected or
-  // failed order (caught above) must not consume the operator's budget.
-  deps.spendGuard?.record(input.sizeUsd)
 
   return { ok: true, orderId: result.orderId }
 }

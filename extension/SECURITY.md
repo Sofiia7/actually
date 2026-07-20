@@ -88,11 +88,38 @@ often the lookup fails so the operator can monitor it.
 
 ## CLOB credentials at rest
 
-`clobApiKey` / `clobApiSecret` / `clobApiPassphrase` are stored in
-`chrome.storage.local`, which Chrome encrypts at rest with the profile
-keyring. Settings → Wallet shows a **Disconnect & wipe** button that
-clears all four fields and the WalletConnect session topic. Users should
-wipe on shared devices.
+**Corrected 2026-07-20** (previous wording here overstated this): `clobApiKey` /
+`clobApiSecret` / `clobApiPassphrase` / `wcSessionTopic` are stored in
+`chrome.storage.local`, which is **not** encrypted by Chrome in any way that
+resists another process on the same machine — it's plaintext JSON on disk in
+the profile directory. Chrome's own docs recommend `storage.session`
+(in-memory only, cleared on browser close) for genuinely sensitive data; see
+developer.chrome.com/docs/extensions/reference/api/storage.
+
+**Deliberately still `storage.local`, not moved to `storage.session`:**
+these four fields don't grant fund-moving capability on their own. Every
+individual order still needs a fresh EIP-712 signature from the connected
+wallet via a live WalletConnect session (see `src/background/wallet.ts`) —
+the CLOB API key/secret/passphrase only authenticate the HTTP layer of
+`postOrder`/`cancelOrder`/position-read calls, the same pattern as any
+exchange API key, and cannot themselves construct a new valid signed order.
+Someone who reads these off disk could cancel the user's resting orders and
+read their position history — a real but bounded privacy/griefing risk — not
+sign or submit a new trade. Moving to `storage.session` would trade that
+bounded risk for a real UX cost affecting every user, every session: no
+wallet reconnect across a browser restart is exactly the friction the
+WalletConnect fix (see `wallet.test.ts`) was built to avoid at launch.
+Reaching the actual disk file also requires code execution as the same OS
+user already — a threat model in which the browser's session cookies, saved
+passwords, and every other extension's storage are equally exposed, so this
+one field is not a uniquely weak link. Settings → Wallet's **Disconnect &
+wipe** button clears all four fields; users should use it on shared devices.
+
+`storage.setAccessLevel` (restricting `storage.local` to trusted contexts) is
+not applicable here — it defends against a content script in the *same*
+extension reading storage meant for the background/offscreen context, and
+this extension registers zero `content_scripts` (see Permissions above).
+Revisit if that ever changes.
 
 ## Network egress
 
@@ -166,10 +193,16 @@ time by `npm run fonts:fetch` and bundled into the .crx as woff2 files.
   transport-selection logic changes in an upstream bump.
 
 No `npm audit fix --force` is applied because every "fix" is a breaking
-downgrade of a runtime-critical dependency. Bundling the model weights into the
-.crx (planned v1.1) removes the Hugging Face fetch and closes the protobufjs
-surface entirely; the `ws` branch stays dead code regardless since it's gated
-on an environment check, not a version bump.
+downgrade of a runtime-critical dependency. Bundling the model weights into
+the .crx at build time (shipped since v1.1) already keeps the Hugging Face
+fetch out of the runtime attack surface; `scripts/fetch-model.mjs` additionally
+pins the model to an exact HF commit (not `main`, a mutable ref) and verifies
+each file's SHA-256 after download, so a future `npm run models:fetch` can't
+silently bake in different bytes than what was reviewed — closing the actual
+reachable risk (a supply-chain swap of the model file) even though the
+protobufjs dependency itself remains unpatched upstream. The `ws` branch stays
+dead code regardless since it's gated on an environment check, not a version
+bump.
 
 Re-triage when `clob-client-v2` ships an ethers v6 release or
 `@xenova/transformers` v3 (server-side ONNX) lands.

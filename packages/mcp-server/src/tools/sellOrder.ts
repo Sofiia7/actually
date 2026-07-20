@@ -37,12 +37,13 @@ export async function sellOrder(deps: SellOrderDeps, input: SellOrderInput): Pro
     return { ok: false, error: 'not_configured' }
   }
 
+  // Sells have no `sizeUsd` field (shares, not USD, is the natural close-a-
+  // position unit) — estimate notional the same way the order form does, so
+  // the same USD-denominated budget covers both buys and sells.
+  const estimatedUsd = input.sizeShares * input.price
+
   if (deps.spendGuard) {
-    // Sells have no `sizeUsd` field (shares, not USD, is the natural close-a-
-    // position unit) — estimate notional the same way the order form does,
-    // so the same USD-denominated budget covers both buys and sells.
-    const estimatedUsd = input.sizeShares * input.price
-    const guard = deps.spendGuard.check(estimatedUsd)
+    const guard = deps.spendGuard.reserve(estimatedUsd)
     if (!guard.ok) {
       return { ok: false, error: guard.error }
     }
@@ -52,14 +53,14 @@ export async function sellOrder(deps: SellOrderDeps, input: SellOrderInput): Pro
   try {
     result = await deps.signAndSubmit(input)
   } catch (err) {
+    deps.spendGuard?.release(estimatedUsd)
     return { ok: false, error: String(err) }
   }
 
   if (!result.success) {
+    deps.spendGuard?.release(estimatedUsd)
     return { ok: false, error: result.error ?? 'unknown_error' }
   }
-
-  deps.spendGuard?.record(input.sizeShares * input.price)
 
   return { ok: true, orderId: result.orderId }
 }

@@ -12,7 +12,7 @@ import type {
   SerializableWalletState,
 } from '../shared/messages'
 import type { ArticleData } from '../shared/types'
-import type { MatchResult } from '@actually/core'
+import type { MatchResult, PolyMarket } from '@actually/core'
 import type { GeoErrorReason } from '../background/geo'
 
 async function call<T extends OffscreenResponse>(msg: unknown): Promise<T> {
@@ -116,6 +116,18 @@ export async function placeOrderViaOffscreen(
   })
   if (r.type === 'OS_ERROR') return { ok: false, error: r.error }
   return { ok: r.ok, orderId: r.orderId, error: r.error }
+}
+
+export async function resolveHistoryMarketViaOffscreen(
+  marketId: string,
+): Promise<{ market: PolyMarket | null; error?: 'not_found' | 'closed' }> {
+  const r = await call<Extract<OffscreenResponse, { type: 'OS_HISTORY_MARKET_RESOLVED' }> | Extract<OffscreenResponse, { type: 'OS_ERROR' }>>({
+    target: 'offscreen',
+    type: 'OS_RESOLVE_HISTORY_MARKET',
+    marketId,
+  })
+  if (r.type === 'OS_ERROR') return { market: null, error: 'not_found' }
+  return { market: r.market, error: r.error }
 }
 
 export async function cancelOrderViaOffscreen(

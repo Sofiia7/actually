@@ -24,6 +24,16 @@ export const HEADLINE_WEIGHT = 2
 // models are not comparable, so a mismatch must invalidate any cached vectors.
 export const LOCAL_MODEL_ID = 'Xenova/all-MiniLM-L12-v2'
 
+// Exact HuggingFace commit for LOCAL_MODEL_ID — NOT 'main', a mutable ref.
+// The extension bundles the model at build time (see
+// extension/scripts/fetch-model.mjs, which also SHA-256-verifies each file
+// against this same commit) so its runtime never touches HuggingFace at all.
+// mcp-server and market-cache-builder fetch at runtime instead (no bundling
+// step), so they pass this as transformers.js's `revision` option to pin
+// what they get — without it, a future run could silently fetch different
+// bytes than what was reviewed if the upstream repo's `main` ever moves.
+export const LOCAL_MODEL_REVISION = 'beeb2e4b69e95f188a15cc2e90d09fd035dac229'
+
 // Markets are cached top-N by volume. At 300, lower-volume but topical markets
 // (e.g. Russia/Ukraine ceasefire & territory markets rank ~330-600 by volume)
 // fell outside the pool, so a war article could only match the nearest cached

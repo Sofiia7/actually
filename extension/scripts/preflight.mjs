@@ -104,5 +104,41 @@ if (manifest.key) {
   }
 }
 
+// Confirm .env.local's build-time secrets actually got baked into dist, not
+// silently substituted as empty strings (Vite's `import.meta.env.VITE_X ?? ''`
+// pattern builds "successfully" either way — a build run against a blank or
+// half-filled .env.local would pass every check above and every unit test,
+// then fail at runtime with wc_project_id_missing / builder_code_not_configured
+// the first time a real user tries to connect a wallet or place an order).
+// Skipped when .env.local doesn't exist — CI's build sets these directly as
+// step-scoped env vars instead (see .github/workflows/ci.yml's "Build
+// extension (with CI-stub env)"), not a checked-in file, and the CSP check
+// above already covers the worker-URL case for that path.
+let envLocal
+try {
+  envLocal = readFileSync('.env.local', 'utf8')
+} catch {
+  envLocal = null
+}
+if (envLocal) {
+  const distText = [...walk(DIST)]
+    .filter((f) => /\.(js|mjs|json|html)$/.test(f))
+    .map((f) => readFileSync(f, 'utf8'))
+    .join('\n')
+  for (const key of ['VITE_BUILDER_CODE', 'VITE_WC_PROJECT_ID']) {
+    const m = envLocal.match(new RegExp(`^${key}=(.+)$`, 'm'))
+    const value = m?.[1]?.trim()
+    if (!value) {
+      bad(`${key} is empty or missing in .env.local`)
+    } else if (!distText.includes(value)) {
+      bad(`${key} from .env.local was not found baked into dist — build may predate this .env.local, or picked up a different value`)
+    } else {
+      ok(`${key} baked into dist`)
+    }
+  }
+} else {
+  console.log('  (skipped .env.local-baked-config check — no .env.local present, e.g. CI)')
+}
+
 console.log(failures ? `\nPRE-FLIGHT FAILED (${failures} issue${failures > 1 ? 's' : ''})` : '\nPRE-FLIGHT PASSED')
 process.exit(failures ? 1 : 0)
