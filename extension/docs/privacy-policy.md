@@ -44,13 +44,13 @@ When you click **Place order**:
 - The order payload (`tokenID`, `price`, `size`, `side`, our `builderCode`) is constructed in the popup, signed by your wallet via WalletConnect, and posted to `clob.polymarket.com`. Polymarket attributes the order's volume to our builder code, which is how this extension is monetized.
 - A **country check** is performed via our Worker `/geo` endpoint (which reads Cloudflare's `CF-IPCountry` header). If your country is on Polymarket's restricted list, order submission is refused.
 
-## Anonymous telemetry (opt-out)
+## Pseudonymous telemetry (opt-in)
 
-If you leave "Share anonymous usage stats" enabled in Settings (default on), the extension sends counters of the following events to our Worker:
+If you enable "Share anonymous usage stats" in Settings (**default off** — nothing is sent until you turn it on), the extension sends counters of the following events to our Worker:
 
 `install`, `check_page_clicked`, `match_shown`, `match_lowconf`, `match_clicked`, `no_match`, `wallet_connect_started`, `wallet_connect_success`, `wallet_connect_failed`, `order_form_opened`, `order_signed`, `order_submitted`, `order_filled`, `order_failed`, `geo_blocked`, `cache_refresh`
 
-Each event carries an anonymous `installId` (random UUID generated locally at first install) and may include **bucketed** metadata: confidence band (e.g. `0.6`), order size bucket (e.g. `50_200`), country code (only for `geo_blocked`), match color (`blue`/`yellow`/`red`).
+Each event carries a **pseudonymous** `installId` (a random UUID generated locally at first install, the same value on every event from your install — not a fresh anonymous value per event, so events from the same install can be linked to each other, just not to your real identity) and may include **bucketed** metadata: confidence band (e.g. `0.6`), order size bucket (e.g. `50_200`), country code (only for `geo_blocked`), match color (`blue`/`yellow`/`red`).
 
 What is **never** sent:
 - URLs you visit
@@ -66,7 +66,7 @@ Disable telemetry at any time in Settings.
 
 | Party | When | What they see |
 |---|---|---|
-| Cloudflare Workers | All API calls | Request rate limiting, anonymous telemetry events |
+| Cloudflare Workers | All API calls | Request rate limiting, pseudonymous telemetry events (only if you opted in) |
 | Polymarket (`gamma-api`, `clob`, `data-api`) | All discovery + trading | Public market data requests; signed order payloads (trading only) |
 | OpenAI | Only if you switch to OpenAI embeddings | Article headline + body excerpt for embedding |
 | WalletConnect / Reown | Only after you click Connect | WC relay handshake; never sees article content |

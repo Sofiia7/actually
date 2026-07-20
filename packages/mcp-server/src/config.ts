@@ -4,15 +4,39 @@
  * then it falls back to the empty string, which disables order-signing
  * tools entirely (see place_order / prepare_order, implemented later).
  */
+import { readFileSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
 
 declare const __BUILDER_CODE__: string | undefined
 declare const __DEFAULT_WORKER_URL__: string | undefined
 declare const __DEFAULT_WORKER_SECRET__: string | undefined
+declare const __PKG_VERSION__: string | undefined
 
 export const BUILDER_CODE: string =
   typeof __BUILDER_CODE__ !== 'undefined' ? __BUILDER_CODE__ : ''
+
+/**
+ * Server version reported to MCP clients. Baked in by tsup's `define` the
+ * same way BUILDER_CODE is (see tsup.config.ts) — reads package.json
+ * directly at publish time, so it can never drift from the published
+ * version again (0.1.0 and 0.1.1 both shipped with a hand-edited literal
+ * in index.ts that fell out of sync with package.json). In dev/test, where
+ * the define isn't baked in, falls back to reading package.json off disk.
+ */
+export const PKG_VERSION: string =
+  typeof __PKG_VERSION__ !== 'undefined' ? __PKG_VERSION__ : readPkgVersionFallback()
+
+function readPkgVersionFallback(): string {
+  try {
+    const pkg = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8')) as {
+      version: string
+    }
+    return pkg.version
+  } catch {
+    return '0.0.0-dev'
+  }
+}
 
 /**
  * Default backing Worker, baked at publish time the same way BUILDER_CODE is
@@ -33,6 +57,16 @@ const DEFAULT_WORKER_SECRET: string =
 export const WORKER_URL: string = process.env.ACTUALLY_WORKER_URL || DEFAULT_WORKER_URL
 export const WORKER_SECRET: string = process.env.ACTUALLY_WORKER_SECRET || DEFAULT_WORKER_SECRET
 export const PRIVATE_KEY: string | undefined = process.env.POLYMARKET_PRIVATE_KEY
+
+/**
+ * redeem_position submits a real on-chain transaction through the Polymarket
+ * relayer — unlike place_order/sell_order, a bug here has no CLOB-rejection
+ * safety net; it can mean a genuinely lost or stuck payout, and (per the
+ * project's own launch checklist) this path has never been exercised against
+ * a real resolved mainnet position. Opt-in only, separate from PRIVATE_KEY,
+ * so an operator has to make the same call twice before an agent can reach it.
+ */
+export const REDEEM_ENABLED: boolean = process.env.ACTUALLY_ENABLE_REDEEM === 'true'
 
 /**
  * Real-money backstops for place_order/sell_order — a prompt-injected or

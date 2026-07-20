@@ -25,6 +25,13 @@ const {
   isPublish: process.env.npm_lifecycle_event === 'prepublishOnly',
 })
 
+// Baked in so the McpServer's reported version can never drift from what
+// actually gets published (see src/config.ts's PKG_VERSION / src/version.test.ts
+// — 0.1.0 and 0.1.1 both shipped with a hand-edited literal that fell out
+// of sync with this file).
+const PKG_VERSION = (JSON.parse(readFileSync(join(__dirname, 'package.json'), 'utf8')) as { version: string })
+  .version
+
 export default defineConfig({
   entry: ['src/index.ts'],
   format: ['esm'],
@@ -38,5 +45,6 @@ export default defineConfig({
     __BUILDER_CODE__: JSON.stringify(BUILDER_CODE),
     __DEFAULT_WORKER_URL__: JSON.stringify(DEFAULT_WORKER_URL),
     __DEFAULT_WORKER_SECRET__: JSON.stringify(DEFAULT_WORKER_SECRET),
+    __PKG_VERSION__: JSON.stringify(PKG_VERSION),
   },
 })

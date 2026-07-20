@@ -99,3 +99,34 @@ describe('SPEND_GUARD_STATE_PATH', () => {
     expect(SPEND_GUARD_STATE_PATH).toBe('/custom/path/state.json')
   })
 })
+
+describe('REDEEM_ENABLED', () => {
+  const ORIGINAL_ENV = { ...process.env }
+
+  beforeEach(() => {
+    vi.resetModules()
+  })
+
+  afterEach(() => {
+    process.env = { ...ORIGINAL_ENV }
+  })
+
+  it('defaults to false — redeem_position needs an explicit second opt-in beyond PRIVATE_KEY', async () => {
+    delete process.env.ACTUALLY_ENABLE_REDEEM
+    const { REDEEM_ENABLED } = await import('./config')
+    expect(REDEEM_ENABLED).toBe(false)
+  })
+
+  it('is true only for the exact string "true"', async () => {
+    process.env.ACTUALLY_ENABLE_REDEEM = 'true'
+    expect((await import('./config')).REDEEM_ENABLED).toBe(true)
+
+    vi.resetModules()
+    process.env.ACTUALLY_ENABLE_REDEEM = '1'
+    expect((await import('./config')).REDEEM_ENABLED).toBe(false)
+
+    vi.resetModules()
+    process.env.ACTUALLY_ENABLE_REDEEM = 'yes'
+    expect((await import('./config')).REDEEM_ENABLED).toBe(false)
+  })
+})

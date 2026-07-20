@@ -2,11 +2,11 @@ import { readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
 
 describe('version sync', () => {
-  it('serverInfo version literal in index.ts matches package.json (0.1.0 shipped with a mismatch)', () => {
+  it('PKG_VERSION falls back to package.json when __PKG_VERSION__ is not baked in (dev/test) — 0.1.0 and 0.1.1 both shipped with a hand-edited literal that drifted out of sync', async () => {
     const pkg = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8')) as {
       version: string
     }
-    const src = readFileSync(new URL('./index.ts', import.meta.url), 'utf8')
-    expect(src).toContain(`version: '${pkg.version}'`)
+    const { PKG_VERSION } = await import('./config')
+    expect(PKG_VERSION).toBe(pkg.version)
   })
 })

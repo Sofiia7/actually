@@ -18,7 +18,7 @@
  *     worker — for inspecting output without touching the live cache)
  */
 import { writeFileSync } from 'node:fs'
-import { fetchActiveMarkets, LOCAL_MODEL_ID, MAX_MARKETS_CACHE } from '@actually/core'
+import { fetchActiveMarkets, LOCAL_MODEL_ID, LOCAL_MODEL_REVISION, MAX_MARKETS_CACHE } from '@actually/core'
 import { buildBlob } from './buildBlob'
 
 const DRY_RUN = process.argv.includes('--dry-run')
@@ -50,7 +50,9 @@ async function main() {
     step = 'load_model'
     const { pipeline, env } = await import('@xenova/transformers')
     env.allowLocalModels = false
-    const extractor = await pipeline('feature-extraction', LOCAL_MODEL_ID)
+    // Pinned revision (not 'main', a mutable ref) — see LOCAL_MODEL_REVISION's
+    // doc comment in packages/core/src/constants.ts.
+    const extractor = await pipeline('feature-extraction', LOCAL_MODEL_ID, { revision: LOCAL_MODEL_REVISION })
     const embed = async (text: string): Promise<Float32Array> => {
       const out = (await extractor(text, { pooling: 'mean', normalize: true })) as { data: Float32Array }
       return out.data

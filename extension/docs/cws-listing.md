@@ -68,13 +68,15 @@ actual code behavior 2026-07-17, not just the intended design):
   OpenAI to compute an embedding, then discards them. Never stored, never
   used for anything but that one match. State this qualifier in the
   dashboard's free-text justification field if it offers one.
-- **"User activity"** → **Yes.** Anonymous usage telemetry (which UI element
-  was clicked, order submitted/failed, etc.) is **opt-out** — on by default —
-  and keyed by a random per-install id. No URLs, headlines, or wallet
-  addresses are included (see `docs/privacy-policy.md` for the exact event
-  list). This is the category Google defines as "clicks and interaction
-  within the extension" — it applies regardless of how anonymous the payload
-  is.
+- **"User activity"** → **Yes.** Pseudonymous usage telemetry (which UI
+  element was clicked, order submitted/failed, etc.) is **opt-in** — off by
+  default, nothing sent until the user enables it in Settings — and keyed by
+  a random per-install id (the same id across that install's events, not a
+  fresh one per event — hence pseudonymous, not anonymous). No URLs,
+  headlines, or wallet addresses are included (see `docs/privacy-policy.md`
+  for the exact event list). This is the category Google defines as "clicks
+  and interaction within the extension" — it applies regardless of the
+  opt-in default or how pseudonymous the payload is.
 - **Personally identifiable / financial / health / authentication /
   location / web history info** → **No** to all — none of these are
   collected in any code path.

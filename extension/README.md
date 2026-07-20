@@ -34,7 +34,7 @@ What the extension actually does is walked through in [How matching works](#how-
 | Diff-cache for market embeddings, lazy TTL refresh | ✅ |
 | Cosine-similarity matcher + noise filter + low-confidence fallback | ✅ |
 | History (local, 10 items, deduped) | ✅ |
-| Anonymous telemetry (opt-out, 17 honest events, bounded queue) | ✅ |
+| Pseudonymous telemetry (opt-in, 17 honest events, bounded queue) | ✅ |
 | English-only UI (i18n layer removed in v1) | ✅ |
 | Hotkey (Cmd/Ctrl+Shift+P) | ✅ |
 | Cloudflare Worker proxy — fail-closed auth + rate limits | ✅ |
@@ -223,7 +223,7 @@ extension/
 │   │   ├── matcher.ts         Cosine + noise filter + keyword-overlap bonus
 │   │   ├── settings.ts        chrome.storage wrapper
 │   │   ├── history.ts         Last-10 with URL dedup
-│   │   ├── telemetry.ts       Anonymous event queue (1000-cap) + flush
+│   │   ├── telemetry.ts       Pseudonymous event queue (1000-cap) + flush, opt-in
 │   │   ├── wallet.ts          WC v2 SignClient + WCSigner
 │   │   ├── clob.ts            clob-client-v2 init + signBuy/submit/pollStatus
 │   │   ├── trade.ts           connectWallet, placeOrder (with staged telemetry)

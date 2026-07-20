@@ -29,6 +29,7 @@ import {
   restoreWallet,
   type WalletState,
 } from '../background/trade'
+import { resolveHistoryMarket } from '../background/resolveHistoryMarket'
 import { installStorageBridge } from './storage-bridge'
 
 // Some Chrome builds don't expose chrome.storage to offscreen documents. Install
@@ -296,6 +297,17 @@ async function handle(msg: OffscreenRequest): Promise<OffscreenResponse> {
       if (!w) return { type: 'OS_ORDER_RESULT', ok: false, error: 'no_wallet' }
       const r = await cancelOrder(w, msg.orderId)
       return { type: 'OS_ORDER_RESULT', ...r }
+    }
+
+    case 'OS_RESOLVE_HISTORY_MARKET': {
+      const settings = await getSettings()
+      if (!settings.workerUrl || !settings.workerSecret) {
+        return { type: 'OS_HISTORY_MARKET_RESOLVED', market: null, error: 'not_found' }
+      }
+      const r = await resolveHistoryMarket(msg.marketId, settings.workerUrl, settings.workerSecret)
+      return r.ok
+        ? { type: 'OS_HISTORY_MARKET_RESOLVED', market: r.market }
+        : { type: 'OS_HISTORY_MARKET_RESOLVED', market: null, error: r.error }
     }
 
     case 'OS_PRICE_HISTORY': {

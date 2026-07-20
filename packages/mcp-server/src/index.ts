@@ -9,7 +9,7 @@ import {
   LOCAL_MODEL_ID,
   resolveOrderToken,
 } from '@actually/core'
-import { DAILY_LIMIT_USD, MAX_ORDER_USD, PRIVATE_KEY, SPEND_GUARD_STATE_PATH, requireWorkerConfig } from './config'
+import { DAILY_LIMIT_USD, MAX_ORDER_USD, PKG_VERSION, PRIVATE_KEY, REDEEM_ENABLED, SPEND_GUARD_STATE_PATH, requireWorkerConfig } from './config'
 import { WorkerMarketStore } from './marketStore'
 import { LocalEmbedder } from './embedder'
 import { SpendGuard } from './spendGuard'
@@ -27,8 +27,7 @@ import { redeemPosition } from './tools/redeemPosition'
 import { makeTradingSession } from './tradingSession'
 import { makeRelayerSubmit } from './relayerClient'
 
-// Keep in sync with package.json "version" (checked by config.test.ts).
-const server = new McpServer({ name: 'actually-mcp-server', version: '0.1.1' })
+const server = new McpServer({ name: 'actually-mcp-server', version: PKG_VERSION })
 
 const embedder = new LocalEmbedder()
 const thresholds = defaultThresholds('local')
@@ -225,26 +224,32 @@ if (PRIVATE_KEY) {
     },
   )
 
-  const relayerSubmit = makeRelayerSubmit(PRIVATE_KEY)
-  server.registerTool(
-    'redeem_position',
-    {
-      description:
-        'Claim payout for a resolved, winning position (get its conditionId from ' +
-        'get_positions — only positions with redeemable:true can be redeemed). This ' +
-        'is an on-chain transaction submitted through the Polymarket relayer, not a ' +
-        'CLOB order — no POL/gas needed in your wallet, Polymarket covers it. ' +
-        'Not gated by the spend guard (this claims money owed to you, it does not risk new capital).',
-      inputSchema: { conditionId: z.string().min(1) },
-    },
-    async (input) => {
-      const result = await redeemPosition(
-        { privateKey: PRIVATE_KEY, getFunderAddress: session.getFunderAddress, fetchPositions, submit: relayerSubmit },
-        input,
-      )
-      return { content: [{ type: 'text' as const, text: JSON.stringify(result) }] }
-    },
-  )
+  // redeem_position needs a second, explicit opt-in beyond just having a
+  // signing key configured — see REDEEM_ENABLED's doc comment in config.ts.
+  // Unset, the tool isn't registered at all (not "registered but errors" —
+  // an agent enumerating tools shouldn't even see it as an option).
+  if (REDEEM_ENABLED) {
+    const relayerSubmit = makeRelayerSubmit(PRIVATE_KEY)
+    server.registerTool(
+      'redeem_position',
+      {
+        description:
+          'Claim payout for a resolved, winning position (get its conditionId from ' +
+          'get_positions — only positions with redeemable:true can be redeemed). This ' +
+          'is an on-chain transaction submitted through the Polymarket relayer, not a ' +
+          'CLOB order — no POL/gas needed in your wallet, Polymarket covers it. ' +
+          'Not gated by the spend guard (this claims money owed to you, it does not risk new capital).',
+        inputSchema: { conditionId: z.string().min(1) },
+      },
+      async (input) => {
+        const result = await redeemPosition(
+          { privateKey: PRIVATE_KEY, getFunderAddress: session.getFunderAddress, fetchPositions, submit: relayerSubmit },
+          input,
+        )
+        return { content: [{ type: 'text' as const, text: JSON.stringify(result) }] }
+      },
+    )
+  }
 }
 
 const transport = new StdioServerTransport()

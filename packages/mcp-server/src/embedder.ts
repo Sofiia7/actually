@@ -1,5 +1,5 @@
 import type { Embedder } from '@actually/core'
-import { LOCAL_MODEL_ID } from '@actually/core'
+import { LOCAL_MODEL_ID, LOCAL_MODEL_REVISION } from '@actually/core'
 
 type Extractor = (text: string, opts: object) => Promise<{ data: Float32Array }>
 
@@ -19,7 +19,9 @@ export class LocalEmbedder implements Embedder {
       this.pipelinePromise = (async () => {
         const { pipeline, env } = await import('@xenova/transformers')
         env.allowLocalModels = false
-        const extractor = await pipeline('feature-extraction', LOCAL_MODEL_ID)
+        // Pinned revision (not 'main', a mutable ref) — see LOCAL_MODEL_REVISION's
+        // doc comment in packages/core/src/constants.ts.
+        const extractor = await pipeline('feature-extraction', LOCAL_MODEL_ID, { revision: LOCAL_MODEL_REVISION })
         return extractor as unknown as Extractor
       })().catch((err) => {
         // Only a FAILED load clears the cache so the next call gets a fresh

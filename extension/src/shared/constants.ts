@@ -105,7 +105,12 @@ export const DEFAULT_SETTINGS: Settings = {
   embeddingProvider: 'local',
   workerUrl: DEFAULT_WORKER_URL,
   workerSecret: DEFAULT_WORKER_SECRET,
-  telemetryEnabled: true,
+  // Opt-in, not opt-out (changed 2026-07-20). Product works identically
+  // either way — nothing here gates on telemetry — and events are tied to a
+  // persistent per-install id alongside trading behavior (wallet_connect_*,
+  // order_*), which warrants asking first rather than tracking by default
+  // and hoping users find Settings → "share anonymous stats" to turn it off.
+  telemetryEnabled: false,
 }
 
 export const POLYMARKET_BASE_URL = 'https://polymarket.com/event'
