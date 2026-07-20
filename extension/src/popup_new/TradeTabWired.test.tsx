@@ -81,7 +81,7 @@ beforeEach(() => {
   vi.clearAllMocks()
   opsm.getGeoViaOffscreen.mockResolvedValue({ country: 'RS', blocked: false, unknown: false })
   opsm.priceHistoryViaOffscreen.mockResolvedValue([])
-  opsm.orderbookSnapshotViaOffscreen.mockResolvedValue({ bestBid: 0.4, bestAsk: 0.42, spread: 0.02, estimate: null })
+  opsm.orderbookSnapshotViaOffscreen.mockResolvedValue({ bestBid: 0.4, bestAsk: 0.42, spread: 0.02, bids: [], asks: [], estimate: null })
   opsm.placeOrderViaOffscreen.mockResolvedValue({ ok: true, orderId: '0x123' })
 })
 
@@ -121,6 +121,8 @@ describe('TradeTabWired — order ticket', () => {
       bestBid: 0.4,
       bestAsk: 0.42,
       spread: 0.02,
+      bids: [],
+      asks: [],
       estimate: { effectivePrice: 0.55, slippage: 0.25 },
     })
     render(<TradeTabWired {...props} />)

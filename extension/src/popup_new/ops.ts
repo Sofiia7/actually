@@ -185,6 +185,8 @@ export async function orderbookSnapshotViaOffscreen(
   bestBid: number | null
   bestAsk: number | null
   spread: number | null
+  bids: Array<{ price: number; size: number }>
+  asks: Array<{ price: number; size: number }>
   estimate: { effectivePrice: number; slippage: number } | null
 }> {
   const r = await call<Extract<OffscreenResponse, { type: 'OS_ORDERBOOK' }> | Extract<OffscreenResponse, { type: 'OS_ERROR' }>>({
@@ -193,6 +195,6 @@ export async function orderbookSnapshotViaOffscreen(
     tokenId,
     sizeShares,
   })
-  if (r.type === 'OS_ERROR') return { bestBid: null, bestAsk: null, spread: null, estimate: null }
-  return { bestBid: r.bestBid, bestAsk: r.bestAsk, spread: r.spread, estimate: r.estimate ?? null }
+  if (r.type === 'OS_ERROR') return { bestBid: null, bestAsk: null, spread: null, bids: [], asks: [], estimate: null }
+  return { bestBid: r.bestBid, bestAsk: r.bestAsk, spread: r.spread, bids: r.bids, asks: r.asks, estimate: r.estimate ?? null }
 }

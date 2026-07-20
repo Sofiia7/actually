@@ -359,7 +359,7 @@ async function handle(msg: OffscreenRequest): Promise<OffscreenResponse> {
 
     case 'OS_ORDERBOOK_SNAPSHOT': {
       const w = await rehydrateWallet()
-      if (!w) return { type: 'OS_ORDERBOOK', bestBid: null, bestAsk: null, spread: null, estimate: null }
+      if (!w) return { type: 'OS_ORDERBOOK', bestBid: null, bestAsk: null, spread: null, bids: [], asks: [], estimate: null }
       const snap = await getOrderbookSnapshot(w, msg.tokenId)
       // Walk the book for a depth-based fill estimate when the UI passes the
       // intended size (shares); otherwise just return the top-of-book.
@@ -369,6 +369,8 @@ async function handle(msg: OffscreenRequest): Promise<OffscreenResponse> {
         bestBid: snap.bestBid,
         bestAsk: snap.bestAsk,
         spread: snap.spread,
+        bids: snap.bids,
+        asks: snap.asks,
         estimate,
       }
     }
