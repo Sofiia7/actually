@@ -24,12 +24,14 @@ import {
   cancelOrder,
   connectWallet,
   disconnectWallet,
+  getOpenOrders,
   getOrderbookSnapshot,
   placeOrder,
   restoreWallet,
   type WalletState,
 } from '../background/trade'
 import { resolveHistoryMarket } from '../background/resolveHistoryMarket'
+import { fetchPositions } from '../background/positions'
 import { installStorageBridge } from './storage-bridge'
 
 // Some Chrome builds don't expose chrome.storage to offscreen documents. Install
@@ -297,6 +299,24 @@ async function handle(msg: OffscreenRequest): Promise<OffscreenResponse> {
       if (!w) return { type: 'OS_ORDER_RESULT', ok: false, error: 'no_wallet' }
       const r = await cancelOrder(w, msg.orderId)
       return { type: 'OS_ORDER_RESULT', ...r }
+    }
+
+    case 'OS_GET_OPEN_ORDERS': {
+      const w = await rehydrateWallet()
+      if (!w) return { type: 'OS_OPEN_ORDERS_RESULT', ok: false, error: 'no_wallet' }
+      const r = await getOpenOrders(w, msg.marketId)
+      return { type: 'OS_OPEN_ORDERS_RESULT', ...r }
+    }
+
+    case 'OS_GET_POSITIONS': {
+      const w = await rehydrateWallet()
+      if (!w) return { type: 'OS_POSITIONS_RESULT', ok: false, error: 'no_wallet' }
+      try {
+        const positions = await fetchPositions(w.safeAddress)
+        return { type: 'OS_POSITIONS_RESULT', ok: true, positions }
+      } catch (err) {
+        return { type: 'OS_POSITIONS_RESULT', ok: false, error: String(err) }
+      }
     }
 
     case 'OS_RESOLVE_HISTORY_MARKET': {

@@ -2,7 +2,9 @@ import type {
   ArticleData,
   HistoryItem,
   MatchResult,
+  OpenOrderSummary,
   PolyMarket,
+  Position,
   Settings,
   TestKeysResult,
 } from './types'
@@ -68,6 +70,8 @@ export type OffscreenRequest =
   | { target: 'offscreen'; type: 'OS_POLL_CONNECT'; sessionId: string }
   | { target: 'offscreen'; type: 'OS_PLACE_ORDER'; args: OffscreenPlaceOrderArgs }
   | { target: 'offscreen'; type: 'OS_CANCEL_ORDER'; orderId: string }
+  | { target: 'offscreen'; type: 'OS_GET_OPEN_ORDERS'; marketId?: string }
+  | { target: 'offscreen'; type: 'OS_GET_POSITIONS' }
   | { target: 'offscreen'; type: 'OS_ORDERBOOK_SNAPSHOT'; tokenId: string; sizeShares?: number }
   | { target: 'offscreen'; type: 'OS_PRICE_HISTORY'; marketIdOrTokenId: string; days?: number }
   | { target: 'offscreen'; type: 'OS_RESOLVE_HISTORY_MARKET'; marketId: string }
@@ -99,6 +103,8 @@ export type OffscreenResponse =
   | { type: 'OS_ORDERBOOK'; bestBid: number | null; bestAsk: number | null; spread: number | null; estimate?: { effectivePrice: number; slippage: number } | null }
   | { type: 'OS_PRICE_HISTORY'; points: Array<{ t: number; p: number }> }
   | { type: 'OS_HISTORY_MARKET_RESOLVED'; market: PolyMarket | null; error?: 'not_found' | 'closed' }
+  | { type: 'OS_OPEN_ORDERS_RESULT'; ok: boolean; orders?: OpenOrderSummary[]; error?: string }
+  | { type: 'OS_POSITIONS_RESULT'; ok: boolean; positions?: Position[]; error?: string }
   | { type: 'OS_ERROR'; error: string }
 
 /**

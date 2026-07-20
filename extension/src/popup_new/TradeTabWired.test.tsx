@@ -13,6 +13,9 @@ vi.mock('./ops', () => ({
   disconnectWalletViaOffscreen: vi.fn(),
   startConnectViaOffscreen: vi.fn(),
   pollConnectViaOffscreen: vi.fn(),
+  cancelOrderViaOffscreen: vi.fn(),
+  getPositionsViaOffscreen: vi.fn(async () => ({ ok: true, positions: [] })),
+  getOpenOrdersViaOffscreen: vi.fn(async () => ({ ok: true, orders: [] })),
 }))
 
 import { TradeTabWired } from './TradeTabWired'

@@ -13,6 +13,7 @@ import type {
 } from '../shared/messages'
 import type { ArticleData } from '../shared/types'
 import type { MatchResult, PolyMarket } from '@actually/core'
+import type { OpenOrderSummary, Position } from '../shared/types'
 import type { GeoErrorReason } from '../background/geo'
 
 async function call<T extends OffscreenResponse>(msg: unknown): Promise<T> {
@@ -128,6 +129,27 @@ export async function resolveHistoryMarketViaOffscreen(
   })
   if (r.type === 'OS_ERROR') return { market: null, error: 'not_found' }
   return { market: r.market, error: r.error }
+}
+
+export async function getOpenOrdersViaOffscreen(
+  marketId?: string,
+): Promise<{ ok: boolean; orders?: OpenOrderSummary[]; error?: string }> {
+  const r = await call<Extract<OffscreenResponse, { type: 'OS_OPEN_ORDERS_RESULT' }> | Extract<OffscreenResponse, { type: 'OS_ERROR' }>>({
+    target: 'offscreen',
+    type: 'OS_GET_OPEN_ORDERS',
+    marketId,
+  })
+  if (r.type === 'OS_ERROR') return { ok: false, error: r.error }
+  return { ok: r.ok, orders: r.orders, error: r.error }
+}
+
+export async function getPositionsViaOffscreen(): Promise<{ ok: boolean; positions?: Position[]; error?: string }> {
+  const r = await call<Extract<OffscreenResponse, { type: 'OS_POSITIONS_RESULT' }> | Extract<OffscreenResponse, { type: 'OS_ERROR' }>>({
+    target: 'offscreen',
+    type: 'OS_GET_POSITIONS',
+  })
+  if (r.type === 'OS_ERROR') return { ok: false, error: r.error }
+  return { ok: r.ok, positions: r.positions, error: r.error }
 }
 
 export async function cancelOrderViaOffscreen(

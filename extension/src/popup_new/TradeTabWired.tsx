@@ -5,9 +5,10 @@ import { Etched } from './components/Etched'
 import { GlassButton } from './components/GlassButton'
 import { NeutralScanner } from './components/NeutralScanner'
 import { LinkAction } from './components/LinkAction'
+import { PositionsPanel } from './components/PositionsPanel'
 import { toneDark } from './colors'
 
-import type { Settings as SettingsT } from '../shared/types'
+import type { OpenOrderSummary, Position, Settings as SettingsT } from '../shared/types'
 import type { MatchResult, PolyMarket } from '@actually/core'
 import type { SerializableWalletState } from '../shared/messages'
 import { GEO_FAIL_OPEN } from '../shared/constants'
@@ -20,6 +21,8 @@ import {
   cancelOrderViaOffscreen,
   disconnectWalletViaOffscreen,
   getGeoViaOffscreen,
+  getOpenOrdersViaOffscreen,
+  getPositionsViaOffscreen,
   orderbookSnapshotViaOffscreen,
   placeOrderViaOffscreen,
   pollConnectViaOffscreen,
@@ -68,6 +71,13 @@ export const TradeTabWired: React.FC<TradeTabWiredProps> = ({
   const [loaded, setLoaded] = useState(false)
   const [connect, setConnect] = useState<ConnectStage>({ kind: 'idle' })
 
+  // Portfolio (positions + open orders) — previously the only way to see
+  // either was leaving the extension for polymarket.com directly.
+  const [positions, setPositions] = useState<Position[]>([])
+  const [openOrders, setOpenOrders] = useState<OpenOrderSummary[]>([])
+  const [portfolioLoading, setPortfolioLoading] = useState(false)
+  const [cancellingId, setCancellingId] = useState<string | null>(null)
+
   // Restore wallet + geo on mount — both are independent offscreen RPCs,
   // so fire them in parallel and unblock UI as soon as both resolve.
   useEffect(() => {
@@ -85,6 +95,38 @@ export const TradeTabWired: React.FC<TradeTabWiredProps> = ({
     })()
     return () => { cancelled = true }
   }, [settings.workerUrl, settings.workerSecret])
+
+  async function refreshPortfolio() {
+    if (!wallet) return
+    setPortfolioLoading(true)
+    try {
+      const [pRes, oRes] = await Promise.all([getPositionsViaOffscreen(), getOpenOrdersViaOffscreen()])
+      setPositions(pRes.ok ? pRes.positions ?? [] : [])
+      setOpenOrders(oRes.ok ? oRes.orders ?? [] : [])
+    } finally {
+      setPortfolioLoading(false)
+    }
+  }
+
+  useEffect(() => {
+    if (!wallet) {
+      setPositions([])
+      setOpenOrders([])
+      return
+    }
+    void refreshPortfolio()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [wallet?.address])
+
+  async function onCancelOpenOrder(orderId: string) {
+    setCancellingId(orderId)
+    try {
+      await cancelOrderViaOffscreen(orderId)
+    } finally {
+      setCancellingId(null)
+      void refreshPortfolio()
+    }
+  }
 
   // Render the WC QR whenever a new URI comes in
   useEffect(() => {
@@ -191,6 +233,16 @@ export const TradeTabWired: React.FC<TradeTabWiredProps> = ({
         <div style={{ marginTop: 14, display: 'flex', justifyContent: 'center' }}>
           <GlassButton size="md" onClick={onPickMatch}>Open Check</GlassButton>
         </div>
+        {wallet && (
+          <PositionsPanel
+            positions={positions}
+            openOrders={openOrders}
+            loading={portfolioLoading}
+            cancellingId={cancellingId}
+            onCancelOrder={onCancelOpenOrder}
+            onRefresh={refreshPortfolio}
+          />
+        )}
       </Panel>
     )
   }
@@ -250,6 +302,12 @@ export const TradeTabWired: React.FC<TradeTabWiredProps> = ({
       onOpenSettings={onOpenSettings}
       onPickMatch={onPickMatch}
       onOpenExternal={() => onMatchOpenedExternally(match.market)}
+      positions={positions}
+      openOrders={openOrders}
+      portfolioLoading={portfolioLoading}
+      cancellingId={cancellingId}
+      onCancelOpenOrder={onCancelOpenOrder}
+      onRefreshPortfolio={refreshPortfolio}
     />
   )
 }
@@ -268,6 +326,12 @@ interface ReadyProps {
   onOpenSettings: () => void
   onPickMatch: () => void
   onOpenExternal: () => void
+  positions: Position[]
+  openOrders: OpenOrderSummary[]
+  portfolioLoading: boolean
+  cancellingId: string | null
+  onCancelOpenOrder: (orderId: string) => void
+  onRefreshPortfolio: () => void
 }
 
 const TradeReady: React.FC<ReadyProps> = ({
@@ -281,6 +345,12 @@ const TradeReady: React.FC<ReadyProps> = ({
   onOpenSettings,
   onPickMatch,
   onOpenExternal,
+  positions,
+  openOrders,
+  portfolioLoading,
+  cancellingId,
+  onCancelOpenOrder,
+  onRefreshPortfolio,
 }) => {
   const yesIdx = findOutcomeIndex(match.market.outcomes, 'Yes')
   const pct = Math.round((match.freshPrice ?? match.probability) * 100)
@@ -349,6 +419,15 @@ const TradeReady: React.FC<ReadyProps> = ({
             settings={settings}
             yesIdx={yesIdx}
             onDisconnect={onDisconnect}
+            onPortfolioChanged={onRefreshPortfolio}
+          />
+          <PositionsPanel
+            positions={positions}
+            openOrders={openOrders}
+            loading={portfolioLoading}
+            cancellingId={cancellingId}
+            onCancelOrder={onCancelOpenOrder}
+            onRefresh={onRefreshPortfolio}
           />
         </>
       ) : (
@@ -398,6 +477,7 @@ interface OrderFormProps {
   settings: SettingsT
   yesIdx: number
   onDisconnect: () => void
+  onPortfolioChanged?: () => void
 }
 
 const CAP_PCT = 0.02 // market (FOK) max slippage cap
@@ -409,6 +489,7 @@ const OrderFormWired: React.FC<OrderFormProps> = ({
   settings,
   yesIdx,
   onDisconnect,
+  onPortfolioChanged,
 }) => {
   const [orderType, setOrderType] = useState<'LIMIT' | 'MARKET'>('LIMIT')
   const [side, setSide] = useState<'BUY_YES' | 'BUY_NO'>('BUY_YES')
@@ -517,6 +598,7 @@ const OrderFormWired: React.FC<OrderFormProps> = ({
         msg: r.ok ? `Order placed${r.orderId ? ` · ${r.orderId.slice(0, 10)}…` : ''}` : `Failed: ${r.error}`,
         orderId: r.orderId,
       })
+      if (r.ok) onPortfolioChanged?.()
     } catch (err) {
       setResult({ ok: false, msg: `Error: ${String(err)}` })
     } finally {
@@ -530,6 +612,7 @@ const OrderFormWired: React.FC<OrderFormProps> = ({
     try {
       const r = await cancelOrderViaOffscreen(result.orderId)
       setCancelState(r.ok ? 'cancelled' : 'error')
+      if (r.ok) onPortfolioChanged?.()
     } catch {
       setCancelState('error')
     }

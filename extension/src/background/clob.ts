@@ -22,6 +22,7 @@ import {
   type UserMarketOrderV2,
 } from '@polymarket/clob-client-v2'
 import { BUILDER_CODE } from '../shared/constants'
+import type { OpenOrderSummary } from '../shared/types'
 import { WCSigner } from './wallet'
 
 const CLOB_HOST = 'https://clob.polymarket.com'
@@ -236,6 +237,21 @@ export async function cancelOrder(
   } catch (err) {
     return { success: false, error: String(err) }
   }
+}
+
+/** List the signer's resting orders, optionally filtered to one market. Mirrors packages/mcp-server/src/clobClient.ts. */
+export async function listOpenOrders(client: ClobClient, marketId?: string): Promise<OpenOrderSummary[]> {
+  const orders = await client.getOpenOrders(marketId ? { market: marketId } : undefined)
+  return orders.map((o) => ({
+    orderId: o.id,
+    marketId: o.market,
+    tokenId: o.asset_id,
+    side: o.side,
+    price: o.price,
+    originalSize: o.original_size,
+    sizeMatched: o.size_matched,
+    status: o.status,
+  }))
 }
 
 /**
