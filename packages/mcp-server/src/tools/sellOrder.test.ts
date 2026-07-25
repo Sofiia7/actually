@@ -73,6 +73,41 @@ describe('sellOrder', () => {
     expect(result.error).toBe('order_exceeds_max_usd:10')
   })
 
+  it('floors the guard estimate at marketPriceHint when the caller quotes a lowball price', async () => {
+    let reservedUsd: number | undefined
+    const result = await sellOrder(
+      {
+        privateKey: '0xabc',
+        signAndSubmit: async () => ({ success: true, orderId: 'x' }),
+        spendGuard: {
+          reserve: (usd) => {
+            reservedUsd = usd
+            return { ok: false, error: 'daily_limit_exceeded:500' }
+          },
+          release: () => {},
+        },
+      },
+      { ...baseInput, sizeShares: 10000, price: 0.01, marketPriceHint: 0.5 },
+    )
+    // Without the fix this would reserve 10000 * 0.01 = $100 while actually
+    // liquidating ~$5000 of position at the real market price.
+    expect(reservedUsd).toBeCloseTo(5000, 6)
+    expect(result.ok).toBe(false)
+  })
+
+  it('does not lower the guard estimate when marketPriceHint is below the caller price', async () => {
+    let reservedUsd: number | undefined
+    await sellOrder(
+      {
+        privateKey: '0xabc',
+        signAndSubmit: async () => ({ success: true, orderId: 'x' }),
+        spendGuard: { reserve: (usd) => { reservedUsd = usd; return { ok: true } }, release: () => {} },
+      },
+      { ...baseInput, sizeShares: 40, price: 0.3, marketPriceHint: 0.1 },
+    )
+    expect(reservedUsd).toBeCloseTo(12, 6) // 40 * 0.3, the caller's (higher) price
+  })
+
   it('releases the reserved spend when the submit fails', async () => {
     let releasedUsd: number | undefined
     await sellOrder(

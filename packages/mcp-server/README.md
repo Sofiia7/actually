@@ -140,20 +140,69 @@ silent regression in match quality more than it removes real risk today.
 **Why this is lower real-world risk than "critical" suggests for this
 specific product:** protobufjs's vulnerable code paths need attacker-supplied
 protobuf/JSON schema data reaching `.load()`/dynamic descriptor parsing at
-*runtime*. Here, protobufjs only ever parses one thing: the bundled
-`model_quantized.onnx` file, built into the extension/package at publish
-time from a fetch that now happens once, at build time, against a pinned
-model commit with SHA-256 verification (see `extension/scripts/fetch-model.mjs`).
-No request-time input — not the news text being embedded, not anything a
+*runtime*. Here, protobufjs only ever parses one thing: the `model_quantized.onnx`
+file. No request-time input — not the news text being embedded, not anything a
 website or calling agent controls — ever reaches protobufjs; only the
 inference tensors do, which is a different, unrelated code path. The
 practically-reachable attack here was always the model file's *supply
-chain* (an untrusted or swapped `.onnx` file), which the commit pin + hash
-check above closes directly — a more effective mitigation today than an
-unreviewed dependency migration. Tracked as a real fast-follow, not
-dismissed: migrate to `@huggingface/transformers` post-launch with a full
-matching-quality regression pass (`npm run eval:matching -w @actually/core`)
-before shipping it.
+chain* (an untrusted or swapped `.onnx` file). How that's closed differs
+between this package and the extension, and it's worth being precise about
+which applies here:
+- **The extension** bundles the model at *build time* — `npm run
+  models:fetch` (`extension/scripts/fetch-model.mjs`) fetches it once
+  against a pinned commit and verifies each file's SHA-256 before it's
+  baked into the shipped `.crx`. No runtime fetch happens at all.
+- **This package** (`src/embedder.ts`) fetches the model *lazily at
+  runtime*, on the first `check_news` call, via transformers.js's own
+  loader — pinned to the same immutable commit revision (`LOCAL_MODEL_REVISION`,
+  shared from `@actually/core` so both products can never drift onto
+  different models), but with no separate hash check on this package's
+  side. The commit pin is the integrity guarantee here: an immutable git
+  commit's file contents can't change after the fact, so pinning it (rather
+  than `main`, a mutable ref) is what prevents a future run silently
+  fetching different bytes — there's no extra hash-verification step
+  layered on top the way the extension's build-time fetch has one.
+
+**Migration attempted 2026-07-24, blocked on a real (not hypothetical) native-binding
+issue, not abandoned by choice:** swapped `packages/mcp-server/src/embedder.ts` to
+`@huggingface/transformers@4.2.0` (the official successor package — same
+maintainer/project, confirmed the `pipeline()`/`env` API is unchanged) and verified
+the mocked unit tests pass unmodified. But `@huggingface/transformers`'s package
+`exports` map resolves to `dist/transformers.node.mjs` for ANY Node.js runtime
+(`"node"` export condition, no override available — deep imports into
+`dist/transformers.web.js` are blocked by the package's strict `exports` map), and
+that Node build unconditionally attempts `require('onnxruntime-node')` — a ~220MB
+native addon — at module-import time, before `pipeline()`'s own `device: 'wasm'`
+option is even read. On this development machine that native binary threw
+`ERR_DLOPEN_FAILED` / "the operating system cannot run %1" (the classic Windows
+native-addon-ABI-mismatch error, likely a missing MSVC redistributable or a
+too-new Node version the prebuilt binary doesn't support) — an environment/system
+issue outside what a code change can route around, not a logic bug in this
+package. Reverted; `@xenova/transformers` stays in place for now.
+
+Tracked as a real fast-follow, not dismissed: retry the
+`@huggingface/transformers` migration once either (a) the native `onnxruntime-node`
+binding loads cleanly in the actual deployment/dev environment, or (b) the package
+ships a documented way to force its WASM-only path under Node (no env var or
+`--conditions` override was found to do this as of 4.2.0). Whichever environment
+attempts this next should run a full matching-quality regression pass
+(`npm run eval:matching -w @actually/core`) before shipping it — this was not
+yet possible to attempt end-to-end here.
+
+## `@modelcontextprotocol/sdk` — a moderate advisory with no better version to move to
+
+`npm audit` flags `@hono/node-server` (bundled by the SDK) for a path-traversal
+bug in its `serve-static` feature on Windows (GHSA-frvp-7c67-39w9). Every SDK
+release from 1.25.0 through the current latest (1.29.0, what this package
+pins) bundles a vulnerable hono version — upstream hasn't re-paired the SDK
+with a patched hono yet. npm's own suggested fix is to downgrade to `1.24.3`,
+the last release *before* the vulnerable hono dependency was introduced — that
+would trade newer SDK fixes/features for an advisory that doesn't apply to us
+anyway: this server only ever constructs `StdioServerTransport` (see
+`src/index.ts`), never the HTTP transport that would exercise
+`@hono/node-server`'s static-file serving at all. Staying on latest (1.29.0)
+and tracking upstream's next hono bump is the right call here, not a
+downgrade for a code path we never reach.
 
 ## Environment variables
 

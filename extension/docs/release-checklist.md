@@ -29,6 +29,12 @@ risk.
 - [ ] `npm run preflight` — automated gate: CSP has no `*.workers.dev`,
       host_permissions = clob only, no burned secret in dist, version present.
       See also `docs/cws-listing.md` for ready-to-paste store copy.
+- [ ] `npm run smoke` on this same production `dist/` — automated gate that
+      `preflight` does **not** cover: confirms the ~34MB embedding model and
+      ONNX WASM runtime actually got bundled (catches a build run without
+      `npm run models:fetch`), plus that the service worker/popup/offscreen
+      HTML and icons are present. Run this before the manual click-through
+      below, not instead of it — smoke checks file presence, not behavior.
 - [ ] Smoke-load `dist/` as an unpacked extension in a clean Chrome profile
       and walk through the **manual smoke** below.
 
@@ -49,22 +55,25 @@ store-installed user until someone notices and updates the allowlist.
 (e.g. `lljnfd...,newid...`), verified against a real install from the store —
 don't assume the reservation held without checking.
 
-## Rotate the Worker secret before shipping
+## Worker secret — NOT a release step
 
-The v2.0 secret (`770d0e45…2e1f6b`) was once committed to
-`scripts/probe.mjs`. Treat it as public forever.
+`WORKER_SHARED_SECRET` was rotated 2026-06-23 and does not need rotating
+again for this or future releases. It is public by design — baked into the
+extension bundle, extractable by anyone who unpacks the `.crx` — so it
+provides no confidentiality; it only filters out casual/accidental traffic.
+The actual abuse defense is the Worker's per-IP `RateLimiterDO` Durable
+Object rate limiting plus the OpenAI daily spend cap, not secrecy of this
+value. Only rotate it if you specifically need to cut off a previously
+shipped build from the Worker (e.g. a burned/compromised extension build) —
+that's a deliberate, standalone action, not something to do routinely before
+every ship:
 
 ```powershell
 cd extension/worker
 $NEW = -join ((1..32) | ForEach-Object { '{0:x2}' -f (Get-Random -Max 256) })
 $NEW | npx wrangler secret put WORKER_SHARED_SECRET
-# Save $NEW into 1Password / your secret store, then:
-# extension/.env.local → VITE_WORKER_SECRET=<NEW>
-# npm run build
+# extension/.env.local → VITE_WORKER_SECRET=<NEW>, then npm run build
 ```
-
-After the new secret is live, optionally add the old token to a blacklist in
-`worker/index.ts` for 30 days so a leaked-client-secret detector fires.
 
 ## Manual smoke (clean Chrome profile, after fresh build)
 
@@ -82,6 +91,9 @@ After the new secret is live, optionally add the old token to a blacklist in
 | Toggle Limit / Market | Limit shows an editable price field; Market shows the FOK cap (~2%) and a depth-based est. fill + slippage. |
 | Enter $1 size, Limit order, submit | Wallet prompts for typed-data sig. GTC order ID returned. Polymarket shows it under our builder profile. |
 | Enter $1 size, Market order, submit | FOK fill (or clean reject if depth is thin / slippage > 20%). |
+| Orderbook depth panel | Shows levels beyond best bid/ask (not just top-of-book) for the active side's token. |
+| After the Limit order above, reopen Trade tab | Open Positions/Orders panel shows the new resting order with market/outcome identity, not just a bare price/size row. |
+| Click **Cancel** on that resting order | Order disappears from the panel; a genuine CLOB rejection (e.g. already filled) surfaces as visible error text, not a silent no-op. |
 | Settings → Wallet → **Disconnect & wipe** | EOA / Safe / creds gone from storage. Trade tab returns to Connect panel. |
 | Disable telemetry in Settings | `chrome.storage.local.get('telemetryQueue')` stays unchanged on next match. |
 
@@ -94,17 +106,16 @@ After the new secret is live, optionally add the old token to a blacklist in
   - **Title:** Actually — What Markets Really Think
   - **Summary (132 chars):** Click any news story to see what prediction
         markets really think. Optional one-click trading via WalletConnect.
-  - **Detailed description:** lift from `README.md` top section.
+  - **Detailed description:** lift from `docs/cws-listing.md` (the canonical,
+        code-verified copy) — not `README.md`, which is written for
+        developers and drifts from the store-facing wording.
   - **Category:** Productivity (primary).
-  - **Privacy practices** form:
-    - "I collect website content" → No (only on click, only the active tab).
-    - "I use remote code" → **No.** Model weights (MiniLM-L12-v2) and the
-      onnxruntime-web WASM runtime are bundled at build time (`npm run
-      models:fetch`) — no `huggingface.co`/`cdn.jsdelivr.net` fetch at
-      runtime, no eval, no remote `.js`. Run `npm run models:fetch` before
-      every release build (see Pre-flight above) — the answer here is only
-      true if that step actually ran. See `SECURITY.md` → "Network egress"
-      and `docs/cws-listing.md`.
+  - **Privacy practices** form: use `docs/cws-listing.md`'s "Data-use /
+        privacy form answers" section VERBATIM — do not re-derive these here.
+        In short: **"Website content" → Yes** (opt-in OpenAI embedding path
+        only) and **"User activity" → Yes** (opt-in telemetry) — leaving
+        either at "No" is a real compliance risk, not a formality; see that
+        file for the full reasoning and the other categories (all "No").
     - Justify `activeTab` and `scripting`: "read the headline + first 500
       chars of the active tab on user click, to find a matching market".
     - Justify `host_permissions: clob.polymarket.com`: "send signed orders
@@ -112,12 +123,8 @@ After the new secret is live, optionally add the old token to a blacklist in
     - Justify `alarms`: "schedule market-cache refresh every 30 min".
     - Justify `offscreen`: "host transformers.js embedding pipeline and
       WalletConnect v2 SignClient (MV3 service workers cannot)".
-- [ ] **Screenshots** (1280×800 PNG, at least 3):
-  1. Popup over a real news article, idle Check tab.
-  2. Match result with sparkline + orderbook visible.
-  3. Order form with payout preview + slippage row.
-  4. (optional) History tab populated.
-  5. (optional) Settings → Wallet showing connected EOA + Disconnect & wipe.
+- [ ] **Screenshots** — use `docs/cws-listing.md`'s shot list verbatim (kept
+      in sync there, not duplicated here).
 - [ ] **Promotional images** (440×280, 920×680, 1400×560):
   - 440×280 is the small tile — text overlay must be readable at thumbnail.
   - 1400×560 is the marquee — use the matched-market screenshot, cropped.
@@ -156,8 +163,13 @@ real users see.
 
 ## Post-launch operations
 
-- Monitor Cloudflare KV `openai_day:*` and `rl:*` counters for abuse.
+- Monitor abuse via the `RATE_LIMITER_DO` Durable Object (rate limiting and
+  the OpenAI daily cap both live there now — the old `openai_day:*`/`rl:*` KV
+  counters this checklist used to reference were replaced by the DO and no
+  longer exist; use `wrangler tail` / the Workers dashboard for DO-backed
+  observability instead).
 - Watch builder dashboard for attributed volume.
-- Rotate `WORKER_SHARED_SECRET` quarterly even without incident.
+- Do **not** rotate `WORKER_SHARED_SECRET` on a schedule — see "Worker secret
+  — NOT a release step" above.
 - When `@polymarket/clob-client-v2` ships ethers v6 support, rebuild and
   re-run `npm audit` triage.

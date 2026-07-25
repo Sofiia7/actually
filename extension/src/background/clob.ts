@@ -225,15 +225,38 @@ export async function submitSignedOrder(
   }
 }
 
-/** Cancel a single resting order by id. Mirrors packages/mcp-server/src/clobClient.ts. */
+/**
+ * Cancel a single resting order by id. Mirrors packages/mcp-server/src/clobClient.ts.
+ *
+ * The SDK's `cancelOrder` never throws on its own for a non-2xx response (our
+ * `makeClient` doesn't set `throwOnError`) — a rejected/HTTP-failed cancel
+ * resolves to `{ error, status }` (from clob-client-v2's axios error
+ * handling), not an exception. And a *successful* cancel has no `success`
+ * field at all: the real CLOB response shape is `{ canceled: string[],
+ * not_canceled: Record<orderId, reason> }`. So this must inspect those
+ * fields directly rather than a `success` flag that never actually appears.
+ */
 export async function cancelOrder(
   client: ClobClient,
   orderId: string,
 ): Promise<{ success: boolean; error?: string }> {
   try {
-    const res = (await client.cancelOrder({ orderID: orderId })) as { success?: boolean; errorMsg?: string } | undefined
-    if (res && res.success === false) return { success: false, error: res.errorMsg ?? 'cancel_rejected' }
-    return { success: true }
+    const res = (await client.cancelOrder({ orderID: orderId })) as
+      | { canceled?: string[]; not_canceled?: Record<string, string>; error?: unknown; status?: number }
+      | undefined
+    if (!res) return { success: false, error: 'empty_response' }
+    if (res.error !== undefined) {
+      return { success: false, error: typeof res.error === 'string' ? res.error : JSON.stringify(res.error) }
+    }
+    if (res.not_canceled && Object.prototype.hasOwnProperty.call(res.not_canceled, orderId)) {
+      return { success: false, error: res.not_canceled[orderId] || 'cancel_rejected' }
+    }
+    if (Array.isArray(res.canceled) && res.canceled.includes(orderId)) {
+      return { success: true }
+    }
+    // Ambiguous response (neither confirmed canceled nor explicitly rejected)
+    // — fail closed rather than silently report success on an unrecognized shape.
+    return { success: false, error: 'cancel_unconfirmed' }
   } catch (err) {
     return { success: false, error: String(err) }
   }
@@ -251,6 +274,7 @@ export async function listOpenOrders(client: ClobClient, marketId?: string): Pro
     originalSize: o.original_size,
     sizeMatched: o.size_matched,
     status: o.status,
+    outcome: o.outcome,
   }))
 }
 

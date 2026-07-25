@@ -11,10 +11,15 @@ export interface PositionsPanelProps {
   cancellingId: string | null
   onCancelOrder: (orderId: string) => void
   onRefresh: () => void
+  /** Set when the last positions/open-orders fetch failed — shown instead of silently rendering an empty list. */
+  portfolioError?: string | null
+  /** Set when the last cancel attempt failed — cleared on the next successful cancel or refresh. */
+  cancelError?: string | null
 }
 
 const fmtUsd = (v: number) => `$${v.toFixed(2)}`
 const fmtPct = (v: number) => `${v >= 0 ? '+' : ''}${v.toFixed(1)}%`
+const shortenMarketId = (id: string) => (id.length > 10 ? `${id.slice(0, 10)}…` : id)
 
 /**
  * Read-only view of the connected wallet's current Polymarket positions and
@@ -29,6 +34,8 @@ export const PositionsPanel: React.FC<PositionsPanelProps> = ({
   cancellingId,
   onCancelOrder,
   onRefresh,
+  portfolioError,
+  cancelError,
 }) => {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 10 }}>
@@ -39,7 +46,19 @@ export const PositionsPanel: React.FC<PositionsPanelProps> = ({
         <LinkAction onClick={onRefresh}>{loading ? 'Refreshing…' : 'Refresh'}</LinkAction>
       </div>
 
-      {positions.length === 0 && openOrders.length === 0 && !loading && (
+      {portfolioError && (
+        <Etched size={11.5} weight={300} color="rgba(160,40,40,.9)">
+          Couldn't refresh: {portfolioError}. Showing the last known state.
+        </Etched>
+      )}
+
+      {cancelError && (
+        <Etched size={11.5} weight={300} color="rgba(160,40,40,.9)">
+          Cancel failed: {cancelError}
+        </Etched>
+      )}
+
+      {positions.length === 0 && openOrders.length === 0 && !loading && !portfolioError && (
         <Etched size={11.5} weight={300} color="rgba(35,45,70,.45)">
           No open positions or resting orders.
         </Etched>
@@ -72,7 +91,9 @@ export const PositionsPanel: React.FC<PositionsPanelProps> = ({
         <IceCard key={o.orderId} plain padding="8px 11px" borderRadius={8}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
             <Etched size={11} weight={300} color="rgba(35,45,70,.65)" style={{ flex: 1, minWidth: 0 }}>
-              {o.side} {o.sizeMatched}/{o.originalSize} @ {(parseFloat(o.price) * 100).toFixed(1)}¢ · {o.status}
+              {o.side} {o.outcome} · market {shortenMarketId(o.marketId)}
+              <br />
+              {o.sizeMatched}/{o.originalSize} @ {(parseFloat(o.price) * 100).toFixed(1)}¢ · {o.status}
             </Etched>
             <LinkAction onClick={() => onCancelOrder(o.orderId)}>
               {cancellingId === o.orderId ? 'Cancelling…' : 'Cancel'}

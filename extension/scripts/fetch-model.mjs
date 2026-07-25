@@ -34,7 +34,7 @@
  * once to see the FAILED hash lines it prints, review the diff is expected,
  * then paste the new hashes into EXPECTED_SHA256 below.
  */
-import { mkdir, writeFile, copyFile } from 'node:fs/promises'
+import { mkdir, writeFile, copyFile, readFile } from 'node:fs/promises'
 import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { createRequire } from 'node:module'
@@ -43,8 +43,24 @@ import { createHash } from 'node:crypto'
 const HERE = dirname(fileURLToPath(import.meta.url))
 const require = createRequire(import.meta.url)
 
+// Read the pinned revision out of @actually/core rather than hardcoding a
+// second copy here — this script can't `import` core's TS source directly
+// (it's a plain Node script, no TS loader), but a regex read of the one
+// line that matters keeps the two values from silently drifting apart the
+// way two independent literals eventually do.
+const CORE_CONSTANTS_PATH = resolve(HERE, '..', '..', 'packages', 'core', 'src', 'constants.ts')
+async function readModelRevision() {
+  const src = await readFile(CORE_CONSTANTS_PATH, 'utf8')
+  const m = src.match(/LOCAL_MODEL_REVISION\s*=\s*'([0-9a-fA-F]+)'/)
+  if (!m) {
+    console.error(`Could not find LOCAL_MODEL_REVISION in ${CORE_CONSTANTS_PATH}`)
+    process.exit(1)
+  }
+  return m[1]
+}
+
 const MODEL_ID = 'Xenova/all-MiniLM-L12-v2'
-const MODEL_REVISION = 'beeb2e4b69e95f188a15cc2e90d09fd035dac229'
+const MODEL_REVISION = await readModelRevision()
 const MODEL_OUT_DIR = resolve(HERE, '..', 'public', 'models', MODEL_ID)
 const ONNX_OUT_DIR = resolve(HERE, '..', 'public', 'onnx')
 const HF_BASE = `https://huggingface.co/${MODEL_ID}/resolve/${MODEL_REVISION}`

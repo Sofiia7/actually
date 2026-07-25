@@ -17,8 +17,15 @@ export interface SignAndSubmitResult {
 }
 
 export interface SpendGuardLike {
-  reserve(sizeUsd: number): { ok: true } | { ok: false; error: string }
-  release(sizeUsd: number): void
+  /**
+   * `reservedDay` (when present) identifies the UTC day this reservation was
+   * charged against — pass it back to `release()` so a reservation that
+   * straddles a UTC-midnight rollover doesn't refund into the wrong day's
+   * budget. Optional so simple test doubles that don't model day rollover
+   * can omit it.
+   */
+  reserve(sizeUsd: number): { ok: true; reservedDay?: string } | { ok: false; error: string }
+  release(sizeUsd: number, reservedDay?: string): void
 }
 
 export interface PlaceOrderDeps {
@@ -51,24 +58,26 @@ export async function placeOrder(deps: PlaceOrderDeps, input: PlaceOrderInput): 
     return { ok: false, error: 'not_configured' }
   }
 
+  let reservedDay: string | undefined
   if (deps.spendGuard) {
     const guard = deps.spendGuard.reserve(input.sizeUsd)
     if (!guard.ok) {
       return { ok: false, error: guard.error }
     }
+    reservedDay = guard.reservedDay
   }
 
   let result: SignAndSubmitResult
   try {
     result = await deps.signAndSubmit(input)
   } catch (err) {
-    deps.spendGuard?.release(input.sizeUsd)
+    deps.spendGuard?.release(input.sizeUsd, reservedDay)
     return { ok: false, error: String(err) }
   }
 
   if (!result.success) {
     // Rejected/failed order — give back the budget reserve() committed.
-    deps.spendGuard?.release(input.sizeUsd)
+    deps.spendGuard?.release(input.sizeUsd, reservedDay)
     return { ok: false, error: result.error ?? 'unknown_error' }
   }
 

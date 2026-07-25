@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { describe, it, expect, beforeEach, vi } from 'vitest'
-import { render, screen, waitFor } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 
 // Mock the offscreen RPC layer used by TradeTabWired AND trade/Analytics.
@@ -133,6 +133,26 @@ describe('TradeTabWired — order ticket', () => {
     })
   })
 
+  it('a rapid double-click on "Sign in wallet" only submits one order (re-entrancy guard)', async () => {
+    opsm.restoreWalletViaOffscreen.mockResolvedValue(wallet)
+    let resolvePlace: ((v: { ok: boolean; orderId: string }) => void) | undefined
+    opsm.placeOrderViaOffscreen.mockImplementation(
+      () => new Promise((resolve) => { resolvePlace = resolve }),
+    )
+    render(<TradeTabWired {...props} />)
+    await screen.findByText('Orderbook')
+    await waitFor(() => expect(screen.getByRole('button', { name: /Place limit order/i })).toBeEnabled())
+    await userEvent.click(screen.getByRole('button', { name: /Place limit order/i }))
+    const signButton = screen.getByRole('button', { name: /Sign in wallet/i })
+    // Two synchronous click events, no await between them — the worst-case
+    // race a real fast double-click/double-tap can produce, before React
+    // has any chance to re-render the button as disabled.
+    fireEvent.click(signButton)
+    fireEvent.click(signButton)
+    resolvePlace!({ ok: true, orderId: '0xabc123' })
+    await waitFor(() => expect(opsm.placeOrderViaOffscreen).toHaveBeenCalledTimes(1))
+  })
+
   it('requires a confirm step before signing (ТЗ §6.5)', async () => {
     opsm.restoreWalletViaOffscreen.mockResolvedValue(wallet)
     render(<TradeTabWired {...props} />)
@@ -148,6 +168,164 @@ describe('TradeTabWired — order ticket', () => {
     // Only after "Sign in wallet" does the order go through.
     await userEvent.click(screen.getByRole('button', { name: /Sign in wallet/i }))
     await waitFor(() => expect(opsm.placeOrderViaOffscreen).toHaveBeenCalledOnce())
+  })
+})
+
+describe('TradeTabWired — connect loop race', () => {
+  it('a stale connect loop (after Cancel + reconnect) does not clobber the newer attempt\'s state', async () => {
+    opsm.restoreWalletViaOffscreen.mockResolvedValue(null)
+    opsm.getPositionsViaOffscreen.mockResolvedValue({ ok: true, positions: [] })
+    opsm.getOpenOrdersViaOffscreen.mockResolvedValue({ ok: true, orders: [] })
+
+    const sessionIds = ['s1', 's2']
+    let startCalls = 0
+    opsm.startConnectViaOffscreen.mockImplementation(async () => sessionIds[startCalls++])
+
+    // Session s1 (the one the user cancels) stays pending until the test
+    // explicitly resolves it — modeling it still being in flight when the
+    // user cancels and starts a fresh connect attempt.
+    let resolveStaleS1Poll: ((v: { stage: string; error?: string }) => void) | undefined
+    const staleS1PollPromise = new Promise<{ stage: string; error?: string }>((resolve) => {
+      resolveStaleS1Poll = resolve
+    })
+    opsm.pollConnectViaOffscreen.mockImplementation(async (sessionId: string) => {
+      if (sessionId === 's1') return staleS1PollPromise
+      return { stage: 'done', wallet }
+    })
+
+    render(<TradeTabWired {...props} />)
+    await userEvent.click(await screen.findByText(/Connect wallet/i))
+    await screen.findByText(/preparing…/i) // s1's loop is now blocked awaiting the poll
+
+    await userEvent.click(screen.getByText('Cancel'))
+    await userEvent.click(await screen.findByText(/Connect wallet/i)) // starts s2 — a new generation
+
+    // s2 resolves immediately to 'done' — the wallet should connect.
+    await screen.findByText('Orderbook')
+
+    // NOW let the orphaned s1 loop finally resolve with an error. Without
+    // the generation guard this would overwrite the connected state with an
+    // error banner from a session the user already abandoned.
+    resolveStaleS1Poll!({ stage: 'error', error: 'stale_session_error' })
+    await new Promise((r) => setTimeout(r, 20))
+
+    expect(screen.queryByText(/stale_session_error/i)).toBeNull()
+    expect(screen.getByText('Orderbook')).toBeInTheDocument()
+  })
+})
+
+describe('TradeTabWired — portfolio refresh race', () => {
+  it('a slow cancel-triggered refresh does not clobber a faster concurrent manual Refresh', async () => {
+    opsm.restoreWalletViaOffscreen.mockResolvedValue(wallet)
+    const openOrder = {
+      orderId: 'o1',
+      marketId: 'm1',
+      tokenId: 'yesTok',
+      side: 'BUY' as const,
+      price: '0.5',
+      originalSize: '10',
+      sizeMatched: '0',
+      status: 'live',
+      outcome: 'Yes',
+    }
+    opsm.getPositionsViaOffscreen.mockResolvedValue({ ok: true, positions: [] })
+
+    // Call 1 (initial mount refresh): resolves immediately with the order present.
+    opsm.getOpenOrdersViaOffscreen.mockResolvedValueOnce({ ok: true, orders: [openOrder] })
+    // Call 2 (triggered by Cancel's `finally` block): stays pending until
+    // explicitly resolved — models eventual-consistency lag where the
+    // CLOB/data-api hasn't indexed the cancellation yet, so it still
+    // reports the order as open.
+    let resolveStaleRefresh: ((v: { ok: boolean; orders: unknown[] }) => void) | undefined
+    opsm.getOpenOrdersViaOffscreen.mockImplementationOnce(
+      () => new Promise((resolve) => { resolveStaleRefresh = resolve }),
+    )
+    // Call 3 (a manual "Refresh" click fired while call 2 is still
+    // in-flight): resolves immediately, correctly reflecting the order gone.
+    opsm.getOpenOrdersViaOffscreen.mockResolvedValueOnce({ ok: true, orders: [] })
+
+    opsm.cancelOrderViaOffscreen.mockResolvedValue({ ok: true })
+
+    render(<TradeTabWired {...props} />)
+    const cancelLink = await screen.findByText('Cancel')
+    await userEvent.click(cancelLink) // resolves fast, then kicks off call 2 (pending)
+
+    // Manual refresh while call 2 is still in flight — resolves faster (call 3).
+    const refreshLink = await screen.findByText(/^Refresh/i)
+    await userEvent.click(refreshLink)
+    await waitFor(() => expect(screen.getByText(/No open positions or resting orders/i)).toBeInTheDocument())
+
+    // NOW let the stale call 2 finally resolve with the outdated "still open" order.
+    resolveStaleRefresh!({ ok: true, orders: [openOrder] })
+    await new Promise((r) => setTimeout(r, 20))
+
+    // Without the generation guard, this stale response would overwrite the
+    // fresher "no orders" state and resurrect the just-cancelled order.
+    expect(screen.getByText(/No open positions or resting orders/i)).toBeInTheDocument()
+    expect(screen.queryByText('Cancel')).toBeNull()
+  })
+})
+
+describe('TradeTabWired — portfolio & cancel errors', () => {
+  it('shows a "couldn\'t refresh" error instead of silently rendering an empty portfolio', async () => {
+    opsm.restoreWalletViaOffscreen.mockResolvedValue(wallet)
+    opsm.getPositionsViaOffscreen.mockResolvedValue({ ok: false, error: 'rate_limited' })
+    render(<TradeTabWired {...props} />)
+    await screen.findByText('Orderbook')
+    expect(await screen.findByText(/Couldn't refresh: rate_limited/i)).toBeInTheDocument()
+    expect(screen.queryByText(/No open positions or resting orders/i)).toBeNull()
+  })
+
+  it('surfaces a rejected cancel instead of discarding the result', async () => {
+    opsm.restoreWalletViaOffscreen.mockResolvedValue(wallet)
+    // Explicit, since mockClear() in beforeEach doesn't reset a prior test's
+    // mockResolvedValue — this test needs a successful positions fetch so
+    // the portfolio error banner from the previous test doesn't leak in.
+    opsm.getPositionsViaOffscreen.mockResolvedValue({ ok: true, positions: [] })
+    opsm.getOpenOrdersViaOffscreen.mockResolvedValue({
+      ok: true,
+      orders: [
+        {
+          orderId: 'o1',
+          marketId: 'm1',
+          tokenId: 'yesTok',
+          side: 'BUY',
+          price: '0.5',
+          originalSize: '10',
+          sizeMatched: '0',
+          status: 'live',
+          outcome: 'Yes',
+        },
+      ],
+    })
+    opsm.cancelOrderViaOffscreen.mockResolvedValue({ ok: false, error: 'cancel_rejected' })
+    render(<TradeTabWired {...props} />)
+    await screen.findByText('Orderbook')
+    const cancelLink = await screen.findByText('Cancel')
+    await userEvent.click(cancelLink)
+    expect(await screen.findByText(/Cancel failed: cancel_rejected/i)).toBeInTheDocument()
+  })
+})
+
+describe('TradeTabWired — cancel double-click race', () => {
+  it('a rapid double-click on "Cancel" only issues one cancel request (re-entrancy guard)', async () => {
+    opsm.restoreWalletViaOffscreen.mockResolvedValue(wallet)
+    opsm.getPositionsViaOffscreen.mockResolvedValue({ ok: true, positions: [] })
+    opsm.getOpenOrdersViaOffscreen.mockResolvedValue({
+      ok: true,
+      orders: [
+        { orderId: 'o1', marketId: 'm1', tokenId: 'yesTok', side: 'BUY', price: '0.5', originalSize: '10', sizeMatched: '0', status: 'live', outcome: 'Yes' },
+      ],
+    })
+    let resolveCancel: ((v: { ok: boolean }) => void) | undefined
+    opsm.cancelOrderViaOffscreen.mockImplementation(() => new Promise((resolve) => { resolveCancel = resolve }))
+    render(<TradeTabWired {...props} />)
+    await screen.findByText('Orderbook')
+    const cancelLink = await screen.findByText('Cancel')
+    fireEvent.click(cancelLink)
+    fireEvent.click(cancelLink)
+    resolveCancel!({ ok: true })
+    await waitFor(() => expect(opsm.cancelOrderViaOffscreen).toHaveBeenCalledTimes(1))
   })
 })
 

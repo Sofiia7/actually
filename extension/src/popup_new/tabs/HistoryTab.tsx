@@ -22,8 +22,10 @@ export type HistoryState =
 
 export interface HistoryTabProps {
   state: HistoryState;
-  onSelect: (row: HistoryRow) => void;
-  onOpenArticle: (row: HistoryRow) => void;
+  /** `index` is this row's position in `state.items` — use it to address the
+   * backing item directly rather than re-matching by displayed text. */
+  onSelect: (row: HistoryRow, index: number) => void;
+  onOpenArticle: (row: HistoryRow, index: number) => void;
   onClear: () => void;
 }
 
@@ -164,7 +166,7 @@ export const HistoryTab: React.FC<HistoryTabProps> = ({
       </div>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
         {state.items.map((m, i) => (
-          <Row key={i} {...m} onClick={() => onSelect(m)} onOpenArticle={() => onOpenArticle(m)} />
+          <Row key={i} {...m} onClick={() => onSelect(m, i)} onOpenArticle={() => onOpenArticle(m, i)} />
         ))}
       </div>
       <div style={{ marginTop: 12 }}>

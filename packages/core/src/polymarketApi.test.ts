@@ -94,4 +94,13 @@ describe('fetchMarketById', () => {
     vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify([{ id: 'm42' }]), { status: 200 })))
     expect(await fetchMarketById('m42', 'https://worker.example', 'secret')).toBeNull()
   })
+
+  it('returns null on an id mismatch instead of silently falling back to the first result', async () => {
+    // This sits directly on the order-placement path — trading whatever
+    // Gamma happened to return first when no row actually matches would
+    // sign an order against the wrong market.
+    const otherMarket = { ...rawMarket, id: 'different-id' }
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify([otherMarket]), { status: 200 })))
+    expect(await fetchMarketById('m42', 'https://worker.example', 'secret')).toBeNull()
+  })
 })

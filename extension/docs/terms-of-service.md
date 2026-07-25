@@ -1,6 +1,6 @@
 # Actually — Terms of Service
 
-_Last updated: 2026-05-20_
+_Last updated: 2026-07-24_
 
 By installing or using the Actually browser extension ("the Extension"), you agree to the following terms. If you do not agree, do not use the Extension.
 

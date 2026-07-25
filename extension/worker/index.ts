@@ -87,6 +87,43 @@ async function openAiCharCap(env: Env, chars: number): Promise<boolean> {
 }
 
 /**
+ * Reads a request body up to `maxBytes`, enforcing the cap on the actual
+ * bytes received rather than trusting the `Content-Length` header — a
+ * chunked-transfer request (or one that simply omits the header) has no
+ * Content-Length at all, which `parseInt(... ?? '0')` reads as 0 and lets
+ * straight through the old header-only check, after which `req.json()` would
+ * buffer the entire body regardless of size. Returns `null` if the body
+ * exceeds the cap (caller should respond 413) or can't be read.
+ */
+async function readBodyWithLimit(req: Request, maxBytes: number): Promise<string | null> {
+  const reader = req.body?.getReader()
+  if (!reader) return null
+  const chunks: Uint8Array[] = []
+  let received = 0
+  try {
+    for (;;) {
+      const { done, value } = await reader.read()
+      if (done) break
+      received += value.byteLength
+      if (received > maxBytes) {
+        await reader.cancel()
+        return null
+      }
+      chunks.push(value)
+    }
+  } catch {
+    return null
+  }
+  const buf = new Uint8Array(received)
+  let offset = 0
+  for (const chunk of chunks) {
+    buf.set(chunk, offset)
+    offset += chunk.byteLength
+  }
+  return new TextDecoder().decode(buf)
+}
+
+/**
  * Input limits for the /embeddings route. The Worker secret is publicly
  * extractable (see SECURITY.md), so a caller could otherwise post arbitrarily
  * large batches and drain the operator's OpenAI bill. These bound a single
@@ -342,6 +379,22 @@ export default {
 
     if (req.method === 'OPTIONS') return new Response(null, { headers })
 
+    const ip = clientIp(req)
+
+    // Global per-IP cap, applied before auth and before any per-route limit
+    // below. Every per-route `rateLimit(...)` call only ever runs AFTER
+    // checkAuth succeeds, so without this a flood of wrong-secret requests —
+    // or repeated hits to /health, which needs no auth at all — had NO rate
+    // limit whatsoever: unbounded compute against the operator's Workers
+    // quota/bill, and more attempts per second to brute-force
+    // WORKER_SHARED_SECRET (negligible on its own given its 256-bit entropy,
+    // but there's no reason to leave this window open when it's cheap to
+    // close). Generous enough that no legitimate single-IP usage pattern
+    // (one extension instance across all its routes) gets near it.
+    if (!(await rateLimit(env, 'global', ip, 300))) {
+      return json({ error: 'rate_limited' }, 429, headers)
+    }
+
     // Health probe — no auth, no body
     if (url.pathname === '/health') {
       return json({ ok: true, ts: Date.now() }, 200, headers)
@@ -353,8 +406,6 @@ export default {
       const errorKey = status === 503 ? 'misconfigured' : 'unauthorized'
       return json({ error: errorKey, reason: auth.reason }, status, headers)
     }
-
-    const ip = clientIp(req)
 
     try {
       // --- Polymarket Gamma: market list ----------------------------
@@ -388,15 +439,16 @@ export default {
         const apiKey = env.OPENAI_API_KEY
         if (!apiKey) return json({ error: 'no_openai_key' }, 503, headers)
 
-        // Reject oversized bodies before parsing (cheap DoS guard).
-        const contentLength = parseInt(req.headers.get('Content-Length') ?? '0', 10)
-        if (Number.isFinite(contentLength) && contentLength > EMBED_LIMITS.maxBodyBytes) {
+        // Reject oversized bodies before parsing (cheap DoS guard) — enforced
+        // on actual bytes read, not the (spoofable/omittable) Content-Length
+        // header.
+        const embedBody = await readBodyWithLimit(req, EMBED_LIMITS.maxBodyBytes)
+        if (embedBody === null) {
           return json({ error: 'body_too_large' }, 413, headers)
         }
-
         let parsed: unknown
         try {
-          parsed = await req.json()
+          parsed = JSON.parse(embedBody)
         } catch {
           return json({ error: 'bad_json' }, 400, headers)
         }
@@ -408,6 +460,11 @@ export default {
           return json({ error: 'daily_cap_reached' }, 429, headers)
         }
 
+        // Pin the model server-side rather than honor a caller-supplied one:
+        // this is the only model any caller has ever actually requested, and
+        // letting an arbitrary caller (anyone holding the public-by-design
+        // shared secret) pick a pricier OpenAI model bills the operator's
+        // own key for whatever they chose.
         const res = await fetch('https://api.openai.com/v1/embeddings', {
           method: 'POST',
           headers: {
@@ -415,7 +472,7 @@ export default {
             'Content-Type': 'application/json',
           },
           body: JSON.stringify({
-            model: v.model ?? 'text-embedding-3-small',
+            model: 'text-embedding-3-small',
             input: v.texts,
           }),
         })
@@ -455,10 +512,26 @@ export default {
 
       // --- Geo check via CF headers / request.cf ---------------------
       if (url.pathname === '/geo' && req.method === 'GET') {
-        if (!(await rateLimit(env, 'geo', ip, 10))) {
+        // 60/min, up from 10/min — this is a cheap header read (no upstream
+        // fetch), and every Trade-tab mount/connect/submit triggers one
+        // (OS_GET_GEO force-resets the client's 5-min cache), so several
+        // active users behind one shared IP (office/CGNAT) — or a single
+        // user rapidly reopening the popup — could trip a 10/min cap on
+        // themselves and hit the prod fail-closed "couldn't verify region"
+        // block for no abuse reason at all.
+        if (!(await rateLimit(env, 'geo', ip, 60))) {
           return json({ error: 'rate_limited' }, 429, headers)
         }
-        const country = (req.headers.get('CF-IPCountry') ?? '').toUpperCase()
+        const rawCountry = (req.headers.get('CF-IPCountry') ?? '').toUpperCase()
+        // Cloudflare sends 'T1' for Tor exit traffic and 'XX' when it
+        // genuinely can't geolocate the request — neither is a confirmed
+        // country. The client (geo.ts) treats any non-empty `country` as a
+        // CONFIRMED verdict, so passing these through as-is would silently
+        // skip the fail-closed posture (GEO_FAIL_OPEN=false in prod) for
+        // exactly the traffic most likely to be evading it. Report an empty
+        // country instead so the client's existing "no country → unknown,
+        // fail closed in prod" handling engages.
+        const country = rawCountry === 'T1' || rawCountry === 'XX' ? '' : rawCountry
         // Cloudflare does NOT add a CF-Region-Code *header* to Worker
         // requests (only CF-IPCountry/CF-Connecting-IP/CF-Ray/CF-Visitor are
         // guaranteed headers). Region-level geolocation is only available via
@@ -511,13 +584,13 @@ export default {
         if (writeAuth !== env.MARKET_CACHE_WRITE_SECRET) {
           return json({ error: 'unauthorized' }, 401, headers)
         }
-        const contentLength = parseInt(req.headers.get('Content-Length') ?? '0', 10)
-        if (Number.isFinite(contentLength) && contentLength > MARKET_CACHE_LIMITS.maxBodyBytes) {
+        const cacheBody = await readBodyWithLimit(req, MARKET_CACHE_LIMITS.maxBodyBytes)
+        if (cacheBody === null) {
           return json({ error: 'body_too_large' }, 413, headers)
         }
         let parsed: unknown
         try {
-          parsed = await req.json()
+          parsed = JSON.parse(cacheBody)
         } catch {
           return json({ error: 'bad_json' }, 400, headers)
         }
@@ -578,6 +651,28 @@ export default {
         return json({ proxyWallet: addr.toLowerCase() }, 200, headers)
       }
 
+      // --- Positions lookup by Safe address --------------------------
+      // GET /clob/positions/<address> — proxies data-api.polymarket.com so
+      // the client's real IP + Safe address are never sent to Polymarket
+      // directly (see privacy-policy.md's "All API calls go through
+      // Cloudflare" claim — this route is what makes that claim true for
+      // the positions panel too, not just market/price/geo lookups).
+      if (url.pathname.startsWith('/clob/positions/') && req.method === 'GET') {
+        if (!(await rateLimit(env, 'positions', ip, 30))) {
+          return json({ error: 'rate_limited' }, 429, headers)
+        }
+        const addr = url.pathname.slice('/clob/positions/'.length).toLowerCase()
+        if (!/^0x[0-9a-f]{40}$/.test(addr)) {
+          return json({ error: 'bad_address' }, 400, headers)
+        }
+        const res = await fetch(`https://data-api.polymarket.com/positions?user=${addr}`)
+        if (!res.ok) {
+          return json({ error: 'positions_fetch_failed', status: res.status }, 502, headers)
+        }
+        const body = await res.text()
+        return new Response(body, { status: 200, headers: { ...headers, 'Content-Type': 'application/json' } })
+      }
+
       // --- Telemetry ingest (anonymous) -----------------------------
       if (url.pathname === '/telemetry' && req.method === 'POST') {
         if (!(await rateLimit(env, 'telem', ip, 30))) {
@@ -611,7 +706,12 @@ export default {
 
       return json({ error: 'not_found' }, 404, headers)
     } catch (err) {
-      return json({ error: 'worker_exception', detail: String(err) }, 500, headers)
+      // Log the real detail server-side (visible via `wrangler tail` / the
+      // Workers dashboard) but never echo it to the client — anyone holding
+      // the public-by-design shared secret could otherwise read internal
+      // error strings (upstream fetch failures, DO errors, stack traces).
+      console.error('[worker_exception]', err)
+      return json({ error: 'worker_exception' }, 500, headers)
     }
   },
 }

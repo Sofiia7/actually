@@ -6,8 +6,10 @@ import {
   fetchLivePrice,
   fetchMarketById,
   fetchOrderbookJson,
+  findOutcomeIndex,
   LOCAL_MODEL_ID,
   resolveOrderToken,
+  safeJsonArray,
 } from '@actually/core'
 import { DAILY_LIMIT_USD, MAX_ORDER_USD, PKG_VERSION, PRIVATE_KEY, REDEEM_ENABLED, SPEND_GUARD_STATE_PATH, requireWorkerConfig } from './config'
 import { WorkerMarketStore } from './marketStore'
@@ -174,9 +176,22 @@ if (PRIVATE_KEY) {
         return { content: [{ type: 'text' as const, text: JSON.stringify({ ok: false, error: 'market_not_found' }) }] }
       }
       const target = resolveOrderToken(market, input.side === 'SELL_YES' ? 'Yes' : 'No')
+      // Anchor the spend-guard's notional estimate to the market's own cached
+      // price for the side being sold, not just the caller-supplied price —
+      // see sellOrder.ts's `marketPriceHint` doc comment for why.
+      const outcomeIdx = findOutcomeIndex(market.outcomes, input.side === 'SELL_YES' ? 'Yes' : 'No')
+      const marketPriceHint = parseFloat(safeJsonArray(market.outcomePrices)[outcomeIdx] ?? '') || undefined
       const result = await sellOrder(
         { privateKey: PRIVATE_KEY, signAndSubmit: session.signAndSubmitSell, spendGuard },
-        { marketId: input.marketId, side: input.side, sizeShares: input.sizeShares, price: input.price, orderType: input.orderType, ...target },
+        {
+          marketId: input.marketId,
+          side: input.side,
+          sizeShares: input.sizeShares,
+          price: input.price,
+          orderType: input.orderType,
+          marketPriceHint,
+          ...target,
+        },
       )
       return { content: [{ type: 'text' as const, text: JSON.stringify(result) }] }
     },

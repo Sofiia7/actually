@@ -174,10 +174,13 @@ runtime — the offscreen document always has `self.WebSocket`. Documented in
 - In-page Shadow-DOM widget (spec §15, opt-in via explicit `chrome.permissions.request` if revived).
 
 This list is engineering-scope only (auth/geo/wallet hardening). The separate
-product-feature backlog (order status polling, sell-to-close, position list,
-multi-market per page, Safari port, in-page widget toggle) lives in
-`README.md`'s Roadmap section, deliberately un-numbered there to avoid the
-same version label meaning two different things in two documents again.
+product-feature backlog (sell-to-close, multi-market per page, Safari port,
+in-page widget toggle) lives in `README.md`'s Roadmap section, deliberately
+un-numbered there to avoid the same version label meaning two different
+things in two documents again. (Order status polling and a position list
+were on that backlog too, but both shipped — open positions with cost basis/
+P&L and resting orders with live status + in-app cancel are in the Trade tab
+now; see README.md's Status table.)
 
 ## Critical path
 

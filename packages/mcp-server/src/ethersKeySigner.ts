@@ -1,4 +1,5 @@
 import { Wallet } from 'ethers'
+import { assertValidPrivateKeyShape } from './validatePrivateKey'
 
 /**
  * Signer shape @polymarket/clob-client-v2 feature-detects on: `_signTypedData`
@@ -12,6 +13,9 @@ export class EthersKeySigner {
   private readonly wallet: Wallet
 
   constructor(privateKey: string) {
+    // Validate shape before ethers ever sees the value — see
+    // validatePrivateKey.ts for why this must happen here.
+    assertValidPrivateKeyShape(privateKey)
     this.wallet = new Wallet(privateKey)
   }
 

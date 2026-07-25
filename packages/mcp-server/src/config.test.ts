@@ -66,9 +66,21 @@ describe('spend limit env vars', () => {
     expect(DAILY_LIMIT_USD).toBe(1000)
   })
 
-  it('falls back to the default on a non-numeric or non-positive value', async () => {
+  it('throws naming the variable on a non-numeric value, instead of silently loosening to the default', async () => {
     process.env.ACTUALLY_MAX_ORDER_USD = 'not-a-number'
+    delete process.env.ACTUALLY_DAILY_LIMIT_USD
+    await expect(import('./config')).rejects.toThrow('ACTUALLY_MAX_ORDER_USD')
+  })
+
+  it('throws on a non-positive value (e.g. "0" or a negative number)', async () => {
+    delete process.env.ACTUALLY_MAX_ORDER_USD
     process.env.ACTUALLY_DAILY_LIMIT_USD = '-5'
+    await expect(import('./config')).rejects.toThrow('ACTUALLY_DAILY_LIMIT_USD')
+  })
+
+  it('does not throw when the env var is simply unset', async () => {
+    delete process.env.ACTUALLY_MAX_ORDER_USD
+    delete process.env.ACTUALLY_DAILY_LIMIT_USD
     const { MAX_ORDER_USD, DAILY_LIMIT_USD } = await import('./config')
     expect(MAX_ORDER_USD).toBe(100)
     expect(DAILY_LIMIT_USD).toBe(500)

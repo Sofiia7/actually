@@ -11,13 +11,24 @@
   },
   "_comments": {
     "devDependencies.jsdom": "Root has no tests of its own — this exists only so npm hoists jsdom to the same node_modules level as the shared vitest package. Without it, vitest's internal bare import('jsdom') can't resolve (extension's jsdom devDependency stays nested instead of hoisting), silently dropping the 2 jsdom-environment test files from extension's suite. Do not remove as 'unused'. See commit 95951c5.",
-    "optionalDependencies": "Workaround for npm's optional-deps lockfile bug (npm/cli#4828): a package-lock generated on Windows records ONLY win32 native binaries, so `npm ci` on the Linux CI runner can't load rollup/esbuild and every vitest/vite step fails (CI was red from 2026-07-05 to 2026-07-14 because of this). Listing the Linux x64 binaries as direct optional deps forces them into the lockfile on every platform; npm skips installing them locally on Windows. Versions must track rollup's and vite's bundled esbuild (0.21.x for vite 5) — `npm ls rollup esbuild` when bumping."
+    "devDependencies.ansi-styles": "Same class of hoisting problem as jsdom above, hit 2026-07-24 after a clean node_modules reinstall (needed to make the ws override below actually take effect): @testing-library/dom's nested pretty-format needs ansi-styles@^5.x, but the only copy npm placed anywhere in the tree was wrap-ansi's incompatible v4.x, so pretty-format's own `require('ansi-styles')` failed and every jsdom-environment popup component test (TradeTabWired.test.tsx, CheckTab.test.tsx) errored at collection time. Pinning a 5.x copy here forces npm to hoist one both can see.",
+    "optionalDependencies": "Workaround for npm's optional-deps lockfile bug (npm/cli#4828): a package-lock generated on Windows records ONLY win32 native binaries, so `npm ci` on the Linux CI runner can't load rollup/esbuild/rolldown and every vitest/vite step fails (CI was red from 2026-07-05 to 2026-07-14 because of this — the same class of bug could resurface for rolldown, added 2026-07-24 when vite 8 introduced it as vite's primary bundler, so it's listed defensively even though this lockfile already resolved it correctly on its own). Listing the Linux x64 binaries as direct optional deps forces them into the lockfile on every platform; npm skips installing them locally on Windows. Versions must track rollup's, vite's bundled esbuild, and rolldown's own pin (rollup 4.x/esbuild 0.28.x/rolldown 1.1.x for vite 8) — `npm ls rollup esbuild rolldown` when bumping.",
+    "overrides.ws": "2026-07-24 security pass: @ethersproject/providers@5.8.0 (pulled in by @polymarket/clob-client-v2) pins ws@8.18.0, vulnerable to GHSA-58qx-3vcg-4xpx / GHSA-96hv-2xvq-fx4p (both fixed in 8.21.0+). Scoped to ONLY that dependency's resolution — NOT a blanket override — because @walletconnect/jsonrpc-ws-connection independently pins ws@^7.5.x (a different major, never affected by these two CVEs) and forcing that one to 8.x too would be an untested, unrelated major bump for WalletConnect's own relay connection. Verified: extension build + full test suite green after this override."
   },
   "devDependencies": {
-    "jsdom": "^29.1.1"
+    "jsdom": "^29.1.1",
+    "ansi-styles": "^5.2.0"
   },
   "optionalDependencies": {
     "@rollup/rollup-linux-x64-gnu": "^4.62.2",
-    "@esbuild/linux-x64": "0.21.5"
+    "@esbuild/linux-x64": "0.28.1",
+    "@rolldown/binding-linux-x64-gnu": "1.1.5"
+  },
+  "overrides": {
+    "@polymarket/clob-client-v2": {
+      "@ethersproject/providers": {
+        "ws": "^8.21.1"
+      }
+    }
   }
 }

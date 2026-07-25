@@ -25,8 +25,9 @@ color-coded by confidence. No account, no wallet, no signup — discovery is
 completely free and private.
 
 If you trade, connect any WalletConnect-compatible wallet to unlock a Trade tab:
-7-day price trend, live orderbook, payout and slippage preview, and one-signature
-limit or market orders on Polymarket.
+7-day price trend, live orderbook depth, payout and slippage preview, and
+one-signature limit or market orders on Polymarket — plus see your open
+positions and cancel resting orders without leaving the page.
 
 • Free, private discovery — embeddings run locally on your device by default.
 • No content scripts — the page is read only when you click, only the active tab.
@@ -106,10 +107,12 @@ Host `docs/privacy-policy.md` (GitHub Pages or your domain) and paste the URL.
 ## Screenshot shot list (1280×800 PNG, ≥3)
 1. Popup over a real news article — idle Check tab ("Check this page").
 2. A match result card — question, YES %, volume, match %.
-3. Trade tab (wallet connected) — sparkline + orderbook + Limit/Market ticket
-   with payout + slippage rows.
-4. (optional) History tab populated.
-5. (optional) Settings → Wallet showing connected EOA + "Disconnect & wipe".
+3. Trade tab (wallet connected) — sparkline + orderbook depth + Limit/Market
+   ticket with payout + slippage rows.
+4. Open positions & resting orders panel — cost basis/P&L and an in-app
+   Cancel on a resting order.
+5. (optional) History tab populated.
+6. (optional) Settings → Wallet showing connected EOA + "Disconnect & wipe".
 
 ## Promotional images
 - 440×280 small tile — text overlay readable at thumbnail size.
