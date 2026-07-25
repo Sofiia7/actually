@@ -35,7 +35,15 @@ export async function checkTradingGeoGate(workerUrl: string, workerSecret: strin
       result = { blocked: true }
     } else {
       const data = (await res.json()) as { country?: string; blocked?: boolean }
-      result = data.country ? { blocked: Boolean(data.blocked), country: data.country.toUpperCase() } : { blocked: true }
+      // Require `blocked` to actually be a boolean rather than coercing a
+      // missing field with `Boolean(undefined)` (=== false) — a future
+      // worker refactor that renames/drops the field would otherwise
+      // silently disable the jurisdiction gate for every installed copy of
+      // this package with no error anywhere. Fail closed instead.
+      result =
+        data.country && typeof data.blocked === 'boolean'
+          ? { blocked: data.blocked, country: data.country.toUpperCase() }
+          : { blocked: true, country: data.country?.toUpperCase() }
     }
   } catch {
     result = { blocked: true }

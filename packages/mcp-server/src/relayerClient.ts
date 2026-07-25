@@ -17,6 +17,7 @@
 import { Wallet } from '@ethersproject/wallet'
 import { RelayClient, RelayerTxType } from '@polymarket/builder-relayer-client'
 import type { EncodedRedeemTx } from '@actually/core'
+import { assertValidPrivateKeyShape } from './validatePrivateKey'
 
 const RELAYER_URL = 'https://relayer-v2.polymarket.com/'
 const POLYGON_CHAIN_ID = 137
@@ -39,6 +40,9 @@ export function makeRelayerSubmit(privateKey: string): (tx: EncodedRedeemTx) => 
 
   function getClient(): RelayClient {
     if (!client) {
+      // Validate shape before ethers v5's Wallet ever sees the value — see
+      // validatePrivateKey.ts for why this must happen here.
+      assertValidPrivateKeyShape(privateKey)
       const wallet = new Wallet(privateKey)
       client = new RelayClient(RELAYER_URL, POLYGON_CHAIN_ID, wallet, undefined, RelayerTxType.SAFE)
     }

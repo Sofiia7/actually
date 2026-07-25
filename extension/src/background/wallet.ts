@@ -108,15 +108,29 @@ export async function startConnect(): Promise<ConnectStart> {
 }
 
 export async function disconnect(topic: string): Promise<void> {
-  const client = await getSignClient()
   try {
+    const client = await getSignClient()
     await client.disconnect({
       topic,
       reason: { code: 6000, message: 'user_disconnect' },
     })
   } catch {
-    // Session may already be gone — fine.
+    // Session may already be gone, or the WC client couldn't even
+    // initialize (relay unreachable, offline, corrupted WC storage) — either
+    // way this must not throw: the caller's local storage wipe is what
+    // actually matters for "did my creds get cleared", and must proceed
+    // regardless of whether the relay-side teardown succeeded.
   }
+}
+
+/**
+ * Drop the cached SignClient so the next `getSignClient()` call constructs a
+ * fresh one. Used after a wipe that deletes WalletConnect's own IndexedDB
+ * storage out from under an already-initialized client — without this, a
+ * subsequent connect would keep using a client bound to now-deleted storage.
+ */
+export function resetSignClient(): void {
+  clientPromise = null
 }
 
 /**

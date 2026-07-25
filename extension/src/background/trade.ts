@@ -34,6 +34,7 @@ import {
   type ActiveSession,
   WCSigner,
   disconnect as wcDisconnect,
+  resetSignClient,
   restoreSession,
   startConnect,
 } from './wallet'
@@ -162,8 +163,33 @@ export async function restoreWallet(): Promise<WalletState | null> {
   }
 }
 
+/**
+ * WalletConnect v2's own persistence — see wallet.ts's `resetSignClient` doc
+ * comment. Deleting it removes pairings, the keychain, and the JSON-RPC
+ * history (which includes every order's signed typed-data payload and the
+ * connected address) that `chrome.storage.local` never touched. Best-effort:
+ * a wipe the user explicitly asked for must not fail loudly over this.
+ */
+async function wipeWalletConnectStorage(): Promise<void> {
+  if (typeof indexedDB === 'undefined') return
+  try {
+    await new Promise<void>((resolve) => {
+      const req = indexedDB.deleteDatabase('WALLET_CONNECT_V2_INDEXED_DB')
+      req.onsuccess = () => resolve()
+      req.onerror = () => resolve()
+      req.onblocked = () => resolve()
+    })
+  } catch {
+    // Best-effort — see comment above.
+  }
+}
+
 export async function disconnectWallet(state: WalletState | null): Promise<void> {
-  if (state) await wcDisconnect(state.topic)
+  // Clear local storage FIRST and unconditionally. This is the part the
+  // user actually asked for ("wipe") — the WC-side teardown below is
+  // already best-effort (wcDisconnect never throws) and must never delay or
+  // gate this, so a relay outage or a corrupted WC session can't leave
+  // credentials behind.
   await saveSettings({
     wcSessionTopic: undefined,
     walletAddress: undefined,
@@ -172,6 +198,19 @@ export async function disconnectWallet(state: WalletState | null): Promise<void>
     clobApiSecret: undefined,
     clobApiPassphrase: undefined,
   })
+  // wcDisconnect (wallet.ts) already catches its own failures internally,
+  // but this call is wrapped again here too: the storage wipe above must
+  // never depend on that invariant holding across future changes to
+  // wallet.ts — belt and suspenders for a real-money credential wipe.
+  if (state) {
+    try {
+      await wcDisconnect(state.topic)
+    } catch {
+      // Best-effort — see comment above.
+    }
+  }
+  await wipeWalletConnectStorage()
+  resetSignClient()
 }
 
 export interface PlaceOrderArgs {

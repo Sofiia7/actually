@@ -16,12 +16,17 @@ interface RawPosition {
 }
 
 /**
- * Positions for the connected wallet's Safe address, read directly from
- * Polymarket's public, unauthenticated data-api — no worker hop, no CLOB
- * creds needed. Mirrors packages/mcp-server/src/positions.ts.
+ * Positions for the connected wallet's Safe address, read via our Worker's
+ * /clob/positions/<address> proxy rather than data-api.polymarket.com
+ * directly — a direct browser fetch would send the user's real IP and Safe
+ * address straight to Polymarket, bypassing the Cloudflare-mediation this
+ * extension's privacy policy promises for every other Polymarket call. No
+ * CLOB creds needed either way (this is a public lookup by address).
  */
-export async function fetchPositions(address: string): Promise<Position[]> {
-  const res = await fetch(`https://data-api.polymarket.com/positions?user=${address}`)
+export async function fetchPositions(address: string, workerUrl: string, workerSecret: string): Promise<Position[]> {
+  const res = await fetch(`${workerUrl}/clob/positions/${address}`, {
+    headers: { 'X-Actually-Auth': workerSecret },
+  })
   if (!res.ok) throw new Error(`positions_fetch_failed:${res.status}`)
   const raw = (await res.json()) as RawPosition[]
   return raw.map((p) => ({

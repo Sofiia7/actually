@@ -97,9 +97,18 @@ export async function getGeoStatus(
       cachedAt = Date.now()
       return cached
     }
+    const country = data.country.toUpperCase()
     cached = {
-      country: data.country.toUpperCase(),
-      blocked: Boolean(data.blocked),
+      country,
+      // OR the worker's verdict with our own bundled list rather than
+      // trusting the worker alone — otherwise BLOCKED_COUNTRIES above is
+      // documented as a defense-in-depth floor but doesn't actually enforce
+      // anything (its only consumer was its own test file). This makes it a
+      // real floor: even a worker bug or a stale/misconfigured deploy can't
+      // wave through a country this bundled list already knows is
+      // restricted. The worker stays the sole source of truth for anything
+      // NOT in this list (OFAC/EXTRA_BLOCKED_COUNTRIES additions, Ontario).
+      blocked: Boolean(data.blocked) || BLOCKED_COUNTRIES.has(country),
       unknown: false,
     }
     cachedAt = Date.now()

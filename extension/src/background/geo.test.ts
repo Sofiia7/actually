@@ -41,6 +41,17 @@ describe('getGeoStatus', () => {
     expect(r.errorReason).toBeUndefined()
   })
 
+  it('blocks anyway when the worker misreports a country on our own bundled list as not blocked', async () => {
+    // Defense-in-depth: BLOCKED_COUNTRIES is a client-side floor, not just
+    // documentation — a worker bug or stale deploy that wrongly clears
+    // `blocked` for a known-restricted country must not be trusted alone.
+    globalThis.fetch = vi.fn(async () =>
+      new Response(JSON.stringify({ country: 'US', blocked: false }), { status: 200 }),
+    ) as unknown as typeof fetch
+    const r = await getGeoStatus('https://w.example', 'sec')
+    expect(r.blocked).toBe(true)
+  })
+
   it('returns allowed when Worker says so (e.g. Serbia)', async () => {
     globalThis.fetch = vi.fn(async () =>
       new Response(JSON.stringify({ country: 'RS', blocked: false }), { status: 200 }),

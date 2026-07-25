@@ -17,7 +17,7 @@ Security triage: [`SECURITY.md`](SECURITY.md)
 **Verify it's real in 60 seconds** — no wallet, worker, or secret needed:
 
 ```bash
-cd extension && npm install && npm test   # 101 unit + component tests, all green
+cd extension && npm install && npm test   # 137 unit + component tests, all green
 ```
 
 What the extension actually does is walked through in [How matching works](#how-matching-works); full setup is below.
@@ -34,7 +34,7 @@ What the extension actually does is walked through in [How matching works](#how-
 | Diff-cache for market embeddings, lazy TTL refresh | ✅ |
 | Cosine-similarity matcher + noise filter + low-confidence fallback | ✅ |
 | History (local, 10 items, deduped) | ✅ |
-| Pseudonymous telemetry (opt-in, 17 honest events, bounded queue) | ✅ |
+| Pseudonymous telemetry (opt-in, 19 honest events, bounded queue) | ✅ |
 | English-only UI (i18n layer removed in v1) | ✅ |
 | Hotkey (Cmd/Ctrl+Shift+P) | ✅ |
 | Cloudflare Worker proxy — fail-closed auth + rate limits | ✅ |
@@ -42,9 +42,12 @@ What the extension actually does is walked through in [How matching works](#how-
 | **Polymarket CLOB v2** order placement with `builderCode` | ✅ |
 | **Geo-fence** for trading via Worker `/geo` | ✅ |
 | Trade analytics: sparkline / orderbook / resolution card | ✅ |
+| Open positions panel with cost basis + unrealized P&L | ✅ |
+| Resting-order list with in-app cancel (no polymarket.com round-trip) | ✅ |
+| Order-book depth beyond best bid/ask | ✅ |
 | Self-hosted Marck Script font (no remote fetch) | ✅ |
 | Privacy policy + ToS | ✅ |
-| Unit + component tests (vitest, 101 passing) | ✅ |
+| Unit + component tests (vitest, 137 passing) | ✅ |
 | Build-integrity smoke gate (`npm run smoke`) | ✅ |
 
 ---
@@ -81,9 +84,11 @@ Three design choices that aren't obvious from "just use embeddings":
 
 - **Local-first model.** `Xenova/all-MiniLM-L12-v2` (384-dim) runs as WASM inside
   an MV3 *offscreen document* — service workers can't run it directly, so
-  transformers.js globals are polyfilled and ONNX is forced single-thread. First
-  run downloads ~33 MB to extension cache; later matches are ~100 ms. An OpenAI
-  `text-embedding-3-small` path exists as an opt-in fallback via the Worker.
+  transformers.js globals are polyfilled and ONNX is forced single-thread. The
+  ~33 MB model weights + WASM runtime are bundled into the extension package at
+  build time (`npm run models:fetch`) — no first-run download, no HuggingFace/CDN
+  fetch at install or runtime; matches run in ~100 ms from the first use. An
+  OpenAI `text-embedding-3-small` path exists as an opt-in fallback via the Worker.
 - **Lexical overlap on top of cosine.** Pure cosine treats every "Iran"-mentioning
   market as equally close; a `+0.04`-per-shared-keyword-stem bonus (capped `0.15`)
   lets the *specific* noun win — e.g. "uranium" over a generic "Iran" market.
@@ -187,7 +192,7 @@ The builderCode is baked into the extension at build time and used by **every** 
 ```bash
 npm run dev              # Vite watch mode → outputs to dist/
 npm run worker:dev       # Wrangler local dev for the API (uses WORKER_DEV_MODE)
-npm test                 # Vitest unit + component tests (101 passing)
+npm test                 # Vitest unit + component tests (137 passing)
 npm run lint             # tsc --noEmit type check
 npm run fonts:fetch      # (re)download Marck Script woff2 → public/fonts/
 ```
@@ -325,10 +330,10 @@ Subsequent orders: skip steps 5-9 — the popup restores the WC session and CLOB
   HMAC-signed Worker auth + `/clob/order` proxy, full POLY_1271 support, full EIP-55 checksum:
   parked). That document is the source of truth for version labels — don't infer status from
   numbers in this section, since this list and ROADMAP.md's have drifted before.
-- **Post-v1 (product backlog, not yet started, not version-numbered)** — order status polling
-  (surfacing the fill/cancel/expire status `background/clob.ts` already polls for, but the UI
-  doesn't show yet), sell-to-close, position list, multi-market per page, Safari port, in-page
-  widget (toggle), bigger cache, advanced order types.
+- **Post-v1 (product backlog, not yet started, not version-numbered)** — sell-to-close (closing a
+  filled position from the extension UI; resting *orders* can already be cancelled, and positions/
+  order status are already visible — see the Status table above), multi-market per page, Safari
+  port, in-page widget (toggle), bigger cache, advanced order types.
 
 See [`actually-growth-strategy.md`](../actually-growth-strategy.md) for full KPI targets.
 
@@ -345,7 +350,7 @@ binary-market filter, the confirm-before-sign step, and the release gates
 Implementation was done with heavy AI assistance (Claude) acting as a pair-programmer
 under her review — turning each audit finding and design decision into code, tests,
 and docs. Every change was gated by her acceptance criteria and by the test suite
-(101 passing here; 299 across the whole monorepo, including the `@actually/core` and
+(137 passing here; 365 across the whole monorepo, including the `@actually/core` and
 `actually-mcp-server` workspaces) + CI before it landed.
 
 In short: the *what* and the *why* — product, design, decisions, audit — are Sofiia's;

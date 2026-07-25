@@ -129,10 +129,13 @@ The shipped CSP `connect-src` allows only:
   the exact host pinned via `VITE_WORKER_URL` — see `vite.config.ts`).
 - `clob.polymarket.com`, `gamma-api.polymarket.com`, `data-api.polymarket.com`
   for market data and order routing.
-- `api.openai.com` (only used by the centralized embedding fallback, and
-  only via the Worker — the extension itself never sees the OpenAI key).
 - WalletConnect v2 relay hosts (`*.walletconnect.com`, `*.walletconnect.org`,
   `*.reown.com`, plus the matching wss:// entries).
+
+`api.openai.com` is deliberately absent: the opt-in OpenAI embedding fallback
+is called only server-side, by the Worker (which holds the key) — the
+extension itself never sees the key and never contacts OpenAI directly, so
+it has no reason to be in the extension's own CSP.
 
 **v1.1 landed:** `huggingface.co`/`*.hf.co` (MiniLM-L12-v2 model weights) and
 `cdn.jsdelivr.net` (`onnxruntime-web`'s default WASM binaries) are no longer

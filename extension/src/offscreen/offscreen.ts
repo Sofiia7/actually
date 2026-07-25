@@ -235,7 +235,18 @@ async function handle(msg: OffscreenRequest): Promise<OffscreenResponse> {
     }
 
     case 'OS_DISCONNECT_WALLET': {
-      const w = await rehydrateWallet()
+      // Best-effort session lookup — if the WC client can't even initialize
+      // (relay unreachable, offline, corrupted WC storage), `w` stays null
+      // but disconnectWallet() below still runs and wipes local storage.
+      // Without this guard, a rehydrateWallet() throw would propagate out of
+      // this handler entirely and the wipe the user asked for would never
+      // happen — see disconnectWallet's doc comment in trade.ts.
+      let w: WalletState | null = null
+      try {
+        w = await rehydrateWallet()
+      } catch {
+        // fall through to the unconditional wipe below
+      }
       await disconnectWallet(w)
       return { type: 'OS_WALLET_RESTORED', wallet: null }
     }
@@ -311,8 +322,12 @@ async function handle(msg: OffscreenRequest): Promise<OffscreenResponse> {
     case 'OS_GET_POSITIONS': {
       const w = await rehydrateWallet()
       if (!w) return { type: 'OS_POSITIONS_RESULT', ok: false, error: 'no_wallet' }
+      const settings = await getSettings()
+      if (!settings.workerUrl || !settings.workerSecret) {
+        return { type: 'OS_POSITIONS_RESULT', ok: false, error: 'not_configured' }
+      }
       try {
-        const positions = await fetchPositions(w.safeAddress)
+        const positions = await fetchPositions(w.safeAddress, settings.workerUrl, settings.workerSecret)
         return { type: 'OS_POSITIONS_RESULT', ok: true, positions }
       } catch (err) {
         return { type: 'OS_POSITIONS_RESULT', ok: false, error: String(err) }

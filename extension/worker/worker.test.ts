@@ -237,18 +237,67 @@ describe('/geo', () => {
     })
     expect((await res.json() as { blocked: boolean }).blocked).toBe(false)
   })
+
+  it('reports Tor exit traffic (T1) as no confirmed country, not as an allowed one', async () => {
+    // Cloudflare sends CF-IPCountry: T1 for Tor. Passing it through as-is
+    // would read as a confirmed non-blocked country to the client and skip
+    // the fail-closed posture entirely.
+    const res = await call('/geo', baseEnv(), { country: 'T1' })
+    const body = (await res.json()) as { country: string; blocked: boolean }
+    expect(body.country).toBe('')
+    expect(body.blocked).toBe(false) // not "blocked" either — the client treats empty country as unknown/fail-closed
+  })
+
+  it('reports an ungeolocatable request (XX) as no confirmed country', async () => {
+    const res = await call('/geo', baseEnv(), { country: 'XX' })
+    const body = (await res.json()) as { country: string }
+    expect(body.country).toBe('')
+  })
+})
+
+describe('global per-IP rate limit (applies before auth)', () => {
+  it('429s a flood of WRONG-secret requests instead of leaving them unlimited', async () => {
+    // Regression: per-route rateLimit() calls only ever run AFTER checkAuth
+    // succeeds, so without a pre-auth global limit, failed-auth requests had
+    // no rate limit on them at all.
+    const env = baseEnv()
+    const statuses: number[] = []
+    for (let i = 0; i < 301; i++) {
+      const res = await call('/markets', env, { auth: 'wrong-secret' })
+      statuses.push(res.status)
+    }
+    expect(statuses.slice(0, 300).every((s) => s === 401)).toBe(true)
+    expect(statuses[300]).toBe(429)
+  })
+
+  it('429s a flood against /health, which needs no auth at all', async () => {
+    const env = baseEnv()
+    const statuses: number[] = []
+    for (let i = 0; i < 301; i++) {
+      const res = await call('/health', env)
+      statuses.push(res.status)
+    }
+    expect(statuses.slice(0, 300).every((s) => s === 200)).toBe(true)
+    expect(statuses[300]).toBe(429)
+  })
+
+  it('does not rate-limit normal single-digit usage', async () => {
+    const env = baseEnv()
+    const res = await call('/health', env)
+    expect(res.status).toBe(200)
+  })
 })
 
 describe('rate limiting', () => {
-  it('429s after the per-minute limit (/geo = 10/min)', async () => {
+  it('429s after the per-minute limit (/geo = 60/min)', async () => {
     const env = baseEnv()
     const statuses: number[] = []
-    for (let i = 0; i < 11; i++) {
+    for (let i = 0; i < 61; i++) {
       const res = await call('/geo', env, { country: 'RS' })
       statuses.push(res.status)
     }
-    expect(statuses.slice(0, 10).every((s) => s === 200)).toBe(true)
-    expect(statuses[10]).toBe(429)
+    expect(statuses.slice(0, 60).every((s) => s === 200)).toBe(true)
+    expect(statuses[60]).toBe(429)
   })
 
   it('atomicity: concurrent requests never exceed the limit (regression for the old KV race)', async () => {
@@ -261,8 +310,8 @@ describe('rate limiting', () => {
     // serialization (modeled by fakeRateLimiterDO's queue), exactly the
     // limit gets admitted no matter how many arrive at once.
     const env = baseEnv()
-    const limit = 10 // /geo = 10/min
-    const concurrency = 30
+    const limit = 60 // /geo = 60/min
+    const concurrency = 90
     const results = await Promise.all(
       Array.from({ length: concurrency }, () => call('/geo', env, { country: 'RS' })),
     )
@@ -274,13 +323,46 @@ describe('rate limiting', () => {
 })
 
 describe('/embeddings input limits', () => {
-  it('413 when Content-Length exceeds the body cap', async () => {
+  it('413 when the actual body exceeds the byte cap', async () => {
+    // 300KB of real body bytes, comfortably over EMBED_LIMITS.maxBodyBytes (256KB).
     const res = await call('/embeddings', baseEnv(), {
       method: 'POST',
-      headers: { 'Content-Length': String(300 * 1024) },
-      body: '{}',
+      body: JSON.stringify({ texts: ['x'.repeat(300 * 1024)] }),
     })
     expect(res.status).toBe(413)
+  })
+
+  it('413 on an oversized body streamed with NO Content-Length header at all (regression for the header-trust bug)', async () => {
+    // Simulates chunked transfer / any client that omits Content-Length —
+    // the old check trusted `parseInt(header ?? '0')`, which reads a missing
+    // header as 0 and lets an arbitrarily large streamed body straight
+    // through to req.json(). The fix must cap on bytes actually read.
+    const bigChunk = new TextEncoder().encode('x'.repeat(300 * 1024))
+    const stream = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(bigChunk)
+        controller.close()
+      },
+    })
+    const request = new Request('https://w.example/embeddings', {
+      method: 'POST',
+      headers: (() => {
+        const h = new Headers()
+        h.set('Origin', ORIGIN)
+        h.set('X-Actually-Auth', 'secret')
+        // Deliberately no Content-Length header.
+        return h
+      })(),
+      body: stream,
+      duplex: 'half',
+    } as RequestInit)
+    const res = await worker.fetch(request, baseEnv() as never)
+    expect(res.status).toBe(413)
+  })
+
+  it('does not reject a normal, small body with no Content-Length quirks', async () => {
+    const res = await call('/embeddings', baseEnv(), { method: 'POST', body: JSON.stringify({ texts: ['hello'] }) })
+    expect(res.status).not.toBe(413)
   })
 
   it('400 on a body with no texts array', async () => {
@@ -319,6 +401,43 @@ describe('upstream hosts', () => {
     vi.stubGlobal('fetch', spy)
     await call('/orderbook?token_id=0x1', baseEnv())
     expect(String(spy.mock.calls[0]?.[0] ?? '')).toContain('clob.polymarket.com/book')
+  })
+
+  it('/clob/positions/<address> proxies to the data-api positions endpoint', async () => {
+    const spy = vi.fn(async (..._a: unknown[]) => new Response('[]', { status: 200 }))
+    vi.stubGlobal('fetch', spy)
+    const res = await call('/clob/positions/0x1234567890123456789012345678901234567890', baseEnv())
+    expect(res.status).toBe(200)
+    expect(String(spy.mock.calls[0]?.[0] ?? '')).toBe(
+      'https://data-api.polymarket.com/positions?user=0x1234567890123456789012345678901234567890',
+    )
+  })
+
+  it('/clob/positions/<address> rejects a malformed address without calling upstream', async () => {
+    const spy = vi.fn(async (..._a: unknown[]) => new Response('[]', { status: 200 }))
+    vi.stubGlobal('fetch', spy)
+    const res = await call('/clob/positions/not-an-address', baseEnv())
+    expect(res.status).toBe(400)
+    expect(spy).not.toHaveBeenCalled()
+  })
+})
+
+describe('unhandled exceptions', () => {
+  it('logs the real error server-side but never echoes it to the client', async () => {
+    const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const throwingKV = {
+      get: async () => {
+        throw new Error('kv_boom: sensitive_internal_detail')
+      },
+      put: async () => {},
+    } as unknown as KVNamespace
+    const res = await call('/market-cache', baseEnv({ MARKET_CACHE: throwingKV }))
+    expect(res.status).toBe(500)
+    const body = (await res.json()) as Record<string, unknown>
+    expect(body).toEqual({ error: 'worker_exception' })
+    expect(JSON.stringify(body)).not.toContain('sensitive_internal_detail')
+    expect(consoleSpy).toHaveBeenCalled()
+    consoleSpy.mockRestore()
   })
 })
 

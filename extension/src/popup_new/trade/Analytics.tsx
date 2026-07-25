@@ -128,6 +128,15 @@ export const Orderbook: React.FC<{ tokenId: string }> = ({ tokenId }) => {
 
   return (
     <Block title="Orderbook">
+      {/* This always shows the YES token's book, regardless of which side
+          (YES/NO) is selected in the order form below — NO's book is the
+          mirror image (price ≈ 1 - YES price) and would otherwise silently
+          disagree with the form's own top-of-book for that side. Label it
+          explicitly rather than let the two panels show different numbers
+          with no explanation. */}
+      <Etched size={9.5} weight={300} color="rgba(35,45,70,.45)" style={{ display: 'block', marginBottom: 5, textTransform: 'uppercase', letterSpacing: '.04em' }}>
+        YES token
+      </Etched>
       <div style={{ display: 'flex', justifyContent: 'space-between', gap: 14, fontSize: 12 }}>
         <Cell label="Best bid" value={fmt(snap?.bestBid ?? null)} />
         <Cell label="Best ask" value={fmt(snap?.bestAsk ?? null)} />

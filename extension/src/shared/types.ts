@@ -74,6 +74,8 @@ export interface OpenOrderSummary {
   originalSize: string
   sizeMatched: string
   status: string
+  /** e.g. "Yes"/"No" — lets the UI show which outcome an order is on, not just its price/size. */
+  outcome: string
 }
 
 export interface Position {

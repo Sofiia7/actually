@@ -109,7 +109,12 @@ export async function fetchMarketById(
   if (!res.ok) return null
   const raw = (await res.json()) as RawGammaMarket[]
   if (!Array.isArray(raw) || raw.length === 0) return null
-  const match = raw.find((m) => String(m.id) === marketId) ?? raw[0]
+  // No `?? raw[0]` fallback: this sits directly on the order-placement path
+  // (mcp-server's resolveMarket → place_order/sell_order). Silently trading
+  // whatever Gamma happened to return first on an id mismatch would sign an
+  // order against a market the caller never asked for.
+  const match = raw.find((m) => String(m.id) === marketId)
+  if (!match) return null
   return parseGammaMarket(match)
 }
 

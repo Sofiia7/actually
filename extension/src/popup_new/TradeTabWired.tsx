@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react'
+import React, { useEffect, useRef, useState } from 'react'
 import QRCode from 'qrcode'
 import { IceCard } from './components/IceCard'
 import { Etched } from './components/Etched'
@@ -40,6 +40,9 @@ export interface TradeTabWiredProps {
   match: MatchResult | null
   /** Headline of the page the match was run against — shown as match context. */
   articleHeadline?: string | null
+  /** 'page' (default) — a real, scored match from Check. 'history' — the user picked this market
+   * directly from History, so there is no real confidence score to show. */
+  matchSource?: 'page' | 'history'
   settings: SettingsT
   onPickMatch: () => void
   onOpenSettings: () => void
@@ -61,6 +64,7 @@ type GeoInfo = {
 export const TradeTabWired: React.FC<TradeTabWiredProps> = ({
   match,
   articleHeadline,
+  matchSource = 'page',
   settings,
   onPickMatch,
   onOpenSettings,
@@ -76,7 +80,17 @@ export const TradeTabWired: React.FC<TradeTabWiredProps> = ({
   const [positions, setPositions] = useState<Position[]>([])
   const [openOrders, setOpenOrders] = useState<OpenOrderSummary[]>([])
   const [portfolioLoading, setPortfolioLoading] = useState(false)
+  const [portfolioError, setPortfolioError] = useState<string | null>(null)
   const [cancellingId, setCancellingId] = useState<string | null>(null)
+  const [cancelError, setCancelError] = useState<string | null>(null)
+
+  // Bumped on every new startConnect() call and on Cancel/unmount. A running
+  // connect loop checks this before every state update it makes — without
+  // it, Connect → Cancel → Connect again leaves the FIRST loop still
+  // polling in the background, and it can clobber the second attempt's live
+  // QR/wallet state with its own (stale) result once it eventually resolves.
+  const connectGenRef = useRef(0)
+  useEffect(() => () => { connectGenRef.current++ }, [])
 
   // Restore wallet + geo on mount — both are independent offscreen RPCs,
   // so fire them in parallel and unblock UI as soon as both resolve.
@@ -96,15 +110,33 @@ export const TradeTabWired: React.FC<TradeTabWiredProps> = ({
     return () => { cancelled = true }
   }, [settings.workerUrl, settings.workerSecret])
 
+  // Bumped on every refreshPortfolio() call. wallet-connect, a cancel's
+  // finally-block, the manual Refresh link, and a post-order refresh can all
+  // trigger overlapping calls with no inherent ordering — without this, a
+  // slower EARLIER call resolving after a faster LATER one would clobber the
+  // fresher state (e.g. resurrecting a just-cancelled order in the UI).
+  const portfolioGenRef = useRef(0)
+
   async function refreshPortfolio() {
     if (!wallet) return
+    const gen = ++portfolioGenRef.current
     setPortfolioLoading(true)
     try {
       const [pRes, oRes] = await Promise.all([getPositionsViaOffscreen(), getOpenOrdersViaOffscreen()])
-      setPositions(pRes.ok ? pRes.positions ?? [] : [])
-      setOpenOrders(oRes.ok ? oRes.orders ?? [] : [])
+      if (portfolioGenRef.current !== gen) return // superseded by a newer refresh — don't clobber its result
+      // A fetch failure (rate limit, transient CLOB/data-api error, offscreen
+      // hiccup) must not read as "you have no positions" — keep whatever we
+      // last knew and surface the error instead of silently clearing it.
+      const errors = [!pRes.ok ? pRes.error : null, !oRes.ok ? oRes.error : null].filter(Boolean) as string[]
+      if (errors.length > 0) {
+        setPortfolioError(errors.join('; '))
+      } else {
+        setPortfolioError(null)
+        setPositions(pRes.ok ? pRes.positions ?? [] : [])
+        setOpenOrders(oRes.ok ? oRes.orders ?? [] : [])
+      }
     } finally {
-      setPortfolioLoading(false)
+      if (portfolioGenRef.current === gen) setPortfolioLoading(false)
     }
   }
 
@@ -112,6 +144,8 @@ export const TradeTabWired: React.FC<TradeTabWiredProps> = ({
     if (!wallet) {
       setPositions([])
       setOpenOrders([])
+      setPortfolioError(null)
+      setCancelError(null)
       return
     }
     void refreshPortfolio()
@@ -119,9 +153,16 @@ export const TradeTabWired: React.FC<TradeTabWiredProps> = ({
   }, [wallet?.address])
 
   async function onCancelOpenOrder(orderId: string) {
+    // `LinkAction` renders a plain <a> (no native `disabled`, unlike a
+    // <button>), so nothing else stops a rapid double-click from firing this
+    // twice before the "Cancelling…" label re-renders. Guard synchronously.
+    if (cancellingId) return
     setCancellingId(orderId)
     try {
-      await cancelOrderViaOffscreen(orderId)
+      const r = await cancelOrderViaOffscreen(orderId)
+      setCancelError(r.ok ? null : r.error ?? 'unknown_error')
+    } catch (err) {
+      setCancelError(String(err))
     } finally {
       setCancellingId(null)
       void refreshPortfolio()
@@ -141,6 +182,8 @@ export const TradeTabWired: React.FC<TradeTabWiredProps> = ({
   }, [connect])
 
   async function startConnect() {
+    const gen = ++connectGenRef.current
+    const stale = () => connectGenRef.current !== gen
     setConnect({ kind: 'connecting', uri: null, qrDataUrl: null })
     try {
       const sessionId = await startConnectViaOffscreen()
@@ -151,7 +194,9 @@ export const TradeTabWired: React.FC<TradeTabWiredProps> = ({
       const deadline = Date.now() + 5 * 60 * 1000
       let lastUri: string | undefined
       while (Date.now() < deadline) {
+        if (stale()) return // superseded by a Cancel or a newer connect attempt
         const s = await pollConnectViaOffscreen(sessionId)
+        if (stale()) return
         if (s.uri && s.uri !== lastUri) {
           lastUri = s.uri
           setConnect({ kind: 'connecting', uri: s.uri, qrDataUrl: null })
@@ -167,10 +212,19 @@ export const TradeTabWired: React.FC<TradeTabWiredProps> = ({
         }
         await new Promise((r) => setTimeout(r, 500))
       }
-      setConnect({ kind: 'connecting', uri: lastUri ?? null, qrDataUrl: null, error: 'Connect timed out.' })
+      if (!stale()) {
+        setConnect({ kind: 'connecting', uri: lastUri ?? null, qrDataUrl: null, error: 'Connect timed out.' })
+      }
     } catch (err) {
-      setConnect({ kind: 'connecting', uri: null, qrDataUrl: null, error: humanError(String(err)) })
+      if (!stale()) {
+        setConnect({ kind: 'connecting', uri: null, qrDataUrl: null, error: humanError(String(err)) })
+      }
     }
+  }
+
+  function cancelConnect() {
+    connectGenRef.current++ // orphan any in-flight startConnect() loop
+    setConnect({ kind: 'idle' })
   }
 
   async function doDisconnect() {
@@ -241,6 +295,8 @@ export const TradeTabWired: React.FC<TradeTabWiredProps> = ({
             cancellingId={cancellingId}
             onCancelOrder={onCancelOpenOrder}
             onRefresh={refreshPortfolio}
+            portfolioError={portfolioError}
+            cancelError={cancelError}
           />
         )}
       </Panel>
@@ -284,7 +340,7 @@ export const TradeTabWired: React.FC<TradeTabWiredProps> = ({
         )}
         {connect.error && <ErrorBanner>{connect.error}</ErrorBanner>}
         <div style={{ display: 'flex', justifyContent: 'center', marginTop: 8 }}>
-          <GlassButton size="sm" onClick={() => setConnect({ kind: 'idle' })}>Cancel</GlassButton>
+          <GlassButton size="sm" onClick={cancelConnect}>Cancel</GlassButton>
         </div>
       </Panel>
     )
@@ -294,6 +350,7 @@ export const TradeTabWired: React.FC<TradeTabWiredProps> = ({
     <TradeReady
       match={match}
       articleHeadline={articleHeadline}
+      matchSource={matchSource}
       wallet={wallet}
       settings={settings}
       geoUnknown={geo?.unknown ?? false}
@@ -305,7 +362,9 @@ export const TradeTabWired: React.FC<TradeTabWiredProps> = ({
       positions={positions}
       openOrders={openOrders}
       portfolioLoading={portfolioLoading}
+      portfolioError={portfolioError}
       cancellingId={cancellingId}
+      cancelError={cancelError}
       onCancelOpenOrder={onCancelOpenOrder}
       onRefreshPortfolio={refreshPortfolio}
     />
@@ -318,6 +377,7 @@ export const TradeTabWired: React.FC<TradeTabWiredProps> = ({
 interface ReadyProps {
   match: MatchResult
   articleHeadline?: string | null
+  matchSource: 'page' | 'history'
   wallet: WalletState | null
   settings: SettingsT
   geoUnknown: boolean
@@ -329,7 +389,9 @@ interface ReadyProps {
   positions: Position[]
   openOrders: OpenOrderSummary[]
   portfolioLoading: boolean
+  portfolioError: string | null
   cancellingId: string | null
+  cancelError: string | null
   onCancelOpenOrder: (orderId: string) => void
   onRefreshPortfolio: () => void
 }
@@ -337,6 +399,7 @@ interface ReadyProps {
 const TradeReady: React.FC<ReadyProps> = ({
   match,
   articleHeadline,
+  matchSource,
   wallet,
   settings,
   geoUnknown,
@@ -348,7 +411,9 @@ const TradeReady: React.FC<ReadyProps> = ({
   positions,
   openOrders,
   portfolioLoading,
+  portfolioError,
   cancellingId,
+  cancelError,
   onCancelOpenOrder,
   onRefreshPortfolio,
 }) => {
@@ -404,6 +469,7 @@ const TradeReady: React.FC<ReadyProps> = ({
 
       <MatchContext
         headline={articleHeadline}
+        source={matchSource}
         confidence={match.confidence}
         lowConfidence={match.lowConfidence}
         hasAlternatives={match.alternatives.length > 0}
@@ -428,6 +494,8 @@ const TradeReady: React.FC<ReadyProps> = ({
             cancellingId={cancellingId}
             onCancelOrder={onCancelOpenOrder}
             onRefresh={onRefreshPortfolio}
+            portfolioError={portfolioError}
+            cancelError={cancelError}
           />
         </>
       ) : (
@@ -576,6 +644,14 @@ const OrderFormWired: React.FC<OrderFormProps> = ({
     (slippage != null && slippage > HARD_SLIPPAGE)
 
   async function onSubmit() {
+    // Synchronous re-entrancy guard, checked before any state update: the
+    // button's own `disabled={submitDisabled}` (which includes `submitting`)
+    // is the primary guard, but that relies on React re-rendering the DOM
+    // before a second click can land — not guaranteed for a very fast
+    // double-click/double-tap. This closes that gap outright: a real-money
+    // order button must never be double-submittable regardless of render
+    // timing.
+    if (submitting) return
     const price = orderType === 'MARKET' ? capPrice : limitPrice
     if (!tokenId || price == null || !Number.isFinite(price)) return
     setSubmitting(true)
@@ -687,8 +763,8 @@ const OrderFormWired: React.FC<OrderFormProps> = ({
           value={fmtC(orderType === 'MARKET' ? effPrice : Number.isFinite(limitPrice) ? limitPrice : null)}
         />
         <Row label="Shares" value={effShares > 0 ? effShares.toFixed(2) : '—'} />
-        <Row label="Max payout" value={`$${payout.toFixed(2)}`} />
-        <Row label="Return %" value={`+${(ret * 100).toFixed(0)}%`} />
+        <Row label="Max payout" value={effShares > 0 ? `$${payout.toFixed(2)}` : '—'} />
+        <Row label="Return %" value={effShares > 0 ? `+${(ret * 100).toFixed(0)}%` : '—'} />
         {slippage != null && slippage > 0 && (
           <Row label="Slippage" value={`${(slippage * 100).toFixed(1)}%`} danger={slippage > WARN_SLIPPAGE} />
         )}
@@ -741,7 +817,7 @@ const OrderFormWired: React.FC<OrderFormProps> = ({
           <Row label={orderType === 'MARKET' ? 'Est. fill' : 'Limit price'} value={fmtC(effPrice)} />
           <Row label="Amount" value={`$${sizeUsd.toFixed(2)}`} />
           <Row label="Shares" value={effShares > 0 ? effShares.toFixed(2) : '—'} />
-          <Row label="Max payout" value={`$${payout.toFixed(2)}`} />
+          <Row label="Max payout" value={effShares > 0 ? `$${payout.toFixed(2)}` : '—'} />
           {slippage != null && slippage > 0 && (
             <Row label="Slippage" value={`${(slippage * 100).toFixed(1)}%`} danger={slippage > WARN_SLIPPAGE} />
           )}
@@ -800,13 +876,20 @@ const Row: React.FC<{ label: string; value: string; danger?: boolean }> = ({ lab
 // Match context (ТЗ §6.1) — article headline + match confidence, shown above
 // the market card so the user can sanity-check the match (and jump back to
 // Check to pick a different one). Always visible, wallet or not.
+//
+// `source` distinguishes a real scored match (from Check, on a live page)
+// from a market picked directly from History: the latter was never run
+// through the matcher, so there is no real confidence to report — printing
+// a fabricated "100% confidence" for a manual pick would misrepresent it as
+// a strong match rather than a deliberate user choice.
 const MatchContext: React.FC<{
   headline?: string | null
+  source: 'page' | 'history'
   confidence: number
   lowConfidence: boolean
   hasAlternatives: boolean
   onPickMatch: () => void
-}> = ({ headline, confidence, lowConfidence, hasAlternatives, onPickMatch }) => {
+}> = ({ headline, source, confidence, lowConfidence, hasAlternatives, onPickMatch }) => {
   const pct = Math.round(confidence * 100)
   return (
     <div
@@ -828,7 +911,7 @@ const MatchContext: React.FC<{
             color="rgba(35,45,70,.5)"
             style={{ textTransform: 'uppercase', letterSpacing: '.05em' }}
           >
-            From this page
+            {source === 'history' ? 'From your history' : 'From this page'}
           </Etched>
           <Etched size={12.5} weight={400} style={{ lineHeight: 1.3 }}>
             {headline.length > 120 ? `${headline.slice(0, 117)}…` : headline}
@@ -839,9 +922,11 @@ const MatchContext: React.FC<{
           Matched market
         </Etched>
       )}
-      <Etched size={11} weight={300} color="rgba(35,45,70,.55)">
-        Matched at {pct}% confidence{lowConfidence ? ' · low — double-check it fits' : ''}.
-      </Etched>
+      {source === 'page' && (
+        <Etched size={11} weight={300} color="rgba(35,45,70,.55)">
+          Matched at {pct}% confidence{lowConfidence ? ' · low — double-check it fits' : ''}.
+        </Etched>
+      )}
       {hasAlternatives && (
         <div style={{ marginTop: 2 }}>
           <LinkAction onClick={onPickMatch}>Not this market? Choose on Check →</LinkAction>

@@ -50,6 +50,16 @@ describe('checkTradingGeoGate', () => {
     expect(r.blocked).toBe(true)
   })
 
+  it('fails closed when the response has a country but no `blocked` field at all', async () => {
+    // Regression: `Boolean(undefined) === false` would otherwise read a
+    // missing field as "not blocked" — this must fail closed instead.
+    globalThis.fetch = vi.fn(async () =>
+      new Response(JSON.stringify({ country: 'DE' }), { status: 200 }),
+    ) as unknown as typeof fetch
+    const r = await checkTradingGeoGate('https://w.example', 'sec')
+    expect(r.blocked).toBe(true)
+  })
+
   it('caches the verdict within the TTL instead of re-fetching every call', async () => {
     const fetchMock = vi.fn(async () =>
       new Response(JSON.stringify({ country: 'DE', blocked: false }), { status: 200 }),

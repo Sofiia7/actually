@@ -11,6 +11,16 @@ export interface SellOrderInput {
   orderType: 'LIMIT' | 'MARKET'
   negRisk: boolean
   tickSize?: string
+  /**
+   * The resolved market's own (cached or live) price for this outcome, when
+   * the caller has it. Used ONLY to floor the spend-guard's notional
+   * estimate — never passed through to signing/submission, which still
+   * honors the caller's `price` as the actual limit/floor. Without this, a
+   * caller (or a prompt-injected agent) could quote an arbitrarily low
+   * `price` to make a large sell look tiny to the guard while it actually
+   * liquidates shares worth far more at the real market price.
+   */
+  marketPriceHint?: number
 }
 
 export interface SignAndSubmitSellResult {
@@ -39,26 +49,35 @@ export async function sellOrder(deps: SellOrderDeps, input: SellOrderInput): Pro
 
   // Sells have no `sizeUsd` field (shares, not USD, is the natural close-a-
   // position unit) — estimate notional the same way the order form does, so
-  // the same USD-denominated budget covers both buys and sells.
-  const estimatedUsd = input.sizeShares * input.price
+  // the same USD-denominated budget covers both buys and sells. Floor the
+  // per-share price at the market's own price (when known) rather than
+  // trusting the caller's `price` alone: for LIMIT that's a real resting
+  // price the caller could still lowball, and for MARKET it's an explicit
+  // worst-acceptable FLOOR the caller chooses — either way a caller-supplied
+  // near-zero price must not make a large real-money sell look small to the
+  // guard.
+  const guardPrice = Math.max(input.price, input.marketPriceHint ?? 0)
+  const estimatedUsd = input.sizeShares * guardPrice
 
+  let reservedDay: string | undefined
   if (deps.spendGuard) {
     const guard = deps.spendGuard.reserve(estimatedUsd)
     if (!guard.ok) {
       return { ok: false, error: guard.error }
     }
+    reservedDay = guard.reservedDay
   }
 
   let result: SignAndSubmitSellResult
   try {
     result = await deps.signAndSubmit(input)
   } catch (err) {
-    deps.spendGuard?.release(estimatedUsd)
+    deps.spendGuard?.release(estimatedUsd, reservedDay)
     return { ok: false, error: String(err) }
   }
 
   if (!result.success) {
-    deps.spendGuard?.release(estimatedUsd)
+    deps.spendGuard?.release(estimatedUsd, reservedDay)
     return { ok: false, error: result.error ?? 'unknown_error' }
   }
 

@@ -6,7 +6,9 @@
   "bin": {
     "actually-mcp-server": "dist/index.js"
   },
-  "files": ["dist"],
+  "files": [
+    "dist"
+  ],
   "scripts": {
     "dev": "tsx src/index.ts",
     "build": "tsup",
@@ -29,6 +31,6 @@
     "tsup": "^8.5.1",
     "tsx": "^4.22.4",
     "typescript": "^5.4.5",
-    "vitest": "^1.6.0"
+    "vitest": "^4.1.10"
   }
 }

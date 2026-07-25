@@ -74,8 +74,8 @@ export const REDEEM_ENABLED: boolean = process.env.ACTUALLY_ENABLE_REDEEM === 't
  * call or over one day. Defaults are deliberately conservative; an operator
  * running unattended must opt into a higher ceiling explicitly.
  */
-export const MAX_ORDER_USD: number = parseEnvUsd(process.env.ACTUALLY_MAX_ORDER_USD, 100)
-export const DAILY_LIMIT_USD: number = parseEnvUsd(process.env.ACTUALLY_DAILY_LIMIT_USD, 500)
+export const MAX_ORDER_USD: number = parseEnvUsd('ACTUALLY_MAX_ORDER_USD', process.env.ACTUALLY_MAX_ORDER_USD, 100)
+export const DAILY_LIMIT_USD: number = parseEnvUsd('ACTUALLY_DAILY_LIMIT_USD', process.env.ACTUALLY_DAILY_LIMIT_USD, 500)
 
 /**
  * Where SpendGuard persists the day + spent-so-far so the daily cap survives
@@ -86,10 +86,25 @@ export const DAILY_LIMIT_USD: number = parseEnvUsd(process.env.ACTUALLY_DAILY_LI
 export const SPEND_GUARD_STATE_PATH: string =
   process.env.ACTUALLY_SPEND_STATE_PATH || join(homedir(), '.actually-mcp-server', 'spend-guard.json')
 
-function parseEnvUsd(raw: string | undefined, fallback: number): number {
+/**
+ * An unset env var uses `fallback` — that's the normal, safe path. But once
+ * an operator has explicitly SET one of these real-money limits, a typo or
+ * malformed value (`"5O"`, `"50 USD"`, `"0"`, `"-5"`) must not silently
+ * relax it back to the (looser) built-in default — that's the dangerous
+ * direction for a control whose entire purpose is capping worst-case loss.
+ * Fail loudly at startup instead, naming the bad variable, the same way
+ * `requireWorkerConfig` already does for the Worker URL/secret.
+ */
+function parseEnvUsd(varName: string, raw: string | undefined, fallback: number): number {
   if (!raw) return fallback
   const n = Number(raw)
-  return Number.isFinite(n) && n > 0 ? n : fallback
+  if (!Number.isFinite(n) || n <= 0) {
+    throw new Error(
+      `${varName} is set to "${raw}", which is not a positive number. ` +
+        `Fix or unset ${varName} (unset falls back to the $${fallback} default).`,
+    )
+  }
+  return n
 }
 
 export function requireWorkerConfig(): { workerUrl: string; workerSecret: string } {

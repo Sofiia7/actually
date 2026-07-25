@@ -138,9 +138,20 @@ export const IntegratedPopup: React.FC<IntegratedPopupProps> = ({
   // Headline of the page the last match was run against — surfaced as match
   // context in the Trade tab (ТЗ §6.1).
   const [lastArticleHeadline, setLastArticleHeadline] = useState<string | null>(null)
+  // Distinguishes a live page-derived match (real confidence score) from a
+  // market picked from History (no scoring happened — the user chose it
+  // directly). MatchContext must not present the latter as if it were the
+  // former (see its own doc comment).
+  const [lastMatchSource, setLastMatchSource] = useState<'page' | 'history'>('page')
 
   // History tab state
   const [historyState, setHistoryState] = useState<HistoryState>({ kind: 'loading' })
+  // Raw items backing historyState, same order/index — lets onSelect/
+  // onOpenArticle address the exact clicked item by index instead of
+  // re-fetching history and re-matching it by (question, pageDomain), which
+  // silently fails (and can pick the wrong item) whenever pageDomain is
+  // empty or two entries share a question+domain.
+  const [historyItems, setHistoryItems] = useState<HistoryItem[]>([])
   const [historyResolveError, setHistoryResolveError] = useState<string | null>(null)
 
   // Settings tab state
@@ -214,6 +225,7 @@ export const IntegratedPopup: React.FC<IntegratedPopupProps> = ({
         ResponseMessage,
         { type: 'HISTORY_RESPONSE' }
       >
+      setHistoryItems(r.items)
       setHistoryState(
         r.items.length === 0
           ? { kind: 'empty' }
@@ -250,6 +262,7 @@ export const IntegratedPopup: React.FC<IntegratedPopupProps> = ({
         return
       }
       setLastArticleHeadline(article.headline)
+      setLastMatchSource('page')
       const res = await runMatchViaOffscreen(article)
       if (res.match) {
         setLastMatch(res.match)
@@ -412,6 +425,7 @@ export const IntegratedPopup: React.FC<IntegratedPopupProps> = ({
             <TradeTabWired
               match={lastMatch}
               articleHeadline={lastArticleHeadline}
+              matchSource={lastMatchSource}
               settings={settings}
               onPickMatch={() => {
                 setTab('Check')
@@ -433,18 +447,18 @@ export const IntegratedPopup: React.FC<IntegratedPopupProps> = ({
               )}
               <HistoryTab
                 state={historyState}
-                onSelect={(row) => {
+                onSelect={(_row, index) => {
                   // Jump straight into Trade with this market — no need to
-                  // revisit the original article and re-run Check.
+                  // revisit the original article and re-run Check. Address
+                  // the item by its position in historyItems (the same array
+                  // historyState.items was derived from) rather than
+                  // re-fetching history and re-matching by displayed text,
+                  // which silently does nothing when pageDomain is empty
+                  // (unparsable page URL) and can pick the wrong entry when
+                  // two items share a question + domain.
                   void (async () => {
                     setHistoryResolveError(null)
-                    const r = (await sendToBackground({ type: 'GET_HISTORY' })) as Extract<
-                      ResponseMessage,
-                      { type: 'HISTORY_RESPONSE' }
-                    >
-                    const item = r.items.find(
-                      (x) => x.question === row.q && x.pageDomain === row.src,
-                    )
+                    const item = historyItems[index]
                     if (!item) return
                     const resolved = await resolveHistoryMarketViaOffscreen(item.marketId)
                     if (!resolved.market) {
@@ -462,26 +476,22 @@ export const IntegratedPopup: React.FC<IntegratedPopupProps> = ({
                     setLastMatch({
                       market,
                       probability,
+                      // No real confidence score exists for a manually-picked
+                      // historical item — MatchContext must not print this as
+                      // if it were a scored match (see lastMatchSource).
                       confidence: 1,
                       color,
                       lowConfidence: false,
                       alternatives: [],
                     })
                     setLastArticleHeadline(item.question)
+                    setLastMatchSource('history')
                     setTab('Trade')
                   })()
                 }}
-                onOpenArticle={(row) => {
-                  void (async () => {
-                    const r = (await sendToBackground({ type: 'GET_HISTORY' })) as Extract<
-                      ResponseMessage,
-                      { type: 'HISTORY_RESPONSE' }
-                    >
-                    const item = r.items.find(
-                      (x) => x.question === row.q && x.pageDomain === row.src,
-                    )
-                    if (item?.pageUrl) window.open(item.pageUrl, '_blank', 'noopener,noreferrer')
-                  })()
+                onOpenArticle={(_row, index) => {
+                  const item = historyItems[index]
+                  if (item?.pageUrl) window.open(item.pageUrl, '_blank', 'noopener,noreferrer')
                 }}
                 onClear={() => {
                   void (async () => {
