@@ -19,6 +19,8 @@ worker/.dev.vars
 
 # market-cache-builder --dry-run output (local inspection only, never committed)
 packages/market-cache-builder/market-cache-blob.json
+# market-cache-builder's local embedding model cache (env.cacheDir in build.ts)
+packages/market-cache-builder/.cache/
 
 # OS / IDE
 .DS_Store
