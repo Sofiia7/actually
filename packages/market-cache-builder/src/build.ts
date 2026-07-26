@@ -30,6 +30,29 @@ function requireEnv(name: string): string {
   return v
 }
 
+/**
+ * Retries a transient failure (HuggingFace 429s under cron-job load being the
+ * one actually observed in prod) with a short backoff. Model loading is a
+ * one-shot network fetch with no retry of its own in transformers.js — a
+ * single rate-limit response otherwise fails the entire cron run.
+ */
+async function withRetry<T>(fn: () => Promise<T>, attempts = 3, baseDelayMs = 2000): Promise<T> {
+  let lastErr: unknown
+  for (let i = 0; i < attempts; i++) {
+    try {
+      return await fn()
+    } catch (err) {
+      lastErr = err
+      if (i < attempts - 1) {
+        const delay = baseDelayMs * 2 ** i
+        console.warn(`[market-cache-builder] attempt ${i + 1}/${attempts} failed, retrying in ${delay}ms:`, err)
+        await new Promise((resolve) => setTimeout(resolve, delay))
+      }
+    }
+  }
+  throw lastErr
+}
+
 async function main() {
   // Step tracker — a single catch below logs which stage failed, so an
   // unattended cron job's log has one self-sufficient diagnostic line
@@ -50,9 +73,21 @@ async function main() {
     step = 'load_model'
     const { pipeline, env } = await import('@xenova/transformers')
     env.allowLocalModels = false
+    // transformers.js's own default cacheDir is NOT cwd-relative — env.js
+    // derives it from `import.meta.url` of the library's OWN module file, so
+    // it resolves to node_modules/@xenova/transformers/.cache/ regardless of
+    // where this script runs from. The CI workflow's `actions/cache@v4` step
+    // caches `packages/market-cache-builder/.cache` (a path nothing ever
+    // wrote to) while `npm ci` reinstalls fresh node_modules every run — so
+    // the model was silently being re-downloaded from HuggingFace on every
+    // single cron execution, not just on a cache-key change. Setting this
+    // explicitly makes the actual cache location match what CI persists.
+    env.cacheDir = './.cache'
     // Pinned revision (not 'main', a mutable ref) — see LOCAL_MODEL_REVISION's
     // doc comment in packages/core/src/constants.ts.
-    const extractor = await pipeline('feature-extraction', LOCAL_MODEL_ID, { revision: LOCAL_MODEL_REVISION })
+    const extractor = await withRetry(() =>
+      pipeline('feature-extraction', LOCAL_MODEL_ID, { revision: LOCAL_MODEL_REVISION }),
+    )
     const embed = async (text: string): Promise<Float32Array> => {
       const out = (await extractor(text, { pooling: 'mean', normalize: true })) as { data: Float32Array }
       return out.data

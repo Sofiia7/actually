@@ -28,10 +28,13 @@ jobs:
       - name: Install
         run: npm ci
 
-      # transformers.js caches the ~33MB MiniLM ONNX model under ./.cache
-      # relative to cwd (see @xenova/transformers env.js DEFAULT_CACHE_DIR).
-      # Without this, every single run re-downloads the model from
-      # huggingface.co, which is slow and adds load to their CDN for nothing.
+      # transformers.js's own default cache dir is NOT cwd-relative (it
+      # resolves against the library's own location in node_modules), so
+      # build.ts sets `env.cacheDir = './.cache'` explicitly to make it land
+      # here, relative to this job's working-directory below. Without both
+      # halves matching, every single run re-downloads the model from
+      # huggingface.co (slow, and adds load to their CDN for nothing) even
+      # on a cache hit for this key.
       - name: Cache the local embedding model
         uses: actions/cache@v4
         with:
