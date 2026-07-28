@@ -3,6 +3,7 @@ import { EMBED_PROGRESS_CHUNK, STORAGE_KEYS } from '../shared/constants'
 import { embedBatch } from './embeddings'
 import {
   type CachedMarket,
+  type MarketCacheBlob,
   type PolyMarket,
   LOCAL_MODEL_ID,
   MAX_MARKETS_CACHE,
@@ -31,11 +32,80 @@ export async function getCacheStatus(): Promise<{ count: number; lastUpdated: nu
 }
 
 /**
+ * Refreshes the local market cache. The 'local' provider uses the same
+ * MiniLM model as the Worker's precomputed `/market-cache` blob (built every
+ * 2h by packages/market-cache-builder's cron), so it downloads that instead
+ * of recomputing embeddings for ~800 markets on-device — on a fresh install
+ * with an empty cache, on-device embedding took 3+ minutes of WASM inference
+ * before this existed, every single time, for every new user. Falls back to
+ * on-device embedding if the precomputed cache is unreachable/stale/mismatched,
+ * and is still used as the primary path for the 'openai' provider (no
+ * precomputed OpenAI-embeddings blob exists).
+ */
+export async function refreshMarketCache(
+  provider: EmbeddingProvider,
+  workerUrl: string,
+  workerSecret: string,
+): Promise<{ added: number; reused: number; removed: number }> {
+  if (provider === 'local') {
+    try {
+      return await refreshFromPrecomputedCache(workerUrl, workerSecret)
+    } catch (err) {
+      console.warn('[cache] precomputed market-cache unavailable, falling back to on-device embedding:', err)
+    }
+  }
+  return refreshByEmbedding(provider, workerUrl, workerSecret)
+}
+
+/**
+ * Fast path: download the Worker's already-embedded market blob instead of
+ * computing vectors on-device. The precompute script applies the identical
+ * noise/binary filtering (see packages/market-cache-builder/src/buildBlob.ts),
+ * so the blob's markets are used as-is, no re-filtering needed. Always fully
+ * replaces the stored cache (matching the model, whatever provider produced
+ * the previous cache) rather than diffing — there's nothing to reuse from
+ * on-device embeddings, and no cross-provider staleness risk since the write
+ * is a full overwrite.
+ */
+async function refreshFromPrecomputedCache(
+  workerUrl: string,
+  workerSecret: string,
+): Promise<{ added: number; reused: number; removed: number }> {
+  const res = await fetch(`${workerUrl}/market-cache`, {
+    headers: { 'X-Actually-Auth': workerSecret },
+  })
+  if (!res.ok) {
+    throw new Error(`market-cache fetch failed: ${res.status}`)
+  }
+  const blob = (await res.json().catch((err) => {
+    throw new Error(`market-cache response was not valid JSON: ${String(err)}`)
+  })) as MarketCacheBlob
+  if (blob.model !== LOCAL_MODEL_ID) {
+    throw new Error(`market-cache model mismatch: worker served "${blob.model}", expected "${LOCAL_MODEL_ID}"`)
+  }
+
+  const merged = blob.markets.slice(0, MAX_MARKETS_CACHE)
+  const existing = await getMarketCache()
+  const existingIds = new Set(existing.map((m) => m.id))
+  const newIds = new Set(merged.map((m) => m.id))
+  const added = merged.filter((m) => !existingIds.has(m.id)).length
+  const removed = existing.filter((m) => !newIds.has(m.id)).length
+  const reused = merged.length - added
+
+  await chrome.storage.local.set({
+    [STORAGE_KEYS.marketCache]: merged,
+    [STORAGE_KEYS.marketCacheTs]: Date.now(),
+    [STORAGE_KEYS.marketCacheModel]: LOCAL_MODEL_ID,
+  })
+  return { added, reused, removed }
+}
+
+/**
  * Diff-cache refresh: only embed markets whose id is new or whose question hash
  * changed. Reuses existing embeddings for the rest. Closed/inactive markets are
  * dropped from cache.
  */
-export async function refreshMarketCache(
+async function refreshByEmbedding(
   provider: EmbeddingProvider,
   workerUrl: string,
   workerSecret: string,

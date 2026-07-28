@@ -27,7 +27,9 @@ const chromeMock = {
       set: vi.fn(async (obj: Record<string, unknown>) => {
         Object.assign(store, obj)
       }),
-      remove: vi.fn(async () => undefined),
+      remove: vi.fn(async (keys: string | string[]) => {
+        for (const k of Array.isArray(keys) ? keys : [keys]) delete store[k]
+      }),
     },
   },
   tabs: { query: vi.fn(async () => [{ id: 1 }]) },
