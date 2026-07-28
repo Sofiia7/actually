@@ -40,6 +40,18 @@ export default defineConfig(({ mode }) => {
       // Wipe dist/ on each build so stale hashed chunks (potentially carrying
       // an old baked secret) never linger into a release artifact.
       emptyOutDir: true,
+      // Vite's default modulepreload polyfill/dynamic-import-preload helper
+      // touches `document.head`/`document.querySelectorAll` — meaningless in
+      // an MV3 service worker (no DOM at all) and in a 360px popup/offscreen
+      // page it buys nothing. Worse than useless here: the background entry
+      // ends up sharing a chunk with this helper (pulled in transitively via
+      // embeddings.ts's dynamic `import('@xenova/transformers')`), and the
+      // helper's own "no document? stub one" fallback only stubs
+      // createElement/documentElement/head — not querySelectorAll — so the
+      // service worker crashes on its very first evaluation with
+      // "Service worker registration failed. Status code: 15" (script
+      // evaluation error) the instant that shared chunk is imported.
+      modulePreload: false,
       rollupOptions: {
         // Popup is declared in manifest as default_popup; offscreen is
         // created at runtime via chrome.offscreen.createDocument. Both must
