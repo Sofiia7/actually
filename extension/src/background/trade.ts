@@ -124,7 +124,19 @@ export async function connectWallet(cb: ConnectCallbacks): Promise<WalletState> 
 
 /**
  * Restore a previously connected wallet on popup open. Returns null if no
- * session is stored or the WC relay no longer recognizes it.
+ * session is stored, restoreSession() couldn't confirm one right now, or
+ * the WC relay reports a different session in its place.
+ *
+ * Called far more often than "on popup open" alone — every offscreen op
+ * that needs a signer (orderbook snapshot, place/cancel order, positions)
+ * independently re-derives its own WalletState via this same function
+ * (see offscreen.ts's rehydrateWallet()), rather than trusting a cached
+ * reference. That makes restoreSession()'s reliability load-bearing far
+ * more often than it looks from call sites alone — including calls that
+ * fire moments after the offscreen document itself was just recreated
+ * (MV3 can evict it during any idle stretch, e.g. the user reading an
+ * article before returning to trade), when the WalletConnect SignClient's
+ * own session store may not have finished hydrating from IndexedDB yet.
  */
 export async function restoreWallet(): Promise<WalletState | null> {
   const s = await getSettings()
@@ -139,8 +151,22 @@ export async function restoreWallet(): Promise<WalletState | null> {
     return null
   }
   const session = await restoreSession()
-  if (!session || session.topic !== s.wcSessionTopic) {
-    // Topic changed under us; clear stale state.
+  if (!session) {
+    // restoreSession() found no active WC session at all. This is
+    // deliberately NOT treated as "definitely disconnected, wipe stored
+    // creds" — a fresh SignClient (e.g. right after the offscreen document
+    // was recreated) can transiently report zero sessions for a moment
+    // before its own persisted store finishes loading, and a single
+    // missed lookup must not permanently destroy a connection that would
+    // have restored fine on the very next call. Report "not restorable
+    // right now" without touching storage; a caller that needs certainty
+    // (the explicit "Disconnect & wipe" button) clears storage itself.
+    return null
+  }
+  if (session.topic !== s.wcSessionTopic) {
+    // A DIFFERENT session now exists in place of the one we had stored —
+    // an actual, positive signal of staleness (not just a failed lookup),
+    // so clearing here is safe.
     await saveSettings({
       wcSessionTopic: undefined,
       walletAddress: undefined,

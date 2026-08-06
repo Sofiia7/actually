@@ -5,15 +5,19 @@ const { disconnectMock, resetSignClientMock } = vi.hoisted(() => ({
   resetSignClientMock: vi.fn(),
 }))
 
+const { restoreSessionMock } = vi.hoisted(() => ({
+  restoreSessionMock: vi.fn(async () => null as { topic: string; address: string } | null),
+}))
+
 vi.mock('./wallet', () => ({
   disconnect: disconnectMock,
   resetSignClient: resetSignClientMock,
-  restoreSession: vi.fn(async () => null),
+  restoreSession: restoreSessionMock,
   startConnect: vi.fn(),
   WCSigner: class {},
 }))
 
-import { disconnectWallet, placeOrder } from './trade'
+import { disconnectWallet, placeOrder, restoreWallet } from './trade'
 import { getSettings, saveSettings } from './settings'
 import { MAX_ORDER_USD } from '../shared/constants'
 import type { WalletState } from './trade'
@@ -134,6 +138,71 @@ describe('disconnectWallet', () => {
     // not just assumed, and that disconnectWallet still works without it.
     expect(typeof indexedDB).toBe('undefined')
     await expect(disconnectWallet(fakeState)).resolves.toBeUndefined()
+  })
+})
+
+describe('restoreWallet — session-lookup failures must not destroy stored credentials', () => {
+  const storedWalletFields = {
+    wcSessionTopic: 'topic-1',
+    walletAddress: '0xabc',
+    safeAddress: '0xsafe',
+    clobApiKey: 'key',
+    clobApiSecret: 'secret',
+    clobApiPassphrase: 'pass',
+  }
+
+  beforeEach(async () => {
+    vi.clearAllMocks()
+    restoreSessionMock.mockResolvedValue(null)
+    await saveSettings(storedWalletFields)
+  })
+
+  it('returns null without touching storage when nothing is stored (nothing to restore)', async () => {
+    await saveSettings({
+      wcSessionTopic: undefined,
+      walletAddress: undefined,
+      safeAddress: undefined,
+      clobApiKey: undefined,
+      clobApiSecret: undefined,
+      clobApiPassphrase: undefined,
+    })
+    const result = await restoreWallet()
+    expect(result).toBeNull()
+    expect(restoreSessionMock).not.toHaveBeenCalled()
+  })
+
+  it('regression: restoreSession() finding no session at all does NOT wipe stored credentials — a transient lookup miss (e.g. right after the offscreen document was recreated) must be retryable, not permanently destructive', async () => {
+    restoreSessionMock.mockResolvedValue(null)
+    const result = await restoreWallet()
+    expect(result).toBeNull()
+    const s = await getSettings()
+    // The whole point of the fix: storage must still hold everything, so
+    // the NEXT restoreWallet() call (once the SDK finishes hydrating) can
+    // still succeed instead of permanently reporting "disconnected".
+    expect(s.wcSessionTopic).toBe('topic-1')
+    expect(s.clobApiKey).toBe('key')
+    expect(s.clobApiSecret).toBe('secret')
+    expect(s.clobApiPassphrase).toBe('pass')
+  })
+
+  it('restores the wallet when restoreSession() finds a session matching the stored topic', async () => {
+    restoreSessionMock.mockResolvedValue({ topic: 'topic-1', address: '0xabc' })
+    const result = await restoreWallet()
+    expect(result).toEqual({
+      topic: 'topic-1',
+      address: '0xabc',
+      safeAddress: '0xsafe',
+      creds: { key: 'key', secret: 'secret', passphrase: 'pass' },
+    })
+  })
+
+  it('clears storage when restoreSession() finds a DIFFERENT session in place of the stored one (genuine staleness, not a lookup miss)', async () => {
+    restoreSessionMock.mockResolvedValue({ topic: 'a-different-topic', address: '0xdef' })
+    const result = await restoreWallet()
+    expect(result).toBeNull()
+    const s = await getSettings()
+    expect(s.wcSessionTopic).toBeUndefined()
+    expect(s.clobApiKey).toBeUndefined()
   })
 })
 

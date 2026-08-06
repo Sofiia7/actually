@@ -332,7 +332,7 @@ export const TradeTabWired: React.FC<TradeTabWiredProps> = ({
               padding: '10px 14px', borderRadius: 8,
               background: 'rgba(255,255,255,.09)',
               border: '1px solid rgba(255,255,255,.32)',
-              fontFamily: 'Marck Script', fontSize: 13, color: 'rgba(18,26,48,.85)',
+              fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif", fontSize: 13, color: 'rgba(18,26,48,.85)',
             }}
           >
             Copy connection link
@@ -440,7 +440,7 @@ const TradeReady: React.FC<ReadyProps> = ({
       <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, marginBottom: 10 }}>
         <span
           style={{
-            fontFamily: 'Marck Script',
+            fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif",
             fontSize: 38,
             fontWeight: 400,
             color: toneDark(pct, 0.97),
@@ -563,7 +563,7 @@ const OrderFormWired: React.FC<OrderFormProps> = ({
   const [side, setSide] = useState<'BUY_YES' | 'BUY_NO'>('BUY_YES')
   const [sizeUsd, setSizeUsd] = useState(20)
   const [priceInput, setPriceInput] = useState('')
-  const [book, setBook] = useState<{ bestBid: number | null; bestAsk: number | null; spread: number | null }>(
+  const [book, setBook] = useState<{ bestBid: number | null; bestAsk: number | null; spread: number | null; error?: string }>(
     { bestBid: null, bestAsk: null, spread: null },
   )
   const [estimate, setEstimate] = useState<{ effectivePrice: number; slippage: number } | null>(null)
@@ -603,7 +603,7 @@ const OrderFormWired: React.FC<OrderFormProps> = ({
     void (async () => {
       const snap = await orderbookSnapshotViaOffscreen(tokenId)
       if (cancelled) return
-      setBook({ bestBid: snap.bestBid, bestAsk: snap.bestAsk, spread: snap.spread })
+      setBook({ bestBid: snap.bestBid, bestAsk: snap.bestAsk, spread: snap.spread, error: snap.error })
       if (snap.bestAsk != null) setPriceInput(String(om.roundToTick(snap.bestAsk, tick)))
     })()
     return () => { cancelled = true }
@@ -783,7 +783,12 @@ const OrderFormWired: React.FC<OrderFormProps> = ({
           Enter a price between {fmtC(tickN)} and {fmtC(1 - tickN)}, in {tick} steps.
         </Etched>
       )}
-      {noLiquidity && (
+      {noLiquidity && book.error === 'wallet_not_restored' && (
+        <Etched size={11} weight={300} color="rgba(180,90,30,.85)">
+          Couldn't confirm your wallet session for live pricing — reopen the popup or reconnect.
+        </Etched>
+      )}
+      {noLiquidity && book.error !== 'wallet_not_restored' && (
         <Etched size={11} weight={300} color="rgba(180,90,30,.85)">
           No asks on the book right now — can't market-buy. Try a limit order.
         </Etched>

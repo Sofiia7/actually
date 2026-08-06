@@ -188,6 +188,9 @@ export async function orderbookSnapshotViaOffscreen(
   bids: Array<{ price: number; size: number }>
   asks: Array<{ price: number; size: number }>
   estimate: { effectivePrice: number; slippage: number } | null
+  /** Set when the lookup itself failed (e.g. 'wallet_not_restored') — distinct
+   * from a successful lookup that legitimately found an empty book. */
+  error?: string
 }> {
   const r = await call<Extract<OffscreenResponse, { type: 'OS_ORDERBOOK' }> | Extract<OffscreenResponse, { type: 'OS_ERROR' }>>({
     target: 'offscreen',
@@ -195,6 +198,8 @@ export async function orderbookSnapshotViaOffscreen(
     tokenId,
     sizeShares,
   })
-  if (r.type === 'OS_ERROR') return { bestBid: null, bestAsk: null, spread: null, bids: [], asks: [], estimate: null }
+  if (r.type === 'OS_ERROR') {
+    return { bestBid: null, bestAsk: null, spread: null, bids: [], asks: [], estimate: null, error: r.error }
+  }
   return { bestBid: r.bestBid, bestAsk: r.bestAsk, spread: r.spread, bids: r.bids, asks: r.asks, estimate: r.estimate ?? null }
 }

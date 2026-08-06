@@ -374,7 +374,14 @@ async function handle(msg: OffscreenRequest): Promise<OffscreenResponse> {
 
     case 'OS_ORDERBOOK_SNAPSHOT': {
       const w = await rehydrateWallet()
-      if (!w) return { type: 'OS_ORDERBOOK', bestBid: null, bestAsk: null, spread: null, bids: [], asks: [], estimate: null }
+      // Distinct from a genuinely empty book (see OrderbookSnapshot's own
+      // shape below) — an OS_ERROR here lets the UI tell "we couldn't
+      // confirm your wallet session for this lookup" apart from "this
+      // market really has no resting asks right now". Returning a
+      // same-shaped-but-null book for both (the old behavior) made a
+      // transient wallet-restore hiccup indistinguishable from real
+      // illiquidity — see restoreWallet()'s doc comment in trade.ts.
+      if (!w) return { type: 'OS_ERROR', error: 'wallet_not_restored' }
       const snap = await getOrderbookSnapshot(w, msg.tokenId)
       // Walk the book for a depth-based fill estimate when the UI passes the
       // intended size (shares); otherwise just return the top-of-book.
