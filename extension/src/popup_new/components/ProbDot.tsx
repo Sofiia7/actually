@@ -27,7 +27,7 @@ export const ProbDot: React.FC<{ pct: number; size?: number }> = ({
 export const PctChip: React.FC<{ pct: number }> = ({ pct }) => (
   <span
     style={{
-      fontFamily: 'Marck Script',
+      fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif",
       fontSize: 12,
       fontWeight: 400,
       color: toneDark(pct, 0.92),

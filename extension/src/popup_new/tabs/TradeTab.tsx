@@ -160,7 +160,7 @@ export const TradeTab: React.FC<TradeTabProps> = ({
         >
           <span
             style={{
-              fontFamily: 'Marck Script',
+              fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif",
               fontSize: 38,
               fontWeight: 400,
               color: toneDark(pct, 0.97),

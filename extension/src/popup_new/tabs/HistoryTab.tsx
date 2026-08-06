@@ -65,7 +65,7 @@ const Row: React.FC<HistoryRow & { onClick?: () => void; onOpenArticle?: () => v
       </Etched>
       <span
         style={{
-          fontFamily: 'Marck Script',
+          fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif",
           fontSize: 10.5,
           color: 'rgba(35,45,70,.6)',
           letterSpacing: '.04em',

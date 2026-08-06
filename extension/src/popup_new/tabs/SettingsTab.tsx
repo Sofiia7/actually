@@ -223,7 +223,7 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
           <div
             style={{
               marginTop: 4,
-              fontFamily: 'Marck Script',
+              fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif",
               fontSize: 10.5,
               color: 'rgba(35,45,70,.5)',
               wordBreak: 'break-all',

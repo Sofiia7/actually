@@ -228,7 +228,7 @@ const DepthBar: React.FC<{ align: 'left' | 'right'; color: string; widthPct: num
 const Cell: React.FC<{ label: string; value: string }> = ({ label, value }) => (
   <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
     <span style={{ fontSize: 10.5, color: 'rgba(35,45,70,.5)', letterSpacing: '.04em', textTransform: 'uppercase' }}>{label}</span>
-    <span style={{ fontFamily: 'Marck Script', fontSize: 12.5, color: 'rgba(35,45,70,.85)' }}>{value}</span>
+    <span style={{ fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif", fontSize: 12.5, color: 'rgba(35,45,70,.85)' }}>{value}</span>
   </div>
 )
 

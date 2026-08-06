@@ -104,7 +104,7 @@ const FeaturedMarket: React.FC<FeaturedMarketProps> = ({
       >
         <span
           style={{
-            fontFamily: 'Marck Script',
+            fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif",
             fontSize: 54,
             fontWeight: 400,
             color: toneDark(pct, 0.98),

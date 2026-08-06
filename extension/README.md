@@ -118,8 +118,13 @@ npm install
 cp .env.example .env.local
 # Edit .env.local — set VITE_WC_PROJECT_ID, VITE_BUILDER_CODE,
 #                       VITE_WORKER_URL, VITE_WORKER_SECRET
-npm run fonts:fetch        # downloads Marck Script woff2 → public/fonts/
 ```
+
+No font-fetch step needed — the UI uses the system font stack (`-apple-system`,
+`Segoe UI`, `Roboto`, ...), not a bundled webfont. `npm run fonts:fetch` /
+`scripts/fetch-fonts.mjs` still exist (dead as of 2026-08-06, previously
+fetched "Marck Script", replaced for illegibility) as a ready-made
+fetch+SHA-pin pattern if a real webfont gets adopted later.
 
 > **Reproducible builds.** Some setups (notably OneDrive-synced project paths
 > with non-ASCII characters) intermittently break Vite's worker resolution
@@ -194,7 +199,6 @@ npm run dev              # Vite watch mode → outputs to dist/
 npm run worker:dev       # Wrangler local dev for the API (uses WORKER_DEV_MODE)
 npm test                 # Vitest unit + component tests (137 passing)
 npm run lint             # tsc --noEmit type check
-npm run fonts:fetch      # (re)download Marck Script woff2 → public/fonts/
 ```
 
 When you change `manifest.json` or any service-worker file, reload the extension in `chrome://extensions`. Popup hot-reloads via Vite.
@@ -261,8 +265,7 @@ extension/
 │   ├── wrangler.toml          Placeholders only — never commit real ids
 │   └── wrangler.toml.example  Step-by-step setup
 ├── public/
-│   ├── icon-{16,48,128}.png
-│   └── fonts/MarckScript-Regular-{latin,latin-ext,cyrillic}.woff2   # from `npm run fonts:fetch` (one file per subset — shipping only one was the 2026-08-02 Comic-Sans-fallback bug)
+│   └── icon-{16,48,128}.png   # UI font is the system stack — no bundled webfont
 ├── scripts/                   Offline matching + fonts:fetch (env-driven)
 └── docs/
     ├── privacy-policy.md

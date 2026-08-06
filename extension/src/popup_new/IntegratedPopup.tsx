@@ -574,12 +574,12 @@ const WalletSlot: React.FC<WalletSlotProps> = ({ wallet, wiping, onWipe }) => {
       }}
     >
       <div style={{ minWidth: 0, lineHeight: 1.4 }}>
-        <div style={{ fontFamily: 'Marck Script', fontSize: 11.5 }}>
+        <div style={{ fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif", fontSize: 11.5 }}>
           EOA {short(wallet.address)}
         </div>
         <div
           style={{
-            fontFamily: 'Marck Script',
+            fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif",
             fontSize: 10.5,
             color: 'rgba(35,45,70,.55)',
           }}
