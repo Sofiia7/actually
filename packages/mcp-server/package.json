@@ -1,6 +1,21 @@
 {
   "name": "actually-mcp-server",
-  "version": "0.1.3",
+  "version": "0.1.4",
+  "description": "MCP server that matches news text to Polymarket prediction markets and returns the market's objective probability — plus optional trading tools (place, sell, redeem) using your own wallet.",
+  "keywords": [
+    "mcp",
+    "model-context-protocol",
+    "mcp-server",
+    "polymarket",
+    "prediction-markets",
+    "probability",
+    "news",
+    "trading",
+    "ai-agents",
+    "claude"
+  ],
+  "license": "MIT",
+  "mcpName": "io.github.sofiia7/actually",
   "private": false,
   "type": "module",
   "bin": {

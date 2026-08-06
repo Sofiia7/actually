@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Actually — CWS marquee promo tile 1400x560</title>
+<style>
+  /* ============================================================
+     Chrome Web Store MARQUEE promo tile — 1400x560 exact.
+     ============================================================ */
+  /* Brand font: Marck Script, same three subsets the extension ships
+     (extension/src/popup_new/fonts.css). Latin subset renders "Actually". */
+  @font-face {
+    font-family: 'Marck Script'; font-weight: 400; font-style: normal;
+    src: url('./MarckScript-Regular-cyrillic.woff2') format('woff2');
+    unicode-range: U+0301, U+0400-045F, U+0490-0491, U+04B0-04B1, U+2116;
+  }
+  @font-face {
+    font-family: 'Marck Script'; font-weight: 400; font-style: normal;
+    src: url('./MarckScript-Regular-latin-ext.woff2') format('woff2');
+    unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+  }
+  @font-face {
+    font-family: 'Marck Script'; font-weight: 400; font-style: normal;
+    src: url('./MarckScript-Regular-latin.woff2') format('woff2');
+    unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body {
+    width: 1400px; height: 560px;
+    overflow: hidden;
+    background: #0a0f1e;
+  }
+  body {
+    position: relative;
+    font-family: "Segoe UI", "SF Pro Text", system-ui, -apple-system, Roboto, Arial, sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  /* ---- background ---- */
+  .bg {
+    position: absolute; inset: 0;
+    background:
+      radial-gradient(1300px 800px at 82% 22%, rgba(30, 95, 215, .24), transparent 60%),
+      radial-gradient(1100px 720px at 8% 100%, rgba(185, 35, 55, .18), transparent 60%),
+      linear-gradient(120deg, #101830 0%, #0a0f1e 55%, #0b101f 100%);
+  }
+  .grid {
+    position: absolute; inset: 0;
+    background-image:
+      linear-gradient(rgba(148, 170, 215, .06) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(148, 170, 215, .06) 1px, transparent 1px);
+    background-size: 58px 58px;
+    -webkit-mask-image: radial-gradient(70% 90% at 62% 45%, #000 25%, transparent 100%);
+            mask-image: radial-gradient(70% 90% at 62% 45%, #000 25%, transparent 100%);
+  }
+  .vignette {
+    position: absolute; inset: 0;
+    background: radial-gradient(140% 160% at 50% 45%, transparent 55%, rgba(3, 5, 11, .55) 100%);
+  }
+
+  /* ---- composition: text left, orb right ---- */
+  main {
+    position: absolute; inset: 0;
+    display: flex; align-items: center;
+    padding: 0 150px 0 110px;
+  }
+  .text { flex: 1 1 auto; padding-bottom: 14px; }
+
+  .word {
+    font-family: 'Marck Script', cursive;
+    font-size: 150px; line-height: 1.1; font-weight: 400;
+    color: #F2F6FA;
+    text-shadow: 0 3px 40px rgba(110, 155, 255, .38), 0 2px 3px rgba(0, 0, 0, .45);
+    white-space: nowrap;
+    /* script overshoot room */
+    padding: 12px 10px 22px; margin: -12px -10px -22px;
+  }
+  .tag {
+    font-size: 21px; font-weight: 600;
+    letter-spacing: .24em; text-transform: uppercase;
+    color: rgba(206, 221, 243, .82);
+    text-shadow: 0 1px 10px rgba(0, 0, 0, .5);
+    white-space: nowrap;
+    margin-top: 30px;
+  }
+
+  .orb { position: relative; width: 372px; height: 372px; flex: 0 0 auto; }
+  .orb .glow {
+    position: absolute; inset: -30%;
+    background:
+      radial-gradient(circle at 66% 28%, rgba(64, 125, 235, .48), transparent 58%),
+      radial-gradient(circle at 30% 76%, rgba(205, 55, 85, .40), transparent 58%);
+    filter: blur(34px);
+  }
+  .orb img {
+    position: relative; width: 100%; height: 100%; display: block;
+    filter: drop-shadow(0 30px 52px rgba(0, 0, 0, .55));
+  }
+
+  /* ---- floating market pills (UI hint) ---- */
+  .pill {
+    position: absolute;
+    display: inline-flex; align-items: center; gap: 11px;
+    border-radius: 999px;
+    background: linear-gradient(180deg, rgba(255, 255, 255, .18), rgba(255, 255, 255, .07));
+    border: 1px solid rgba(255, 255, 255, .32);
+    backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px);
+    white-space: nowrap;
+    font-weight: 700; letter-spacing: .02em; color: #F2F6FA;
+  }
+  .pill .dot { border-radius: 50%; flex: 0 0 auto; }
+
+  .pill.yes {
+    right: -96px; top: 30%;
+    padding: 14px 24px; font-size: 23px;
+    transform: rotate(-3deg);
+    box-shadow: 0 12px 32px rgba(0, 0, 0, .45), 0 0 28px rgba(220, 95, 100, .30),
+                inset 0 1px 0 rgba(255, 255, 255, .28);
+  }
+  .pill.yes .dot {
+    width: 16px; height: 16px;
+    background: radial-gradient(circle at 30% 25%, rgba(255,255,255,.92) 0%, rgba(227,143,148,.95) 60%, rgb(227,143,148) 100%);
+    box-shadow: 0 0 11px rgba(227, 143, 148, .65), inset 0 0 0 1px rgba(255, 255, 255, .55);
+  }
+  .pill.yes .num { color: rgb(242, 168, 173); margin-left: 2px; }
+
+  .pill.no {
+    left: -86px; bottom: 16%;
+    padding: 11px 19px; font-size: 18px;
+    transform: rotate(2.5deg);
+    opacity: .96;
+    box-shadow: 0 10px 26px rgba(0, 0, 0, .45), 0 0 22px rgba(100, 165, 230, .28),
+                inset 0 1px 0 rgba(255, 255, 255, .28);
+  }
+  .pill.no .dot {
+    width: 13px; height: 13px;
+    background: radial-gradient(circle at 30% 25%, rgba(255,255,255,.92) 0%, rgba(145,191,236,.95) 60%, rgb(145,191,236) 100%);
+    box-shadow: 0 0 9px rgba(145, 191, 236, .65), inset 0 0 0 1px rgba(255, 255, 255, .55);
+  }
+  .pill.no .num { color: rgb(168, 205, 242); margin-left: 2px; }
+</style>
+</head>
+<body>
+  <div class="bg"></div>
+  <div class="grid"></div>
+  <div class="vignette"></div>
+  <main>
+    <div class="text">
+      <div class="word">Actually</div>
+      <div class="tag">See what markets really think</div>
+    </div>
+    <div class="orb">
+      <div class="glow"></div>
+      <img src="sphere.png" alt="">
+      <div class="pill yes"><span class="dot"></span>YES <span class="num">67%</span></div>
+      <div class="pill no"><span class="dot"></span>NO <span class="num">33%</span></div>
+    </div>
+  </main>
+</body>
+</html>

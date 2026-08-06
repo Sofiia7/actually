@@ -1,0 +1,322 @@
+/* ============================================================
+   CWS screenshot harness — shared styles
+   ------------------------------------------------------------
+   Popup styles are a 1:1 static replication of the real popup:
+     extension/src/popup_new/styles.css        (.label, .glass-btn,
+                                                .matte-grain, .ice-crackle)
+     extension/src/popup_new/components/*.tsx  (inline styles)
+   Article chrome (fictional publications) is harness-only.
+   Self-contained: font + icon live next to this file. No CDNs.
+   ============================================================ */
+
+/* Marck Script — one @font-face per subset, unicode-range values mirrored
+   from extension/src/popup_new/fonts.css (Google Fonts CSS2 response). */
+/* cyrillic */
+@font-face {
+  font-family: 'Marck Script';
+  font-weight: 400;
+  font-style: normal;
+  src: url('./MarckScript-Regular-cyrillic.woff2') format('woff2');
+  unicode-range: U+0301, U+0400-045F, U+0490-0491, U+04B0-04B1, U+2116;
+}
+/* latin-ext */
+@font-face {
+  font-family: 'Marck Script';
+  font-weight: 400;
+  font-style: normal;
+  src: url('./MarckScript-Regular-latin-ext.woff2') format('woff2');
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+/* latin */
+@font-face {
+  font-family: 'Marck Script';
+  font-weight: 400;
+  font-style: normal;
+  src: url('./MarckScript-Regular-latin.woff2') format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
+* { box-sizing: border-box; }
+html, body { margin: 0; padding: 0; }
+
+body.frame {
+  width: 1280px;
+  height: 800px;
+  overflow: hidden;
+  position: relative;
+  background: #e8eaef;
+  font-family: Georgia, 'Times New Roman', serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ---------- Browser toolbar (harness chrome) ------------------ */
+.toolbar {
+  position: absolute; top: 0; left: 0; right: 0; height: 40px;
+  background: linear-gradient(#f8f9fb, #eef1f5);
+  border-bottom: 1px solid #d7dbe2;
+  display: flex; align-items: center; gap: 10px;
+  padding: 0 14px; z-index: 5;
+  font-family: 'Segoe UI', system-ui, sans-serif;
+}
+.toolbar .nav { color: #6b7280; font-size: 17px; line-height: 1; padding: 0 3px; user-select: none; }
+.toolbar .nav.dim { color: #b3b9c4; }
+.addr {
+  flex: 1; height: 28px; background: #fff;
+  border: 1px solid #e0e3e9; border-radius: 14px;
+  display: flex; align-items: center; gap: 8px;
+  padding: 0 14px; font-size: 12.5px; color: #4b5563;
+}
+.addr .lock { width: 11px; height: 11px; flex: 0 0 auto; }
+.ext-ico {
+  width: 30px; height: 30px; border-radius: 7px;
+  display: flex; align-items: center; justify-content: center;
+  background: rgba(30, 95, 215, .10);
+  border: 1px solid rgba(30, 95, 215, .18);
+}
+.ext-ico img { width: 20px; height: 20px; display: block; }
+
+/* ---------- Article page shell -------------------------------- */
+.page { position: absolute; top: 40px; left: 0; right: 0; bottom: 0; overflow: hidden; }
+
+/* ===== Publication A — The Capitol Dispatch (politics) ======== */
+.page.pub-a { background: #fbfaf7; }
+.mast-a { text-align: center; padding: 14px 0 10px; border-bottom: 3px double #22211e; margin: 0 40px; }
+.mast-a .name {
+  font: 700 34px Georgia, serif; letter-spacing: .14em;
+  text-transform: uppercase; color: #191813;
+}
+.mast-a .sub {
+  margin-top: 5px; font: 400 10.5px 'Segoe UI', sans-serif;
+  letter-spacing: .3em; text-transform: uppercase; color: #8a877e;
+}
+.wrap-a { max-width: 1210px; margin: 0 auto; padding: 26px 50px 0; display: flex; gap: 44px; }
+.art-a { flex: 1; max-width: 650px; }
+.kicker-a { font: 700 11.5px 'Segoe UI', sans-serif; letter-spacing: .22em; text-transform: uppercase; color: #9d2b2b; }
+.art-a h1 { font: 700 38px/1.16 Georgia, serif; color: #171512; margin: 12px 0 14px; }
+.dek-a { font: italic 400 17.5px/1.5 Georgia, serif; color: #4c4a44; margin: 0 0 16px; }
+.byline-a { font: 600 12.5px 'Segoe UI', sans-serif; color: #33312c; }
+.byline-a .dt { font-weight: 400; color: #8a877e; }
+.rule-a { border: 0; border-top: 1px solid #dedbd2; margin: 14px 0 18px; }
+.art-a p { font: 400 16.5px/1.68 Georgia, serif; color: #26241f; margin: 0 0 17px; }
+.art-a p.first::first-letter {
+  font-size: 52px; line-height: .82; float: left; padding: 6px 8px 0 0; color: #9d2b2b; font-weight: 700;
+}
+.rail-a { width: 430px; flex: 0 0 auto; }
+.promo-a {
+  height: 330px; border-radius: 6px; position: relative; overflow: hidden;
+  background:
+    radial-gradient(80% 90% at 85% 100%, rgba(185, 35, 55, .85) 0%, rgba(185, 35, 55, 0) 60%),
+    radial-gradient(90% 100% at 10% 0%, #2f6fe0 0%, rgba(47, 111, 224, 0) 70%),
+    linear-gradient(135deg, #0e2a5c 0%, #1e5fd7 55%, #5b1f36 100%);
+}
+.promo-a .pl {
+  position: absolute; left: 26px; bottom: 24px; color: #fff;
+  font: 800 30px/1.06 'Segoe UI', sans-serif; letter-spacing: .02em;
+  text-shadow: 0 2px 14px rgba(10, 20, 50, .5);
+}
+.promo-a .pl small { display: block; font: 600 12.5px 'Segoe UI', sans-serif; letter-spacing: .22em; opacity: .85; margin-bottom: 8px; }
+.promo-cap { font: 400 12px/1.5 'Segoe UI', sans-serif; color: #8a877e; padding: 9px 2px 0; }
+.most-a { margin-top: 22px; border-top: 1px solid #22211e; padding-top: 12px; }
+.most-a .mh { font: 700 12px 'Segoe UI', sans-serif; letter-spacing: .2em; color: #191813; text-transform: uppercase; }
+.most-a ol { margin: 10px 0 0; padding: 0 0 0 26px; }
+.most-a li { font: 600 14.5px/1.4 Georgia, serif; color: #26241f; margin-bottom: 11px; }
+
+/* ===== Publication B — Meridian Business Daily (economy) ====== */
+.page.pub-b { background: #f5f6f8; }
+/* Light masthead (was dark navy) — the popup's glass header sits on top of
+   this band on shots 3/4/6 and needs a light backdrop for contrast. */
+.mast-b {
+  background: #fff; color: #0c1e3d; padding: 13px 44px;
+  border-bottom: 1px solid #d9dee6;
+  display: flex; align-items: baseline; gap: 30px;
+}
+.mast-b .name { font: 800 21px 'Segoe UI', sans-serif; letter-spacing: .04em; white-space: nowrap; }
+.mast-b .name em { font-style: normal; font-weight: 300; color: #64748f; }
+.mast-b nav { display: flex; gap: 22px; font: 600 12.5px 'Segoe UI', sans-serif; color: #64748f; }
+.mast-b nav .on { color: #0c1e3d; border-bottom: 2px solid #c99728; padding-bottom: 3px; }
+.ticker {
+  background: #f2f4f7; border-bottom: 1px solid #e2e5ea;
+  padding: 8px 44px; display: flex; gap: 34px;
+  font: 600 12px 'Segoe UI', sans-serif; color: #35415a;
+}
+.ticker .up { color: #157a45; }
+.ticker .dn { color: #b02a37; }
+.ticker .sym { color: #7b869c; font-weight: 500; }
+.wrap-b { max-width: 1210px; margin: 0 auto; padding: 22px 50px 0; display: flex; gap: 44px; }
+.art-b { flex: 1; max-width: 650px; }
+.kicker-b { font: 700 11.5px 'Segoe UI', sans-serif; letter-spacing: .2em; text-transform: uppercase; color: #1e5fd7; }
+.art-b h1 { font: 700 36px/1.18 Georgia, serif; color: #101828; margin: 12px 0 12px; }
+.dek-b { font: 400 17px/1.55 Georgia, serif; color: #46516b; margin: 0 0 14px; }
+.byline-b { font: 600 12.5px 'Segoe UI', sans-serif; color: #2b3550; }
+.byline-b .dt { font-weight: 400; color: #7b869c; }
+.rule-b { border: 0; border-top: 1px solid #e2e5ea; margin: 13px 0 17px; }
+.art-b p { font: 400 16px/1.68 Georgia, serif; color: #1d2739; margin: 0 0 16px; }
+.rail-b { width: 430px; flex: 0 0 auto; }
+/* Light card on purpose: this widget sits behind the popup's glass on
+   shots 3/4/6 — a dark background here made the popup's top third
+   unreadable through the blur. */
+.monitor {
+  border-radius: 8px; overflow: hidden; position: relative;
+  background: linear-gradient(160deg, #ffffff 0%, #f2f4f8 100%);
+  border: 1px solid #dde2ec;
+  color: #16233f; padding: 18px 20px 16px;
+}
+.monitor .mh { font: 700 11.5px 'Segoe UI', sans-serif; letter-spacing: .24em; color: #a67c1e; }
+.monitor .row { display: flex; justify-content: space-between; align-items: baseline; margin-top: 13px; font: 500 13.5px 'Segoe UI', sans-serif; color: #44506b; }
+.monitor .row b { font: 700 15px 'Segoe UI', sans-serif; color: #16233f; }
+.monitor .bar { height: 7px; border-radius: 4px; background: #e4e8f0; margin-top: 8px; overflow: hidden; }
+.monitor .bar i { display: block; height: 100%; width: 59%; border-radius: 4px; background: linear-gradient(90deg, #2f6fe0, #a67c1e); }
+.monitor .foot { margin-top: 12px; font: 400 11px 'Segoe UI', sans-serif; color: #7b869c; }
+.mini-b { margin-top: 20px; }
+.mini-b .mh { font: 700 12px 'Segoe UI', sans-serif; letter-spacing: .2em; color: #101828; text-transform: uppercase; }
+.mini-b ul { list-style: none; margin: 8px 0 0; padding: 0; }
+.mini-b li { font: 600 14.5px/1.4 Georgia, serif; color: #1d2739; padding: 10px 0; border-bottom: 1px solid #e2e5ea; }
+.mini-b li span { display: block; font: 500 11px 'Segoe UI', sans-serif; color: #7b869c; margin-top: 3px; letter-spacing: .06em; }
+
+/* ============================================================
+   POPUP — 1:1 replication of extension/src/popup_new
+   ============================================================ */
+.popup {
+  position: absolute; top: 48px; right: 14px; width: 360px; z-index: 10;
+  font-family: 'Marck Script', cursive;
+  color: rgba(18, 26, 48, .85);
+}
+/* GlassSurface.tsx (radius 12) */
+.glass {
+  position: relative; border-radius: 12px;
+  background: rgba(255, 255, 255, .045);
+  -webkit-backdrop-filter: blur(38px) saturate(108%);
+  backdrop-filter: blur(38px) saturate(108%);
+  border: 1px solid rgba(255, 255, 255, .22);
+  box-shadow: 0 18px 44px -22px rgba(15, 25, 55, .22), 0 4px 12px -8px rgba(15, 25, 55, .10);
+  overflow: hidden;
+}
+/* styles.css .matte-grain */
+.grain {
+  position: absolute; inset: 0; border-radius: inherit; pointer-events: none;
+  opacity: .45;
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='180' height='180'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 1  0 0 0 0 1  0 0 0 0 1  0 0 0 0.55 0'/></filter><rect width='100%25' height='100%25' filter='url(%23n)'/></svg>");
+  mix-blend-mode: overlay;
+}
+.inner { position: relative; }
+
+/* Header.tsx */
+.hd { padding: 14px 18px 12px; display: flex; align-items: baseline; gap: 10px; }
+
+/* Etched.tsx */
+.et {
+  font-family: 'Marck Script', cursive; font-weight: 400; font-style: normal;
+  letter-spacing: -.005em;
+  color: rgba(18, 26, 48, .82);
+  text-shadow: 0 1px 0 rgba(255, 255, 255, .6);
+}
+
+/* Tabs.tsx */
+.tabs { position: relative; display: flex; padding: 0 16px; border-bottom: 1px solid rgba(255, 255, 255, .4); }
+.tab {
+  padding: 13px; font-size: 14px; letter-spacing: -.005em; font-weight: 300;
+  color: rgba(35, 45, 70, .52);
+  text-shadow: 0 1px 0 rgba(255, 255, 255, .55);
+}
+.tab.on { color: rgba(18, 26, 48, .9); font-weight: 500; }
+.tabline { position: absolute; bottom: -1px; height: 1.5px; background: rgba(18, 26, 48, .55); border-radius: 1px; }
+
+/* styles.css .label */
+.label {
+  font-family: 'Marck Script', cursive; font-weight: 400;
+  font-size: 10.5px; letter-spacing: .22em; text-transform: uppercase;
+  color: rgba(35, 45, 70, .45);
+  text-shadow: 0 1px 0 rgba(255, 255, 255, .5);
+}
+
+/* IceCard.tsx (+ IcePlate.tsx). Rim colors are set inline per card. */
+.ice {
+  position: relative; overflow: hidden;
+  -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px);
+}
+.plate { position: absolute; inset: 0; border-radius: inherit; overflow: hidden; pointer-events: none; z-index: 0; }
+.plate > span { position: absolute; inset: 0; border-radius: inherit; display: block; }
+.plate .wash2 { mix-blend-mode: multiply; opacity: .55; }
+/* styles.css .ice-crackle */
+.crackle {
+  position: absolute; inset: 0; border-radius: inherit; pointer-events: none;
+  opacity: .55;
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='320' height='320'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.022' numOctaves='3' seed='7' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 1  0 0 0 0 1  0 0 0 0 1  0 0 0 1.4 -0.35'/></filter><rect width='100%25' height='100%25' filter='url(%23n)'/></svg>");
+  background-size: 240px 240px;
+  mix-blend-mode: overlay;
+}
+.icec { position: relative; z-index: 1; }
+
+/* ProbDot.tsx — colors inline per dot */
+.dot { border-radius: 50%; display: inline-block; flex: 0 0 auto; }
+
+/* GlassButton.tsx + styles.css .glass-btn (rest state) */
+.btn {
+  position: relative;
+  display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+  font-family: inherit; font-weight: 400; letter-spacing: -.005em;
+  color: rgba(18, 26, 48, .85);
+  text-shadow: 0 1px 0 rgba(255, 255, 255, .5);
+  background: rgba(64, 120, 215, .11);
+  border: 1px solid rgba(64, 120, 215, .38);
+  -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px);
+  border-radius: 8px;
+}
+.b-lg { padding: 12px 18px; font-size: 14px; }
+.b-md { padding: 10px 14px; font-size: 13px; }
+.b-sm { padding: 8px 12px; font-size: 12px; }
+.full { width: 100%; }
+.pill-on { background: rgba(255, 255, 255, .18); border-color: rgba(255, 255, 255, .6); }
+.danger { color: rgba(150, 40, 40, .88); }
+
+/* LinkAction.tsx */
+.lk {
+  font-size: 13px; font-weight: 400; letter-spacing: -.005em;
+  color: rgba(18, 26, 48, .78); text-decoration: none;
+  text-shadow: 0 1px 0 rgba(255, 255, 255, .55);
+}
+
+/* Neutral utility box (MatchContext / summary / Analytics Block / WalletSlot) */
+.box { border-radius: 8px; background: rgba(255, 255, 255, .06); border: 1px solid rgba(255, 255, 255, .22); }
+.box5 { border-radius: 8px; background: rgba(255, 255, 255, .05); border: 1px solid rgba(255, 255, 255, .22); }
+
+/* styles.css select.thin-glass (Settings provider select) */
+select.thin-glass {
+  appearance: none; -webkit-appearance: none;
+  width: 100%;
+  padding: 10px 32px 10px 12px;
+  font-family: inherit; font-size: 13px; font-weight: 400;
+  color: rgba(20, 30, 55, .85);
+  background: rgba(255, 255, 255, .08);
+  border: 1px solid rgba(255, 255, 255, .28);
+  border-radius: 8px;
+  -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px);
+  text-shadow: 0 1px 0 rgba(255, 255, 255, .45);
+}
+
+/* NeutralToggle.tsx (off state) */
+.tgl {
+  position: relative; width: 38px; height: 20px; border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, .28);
+  background: rgba(255, 255, 255, .08);
+  -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px);
+  flex: 0 0 auto;
+}
+.tgl .knob {
+  position: absolute; top: 2px; left: 2px; width: 14px; height: 14px; border-radius: 50%;
+  background: radial-gradient(circle at 30% 25%, #fff, rgba(255, 255, 255, .78));
+  border: .5px solid rgba(255, 255, 255, .95);
+  box-shadow: 0 1px 3px rgba(20, 30, 55, .25);
+}
+
+/* ThinSlider.tsx (static replica: track + fill + thumb) */
+.sl-track { position: relative; height: 18px; display: flex; align-items: center; }
+.sl-track .rail { position: absolute; left: 0; right: 0; height: 2px; border-radius: 2px; background: rgba(20, 30, 55, .10); box-shadow: inset 0 1px 1px rgba(20, 30, 55, .06); }
+.sl-track .fill { position: absolute; left: 0; height: 2px; border-radius: 2px; background: rgba(18, 26, 48, .45); }
+.sl-track .thumb {
+  position: absolute; width: 13px; height: 13px; border-radius: 50%;
+  background: radial-gradient(circle at 30% 25%, #fff 0%, rgba(255, 255, 255, .85) 60%, rgba(255, 255, 255, .55) 100%);
+  border: 1px solid rgba(255, 255, 255, .95);
+  box-shadow: 0 1px 3px rgba(20, 30, 55, .25), inset 0 1px 0 rgba(255, 255, 255, .9);
+  margin-left: -6.5px;
+}
