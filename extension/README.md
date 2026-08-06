@@ -262,7 +262,7 @@ extension/
 │   └── wrangler.toml.example  Step-by-step setup
 ├── public/
 │   ├── icon-{16,48,128}.png
-│   └── fonts/MarckScript-Regular.woff2   # from `npm run fonts:fetch`
+│   └── fonts/MarckScript-Regular-{latin,latin-ext,cyrillic}.woff2   # from `npm run fonts:fetch` (one file per subset — shipping only one was the 2026-08-02 Comic-Sans-fallback bug)
 ├── scripts/                   Offline matching + fonts:fetch (env-driven)
 └── docs/
     ├── privacy-policy.md
