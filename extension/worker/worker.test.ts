@@ -420,6 +420,61 @@ describe('upstream hosts', () => {
     expect(res.status).toBe(400)
     expect(spy).not.toHaveBeenCalled()
   })
+
+  it('every upstream proxy call carries an abort signal (bounded timeout, no hung requests)', async () => {
+    const spy = vi.fn(async (..._a: unknown[]) => new Response('{}', { status: 200 }))
+    vi.stubGlobal('fetch', spy)
+    await call('/history?market=0x1', baseEnv())
+    await call('/orderbook?token_id=0x1', baseEnv())
+    await call('/price?token_id=0x1', baseEnv())
+    await call('/markets', baseEnv())
+    await call('/clob/positions/0x1234567890123456789012345678901234567890', baseEnv())
+    for (const [, init] of spy.mock.calls) {
+      expect((init as RequestInit | undefined)?.signal).toBeInstanceOf(AbortSignal)
+    }
+  })
+})
+
+describe('/telemetry limits', () => {
+  function fakeTelemetry() {
+    const points: Array<{ indexes: string[]; blobs: string[]; doubles: number[] }> = []
+    const dataset = {
+      writeDataPoint: vi.fn((dp: { indexes: string[]; blobs: string[]; doubles: number[] }) => {
+        points.push(dp)
+      }),
+    } as unknown as AnalyticsEngineDataset
+    return { dataset, points }
+  }
+
+  it('drops (ok:true) an oversized body instead of erroring the client', async () => {
+    const res = await call('/telemetry', baseEnv(), {
+      method: 'POST',
+      body: JSON.stringify({ events: [{ event: 'x', meta: { big: 'y'.repeat(100 * 1024) } }] }),
+    })
+    expect(res.status).toBe(200)
+    expect(await res.json()).toEqual({ ok: true })
+  })
+
+  it("caps recorded events at Analytics Engine's own 250-per-invocation limit", async () => {
+    const { dataset } = fakeTelemetry()
+    const events = Array.from({ length: 400 }, (_, i) => ({ event: 'x', installId: 'i', ts: i }))
+    const res = await call('/telemetry', baseEnv({ TELEMETRY: dataset }), {
+      method: 'POST',
+      body: JSON.stringify({ events }),
+    })
+    expect(res.status).toBe(200)
+    expect(dataset.writeDataPoint).toHaveBeenCalledTimes(250)
+  })
+
+  it("truncates an oversized meta blob instead of letting it blow Analytics Engine's 16KB per-point blob limit", async () => {
+    const { dataset, points } = fakeTelemetry()
+    const hugeMeta = { note: 'z'.repeat(50 * 1024) }
+    await call('/telemetry', baseEnv({ TELEMETRY: dataset }), {
+      method: 'POST',
+      body: JSON.stringify({ events: [{ event: 'x', installId: 'i', meta: hugeMeta }] }),
+    })
+    expect(points[0]?.blobs[1]?.length).toBeLessThanOrEqual(16 * 1024)
+  })
 })
 
 describe('unhandled exceptions', () => {

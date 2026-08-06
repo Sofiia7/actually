@@ -114,3 +114,17 @@ export const DEFAULT_SETTINGS: Settings = {
 }
 
 export const POLYMARKET_BASE_URL = 'https://polymarket.com/event'
+
+/**
+ * Hard backstop on a single order's USD notional, enforced in trade.ts's
+ * placeOrder() (not just the UI — a belt-and-suspenders check, same spirit
+ * as the mcp-server's own MAX_ORDER_USD). A fat-fingered amount (typing
+ * "10000" instead of "100") still has to clear the wallet's own signing
+ * confirmation, but that confirmation doesn't reliably surface the USD
+ * notional in a way a user would actually notice mid-click. Mirrors the
+ * mcp-server's default of $100 for consistency across the product; there is
+ * deliberately no in-app toggle to raise it (same reasoning as the
+ * server-side control) — an operator who needs a higher ceiling edits this
+ * constant and rebuilds.
+ */
+export const MAX_ORDER_USD = 100

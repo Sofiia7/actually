@@ -187,15 +187,20 @@ export class SpendGuard {
    * (`<statePath>.lock`) — see acquireLock's doc comment. Without a
    * configured statePath there's nothing on disk for another process to
    * race against, so this just runs `fn` directly. If the lock can't be
-   * acquired within LOCK_MAX_WAIT_MS, `fn` still runs unlocked rather than
-   * blocking a real trade indefinitely — this narrows the cross-process
-   * race window, it does not eliminate it (see syncFromDisk's doc comment).
+   * acquired within LOCK_MAX_WAIT_MS, callers that pass `onLockFailed`
+   * (reserve()) get that fallback instead of `fn` running unlocked — for a
+   * real-money cap, proceeding without the lock is the dangerous direction
+   * (two processes could both pass the check and combined spend exceeds
+   * dailyLimitUsd). Callers that omit it (release()) still run `fn`
+   * unlocked best-effort, because failing to give budget back only makes
+   * the guard MORE conservative, never less — see release()'s doc comment.
    */
-  private withLock<T>(fn: () => T): T {
+  private withLock<T>(fn: () => T, onLockFailed?: () => T): T {
     const path = this.config.statePath
     if (!path) return fn()
     const lockPath = `${path}.lock`
     const locked = acquireLock(lockPath)
+    if (!locked && onLockFailed) return onLockFailed()
     try {
       return fn()
     } finally {
@@ -214,7 +219,13 @@ export class SpendGuard {
    * dailyLimitUsd. Call release() if the order ultimately doesn't go
    * through, to give the reserved budget back. Wrapped in withLock() so a
    * SEPARATE process doing the same read-modify-write can't interleave with
-   * this one either — see withLock's and acquireLock's doc comments.
+   * this one either — see withLock's and acquireLock's doc comments. If the
+   * lock can't be acquired within LOCK_MAX_WAIT_MS, this fails closed
+   * (`spend_guard_busy`) rather than committing the spend unlocked: for a
+   * real-money daily cap, running the check-and-commit without the
+   * cross-process lock is exactly the scenario the lock exists to prevent
+   * (two contending processes could both pass the check and jointly exceed
+   * dailyLimitUsd). The caller (an MCP tool call) can simply retry.
    */
   reserve(sizeUsd: number): SpendCheck {
     if (!Number.isFinite(sizeUsd) || sizeUsd <= 0) {
@@ -224,20 +235,23 @@ export class SpendGuard {
       // the rest of the UTC day.
       return { ok: false, error: 'invalid_size' }
     }
-    return this.withLock(() => {
-      this.rollDayIfNeeded()
-      this.syncFromDisk()
-      this.rollDayIfNeeded() // a peer process's on-disk day may be newer than ours
-      if (sizeUsd > this.config.maxOrderUsd) {
-        return { ok: false, error: `order_exceeds_max_usd:${this.config.maxOrderUsd}` }
-      }
-      if (this.daySpentUsd + sizeUsd > this.config.dailyLimitUsd) {
-        return { ok: false, error: `daily_limit_exceeded:${this.config.dailyLimitUsd}` }
-      }
-      this.daySpentUsd += sizeUsd
-      this.saveState()
-      return { ok: true, reservedDay: this.day }
-    })
+    return this.withLock(
+      () => {
+        this.rollDayIfNeeded()
+        this.syncFromDisk()
+        this.rollDayIfNeeded() // a peer process's on-disk day may be newer than ours
+        if (sizeUsd > this.config.maxOrderUsd) {
+          return { ok: false, error: `order_exceeds_max_usd:${this.config.maxOrderUsd}` }
+        }
+        if (this.daySpentUsd + sizeUsd > this.config.dailyLimitUsd) {
+          return { ok: false, error: `daily_limit_exceeded:${this.config.dailyLimitUsd}` }
+        }
+        this.daySpentUsd += sizeUsd
+        this.saveState()
+        return { ok: true, reservedDay: this.day }
+      },
+      () => ({ ok: false, error: 'spend_guard_busy' }),
+    )
   }
 
   /**

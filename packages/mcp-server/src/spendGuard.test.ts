@@ -156,15 +156,59 @@ describe('SpendGuard', () => {
     }
   })
 
-  it('proceeds without the lock (best-effort) rather than hanging a real trade forever if a live lock is held past the max wait', () => {
+  it('reserve() fails closed (spend_guard_busy) rather than committing spend unlocked if a live lock is held past the max wait', () => {
     const dir = mkdtempSync(join(tmpdir(), 'spend-guard-test-'))
     const statePath = join(dir, 'spend-guard.json')
     const lockPath = `${statePath}.lock`
     try {
       writeFileSync(lockPath, String(process.pid)) // a "live" holder (fresh mtime, never released)
       const guard = new SpendGuard({ maxOrderUsd: 100, dailyLimitUsd: 150, statePath })
+      const start = Date.now()
       const result = guard.reserve(50) // must still complete, not hang forever
-      expect(result.ok).toBe(true)
+      expect(result.ok).toBe(false)
+      expect(!result.ok && result.error).toBe('spend_guard_busy')
+      expect(Date.now() - start).toBeLessThan(10_000) // gave up at LOCK_MAX_WAIT_MS, did not hang
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  }, 10_000)
+
+  it('release() still proceeds unlocked (best-effort) if a live lock is held past the max wait — safe direction, unlike reserve()', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'spend-guard-test-'))
+    const statePath = join(dir, 'spend-guard.json')
+    const lockPath = `${statePath}.lock`
+    try {
+      const guard = new SpendGuard({ maxOrderUsd: 100, dailyLimitUsd: 150, statePath })
+      const reserved = guard.reserve(100)
+      expect(reserved.ok).toBe(true)
+
+      writeFileSync(lockPath, String(process.pid)) // a "live" holder (fresh mtime, never released)
+      guard.release(100, reserved.ok ? reserved.reservedDay : undefined) // must not hang or throw
+      rmSync(lockPath, { force: true })
+
+      // release() ran despite the held lock, so the budget was given back.
+      expect(guard.reserve(100).ok).toBe(true)
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  }, 10_000)
+
+  it('reserve() run concurrently from two processes cannot both pass check-and-commit when one loses the lock race', () => {
+    // Simulates the scenario spend_guard_busy exists for: two SpendGuard
+    // instances (as if two MCP server subprocesses) racing reserve() against
+    // the same statePath. The lock ensures only one of them can be mid-commit
+    // at a time; if the second can't get the lock in time it must fail
+    // closed, never silently commit unlocked past the daily cap.
+    const dir = mkdtempSync(join(tmpdir(), 'spend-guard-test-'))
+    const statePath = join(dir, 'spend-guard.json')
+    const lockPath = `${statePath}.lock`
+    try {
+      writeFileSync(lockPath, '999999') // simulates a peer process mid-reserve()
+      const guard = new SpendGuard({ maxOrderUsd: 100, dailyLimitUsd: 100, statePath })
+      const result = guard.reserve(100)
+      // Must not have committed against daySpentUsd while the peer held the lock.
+      expect(result.ok).toBe(false)
+      expect(!result.ok && result.error).toBe('spend_guard_busy')
     } finally {
       rmSync(dir, { recursive: true, force: true })
     }

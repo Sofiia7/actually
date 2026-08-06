@@ -11,7 +11,7 @@ import {
   resolveOrderToken,
   safeJsonArray,
 } from '@actually/core'
-import { DAILY_LIMIT_USD, MAX_ORDER_USD, PKG_VERSION, PRIVATE_KEY, REDEEM_ENABLED, SPEND_GUARD_STATE_PATH, requireWorkerConfig } from './config'
+import { BUILDER_CODE, DAILY_LIMIT_USD, MAX_ORDER_USD, PKG_VERSION, PRIVATE_KEY, REDEEM_ENABLED, SPEND_GUARD_STATE_PATH, requireWorkerConfig } from './config'
 import { WorkerMarketStore } from './marketStore'
 import { LocalEmbedder } from './embedder'
 import { SpendGuard } from './spendGuard'
@@ -107,6 +107,24 @@ server.registerTool(
 // per process, and one SpendGuard so a per-order and daily USD ceiling is
 // enforced across both buys and sells.
 if (PRIVATE_KEY) {
+  // BUILDER_CODE missing doesn't disable trading tools outright — cancel_order,
+  // get_open_orders, and get_positions never touch it and work fine without
+  // it. Only place_order/sell_order need it, and clobClient.ts's
+  // signBuyOrder/signMarketBuyOrder/signSellOrder already fail loudly
+  // (`builder_code_not_configured`) on first use rather than silently
+  // omitting attribution — so this is a diagnostics gap, not a silent-money
+  // risk. Still worth a clear signal at startup: an operator staring at
+  // "place_order keeps failing" has no reason to suspect a publish-time env
+  // var. console.error (not console.log) — stdout is reserved for the MCP
+  // JSON-RPC protocol over StdioServerTransport; writing there would corrupt it.
+  if (!BUILDER_CODE) {
+    console.error(
+      '[actually-mcp-server] POLYMARKET_PRIVATE_KEY is set but no builder code is baked into this build ' +
+        '(ACTUALLY_BUILDER_CODE was empty at publish time). place_order and sell_order will fail with ' +
+        'builder_code_not_configured until this build is republished with a builder code; ' +
+        'cancel_order/get_open_orders/get_positions are unaffected.',
+    )
+  }
   const session = makeTradingSession(PRIVATE_KEY)
   const spendGuard = new SpendGuard({
     maxOrderUsd: MAX_ORDER_USD,

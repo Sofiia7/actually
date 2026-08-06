@@ -13,8 +13,9 @@ vi.mock('./wallet', () => ({
   WCSigner: class {},
 }))
 
-import { disconnectWallet } from './trade'
+import { disconnectWallet, placeOrder } from './trade'
 import { getSettings, saveSettings } from './settings'
+import { MAX_ORDER_USD } from '../shared/constants'
 import type { WalletState } from './trade'
 
 const fakeState: WalletState = {
@@ -133,5 +134,31 @@ describe('disconnectWallet', () => {
     // not just assumed, and that disconnectWallet still works without it.
     expect(typeof indexedDB).toBe('undefined')
     await expect(disconnectWallet(fakeState)).resolves.toBeUndefined()
+  })
+})
+
+describe('placeOrder — MAX_ORDER_USD cap', () => {
+  // The cap is checked before any settings/geo/wallet work, so these need no
+  // extra mocking beyond what's already stubbed above for the module.
+  const baseArgs = {
+    state: fakeState,
+    tokenId: 'tok-1',
+    side: 'BUY_YES' as const,
+    price: 0.5,
+    negRisk: false,
+    orderType: 'MARKET' as const,
+  }
+
+  it('rejects an order above MAX_ORDER_USD without touching settings/geo/wallet', async () => {
+    const result = await placeOrder({ ...baseArgs, sizeUsd: MAX_ORDER_USD + 1 })
+    expect(result.ok).toBe(false)
+    expect(result.error).toBe(`order_exceeds_max_usd:${MAX_ORDER_USD}`)
+  })
+
+  it('does not reject an order exactly at MAX_ORDER_USD on the cap check itself', async () => {
+    // Worker isn't configured in this test env, so it still fails — but on
+    // worker_not_configured, proving the cap check itself let it through.
+    const result = await placeOrder({ ...baseArgs, sizeUsd: MAX_ORDER_USD })
+    expect(result.error).not.toContain('order_exceeds_max_usd')
   })
 })

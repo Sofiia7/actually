@@ -11,7 +11,7 @@ import { toneDark } from './colors'
 import type { OpenOrderSummary, Position, Settings as SettingsT } from '../shared/types'
 import type { MatchResult, PolyMarket } from '@actually/core'
 import type { SerializableWalletState } from '../shared/messages'
-import { GEO_FAIL_OPEN } from '../shared/constants'
+import { GEO_FAIL_OPEN, MAX_ORDER_USD } from '../shared/constants'
 import { findOutcomeIndex, shortHash } from '@actually/core'
 import { trackEvent } from '../background/telemetry'
 import type { GeoErrorReason } from '../background/geo'
@@ -635,10 +635,12 @@ const OrderFormWired: React.FC<OrderFormProps> = ({
 
   const limitInvalid = orderType === 'LIMIT' && !om.isValidTickPrice(limitPrice, tick)
   const noLiquidity = orderType === 'MARKET' && capPrice == null
+  const overOrderCap = sizeUsd > MAX_ORDER_USD
   const submitDisabled =
     submitting ||
     !tokenId ||
     sizeUsd <= 0 ||
+    overOrderCap ||
     limitInvalid ||
     noLiquidity ||
     (slippage != null && slippage > HARD_SLIPPAGE)
@@ -735,15 +737,21 @@ const OrderFormWired: React.FC<OrderFormProps> = ({
 
       {/* size */}
       <label style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-        <span className="label">Amount (USD)</span>
+        <span className="label">Amount (USD, max ${MAX_ORDER_USD})</span>
         <input
           type="number"
           min={1}
+          max={MAX_ORDER_USD}
           step={1}
           value={sizeUsd}
           onChange={(e) => setSizeUsd(Number(e.target.value))}
           className="thin-glass"
         />
+        {overOrderCap && (
+          <span style={{ fontSize: 11, color: '#E24B4A' }}>
+            Orders are capped at ${MAX_ORDER_USD} per trade.
+          </span>
+        )}
       </label>
 
       {/* summary */}

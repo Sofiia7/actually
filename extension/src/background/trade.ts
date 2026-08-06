@@ -17,7 +17,7 @@
  */
 import { OrderType, type ApiKeyCreds } from '@polymarket/clob-client-v2'
 import { deriveSafeAddress } from '@actually/core'
-import { BUILDER_CODE, GEO_FAIL_OPEN } from '../shared/constants'
+import { BUILDER_CODE, GEO_FAIL_OPEN, MAX_ORDER_USD } from '../shared/constants'
 import {
   cancelOrder as clobCancelOrder,
   deriveCredentials,
@@ -238,6 +238,12 @@ export interface OrderSubmitResult {
 }
 
 export async function placeOrder(args: PlaceOrderArgs): Promise<OrderSubmitResult> {
+  // Enforced here (not just the UI's `max` attribute/disabled state) — see
+  // MAX_ORDER_USD's doc comment. Checked before any network call so a
+  // fat-fingered amount fails immediately, not after a geo lookup.
+  if (args.sizeUsd > MAX_ORDER_USD) {
+    return { ok: false, error: `order_exceeds_max_usd:${MAX_ORDER_USD}` }
+  }
   const settings = await getSettings()
   if (!settings.workerUrl || !settings.workerSecret) {
     return { ok: false, error: 'worker_not_configured' }

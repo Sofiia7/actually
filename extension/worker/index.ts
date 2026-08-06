@@ -136,6 +136,30 @@ export const EMBED_LIMITS = {
   maxBodyBytes: 256 * 1024,
 } as const
 
+/**
+ * Input limits for the /telemetry route. `maxEvents` is capped at
+ * Analytics Engine's own hard limit — "a maximum of 250 data points per
+ * Worker invocation" (developers.cloudflare.com/analytics/analytics-engine/limits/)
+ * — not an arbitrary product choice: the old cap of 1000 let a client believe
+ * a whole batch was recorded (every event returns `{ ok: true }` per the
+ * "never error a client on telemetry" policy below) while everything past
+ * #250 silently failed writeDataPoint() and was swallowed by the per-event
+ * catch. `maxBodyBytes` guards the same way readBodyWithLimit already does
+ * for /embeddings and PUT /market-cache — parsing an unbounded body is real
+ * Worker compute/memory regardless of how many events end up used.
+ * `maxBlobBytes` mirrors Analytics Engine's own "combined blobs must not
+ * exceed 16 KB per data point" limit so a single oversized `meta` can't get
+ * silently dropped by writeDataPoint() the same way.
+ */
+export const TELEMETRY_LIMITS = {
+  maxBodyBytes: 64 * 1024,
+  maxEvents: 250,
+  maxBlobBytes: 16 * 1024,
+} as const
+
+/** Per-upstream-fetch timeout — see the `signal:` argument on every outbound fetch() below. */
+const UPSTREAM_TIMEOUT_MS = 10_000
+
 export type EmbeddingsValidation =
   | { ok: true; texts: string[]; model?: string; totalChars: number }
   | { ok: false; status: number; error: string }
@@ -416,7 +440,7 @@ export default {
         const params = url.searchParams.toString()
         const res = await fetch(
           `https://gamma-api.polymarket.com/markets?${params}`,
-          { headers: { Accept: 'application/json' } },
+          { headers: { Accept: 'application/json' }, signal: AbortSignal.timeout(UPSTREAM_TIMEOUT_MS) },
         )
         return new Response(await res.text(), { status: res.status, headers })
       }
@@ -427,7 +451,9 @@ export default {
           return json({ error: 'rate_limited' }, 429, headers)
         }
         const params = url.searchParams.toString()
-        const res = await fetch(`https://clob.polymarket.com/price?${params}`)
+        const res = await fetch(`https://clob.polymarket.com/price?${params}`, {
+          signal: AbortSignal.timeout(UPSTREAM_TIMEOUT_MS),
+        })
         return new Response(await res.text(), { status: res.status, headers })
       }
 
@@ -475,6 +501,7 @@ export default {
             model: 'text-embedding-3-small',
             input: v.texts,
           }),
+          signal: AbortSignal.timeout(UPSTREAM_TIMEOUT_MS),
         })
         if (!res.ok) {
           return json({ error: 'openai_failed', status: res.status }, 502, headers)
@@ -491,6 +518,7 @@ export default {
         const params = url.searchParams.toString()
         const res = await fetch(
           `https://clob.polymarket.com/book?${params}`,
+          { signal: AbortSignal.timeout(UPSTREAM_TIMEOUT_MS) },
         )
         return new Response(await res.text(), { status: res.status, headers })
       }
@@ -505,7 +533,7 @@ export default {
         // /prices-history 404s.) See https://docs.polymarket.com/api-reference/markets/get-prices-history
         const res = await fetch(
           `https://clob.polymarket.com/prices-history?${params}`,
-          { headers: { Accept: 'application/json' } },
+          { headers: { Accept: 'application/json' }, signal: AbortSignal.timeout(UPSTREAM_TIMEOUT_MS) },
         )
         return new Response(await res.text(), { status: res.status, headers })
       }
@@ -623,7 +651,7 @@ export default {
         let lastStatus = 0
         for (const u of candidates) {
           try {
-            const res = await fetch(u)
+            const res = await fetch(u, { signal: AbortSignal.timeout(UPSTREAM_TIMEOUT_MS) })
             lastStatus = res.status
             if (!res.ok) continue
             const data = (await res.json()) as Record<string, unknown>
@@ -665,7 +693,9 @@ export default {
         if (!/^0x[0-9a-f]{40}$/.test(addr)) {
           return json({ error: 'bad_address' }, 400, headers)
         }
-        const res = await fetch(`https://data-api.polymarket.com/positions?user=${addr}`)
+        const res = await fetch(`https://data-api.polymarket.com/positions?user=${addr}`, {
+          signal: AbortSignal.timeout(UPSTREAM_TIMEOUT_MS),
+        })
         if (!res.ok) {
           return json({ error: 'positions_fetch_failed', status: res.status }, 502, headers)
         }
@@ -678,20 +708,32 @@ export default {
         if (!(await rateLimit(env, 'telem', ip, 30))) {
           return json({ ok: true }, 200, headers) // silently drop
         }
+        // Same "reject oversized bodies before parsing" guard as /embeddings
+        // and PUT /market-cache — see readBodyWithLimit's doc comment.
+        const telemRaw = await readBodyWithLimit(req, TELEMETRY_LIMITS.maxBodyBytes)
+        if (telemRaw === null) {
+          return json({ ok: true }, 200, headers) // never error a client on telemetry — just drop it
+        }
         let telemBody: { events?: unknown[] }
         try {
-          telemBody = (await req.json()) as { events?: unknown[] }
+          telemBody = JSON.parse(telemRaw) as { events?: unknown[] }
         } catch {
           return json({ ok: true }, 200, headers) // never error a client on telemetry
         }
-        const events = Array.isArray(telemBody.events) ? telemBody.events.slice(0, 1000) : []
+        // Capped at Analytics Engine's own per-invocation writeDataPoint()
+        // limit (250) — see TELEMETRY_LIMITS' doc comment. Anything beyond
+        // this would previously fail server-side and be swallowed by the
+        // per-event catch below, silently under-counting the client's batch.
+        const events = Array.isArray(telemBody.events) ? telemBody.events.slice(0, TELEMETRY_LIMITS.maxEvents) : []
         if (env.TELEMETRY) {
           for (const e of events) {
             const ev = e as { event?: string; installId?: string; ts?: number; meta?: unknown }
             try {
+              const installIdBlob = String(ev.installId ?? '').slice(0, 128)
+              const metaBlob = JSON.stringify(ev.meta ?? {}).slice(0, TELEMETRY_LIMITS.maxBlobBytes)
               env.TELEMETRY.writeDataPoint({
-                indexes: [String(ev.event ?? 'unknown')],
-                blobs: [String(ev.installId ?? ''), JSON.stringify(ev.meta ?? {})],
+                indexes: [String(ev.event ?? 'unknown').slice(0, 96)],
+                blobs: [installIdBlob, metaBlob],
                 doubles: [typeof ev.ts === 'number' ? ev.ts : Date.now()],
               })
             } catch {
