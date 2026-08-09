@@ -1,3 +1,4 @@
+import { minOrderShares } from '@actually/core'
 import type { SpendGuardLike } from './placeOrder'
 
 export interface SellOrderInput {
@@ -11,6 +12,8 @@ export interface SellOrderInput {
   orderType: 'LIMIT' | 'MARKET'
   negRisk: boolean
   tickSize?: string
+  /** Market's minimum order size in shares; falls back to the platform default. */
+  minOrderSize?: number
   /**
    * The resolved market's own (cached or live) price for this outcome, when
    * the caller has it. Used ONLY to floor the spend-guard's notional
@@ -45,6 +48,15 @@ export interface SellOrderOutput {
 export async function sellOrder(deps: SellOrderDeps, input: SellOrderInput): Promise<SellOrderOutput> {
   if (!deps.privateKey) {
     return { ok: false, error: 'not_configured' }
+  }
+
+  // Same CLOB floor as place_order, but expressed directly here: a sell is
+  // already denominated in shares, so no price conversion is involved. A
+  // sub-minimum leftover position can't be sold at all — saying so up front
+  // beats a signature followed by an opaque CLOB rejection.
+  const minShares = minOrderShares(input.minOrderSize)
+  if (input.sizeShares < minShares) {
+    return { ok: false, error: `order_below_min_size:${minShares}` }
   }
 
   // Sells have no `sizeUsd` field (shares, not USD, is the natural close-a-

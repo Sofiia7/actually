@@ -12,7 +12,7 @@ import type { OpenOrderSummary, Position, Settings as SettingsT } from '../share
 import type { MatchResult, PolyMarket } from '@actually/core'
 import type { SerializableWalletState } from '../shared/messages'
 import { GEO_FAIL_OPEN, MAX_ORDER_USD } from '../shared/constants'
-import { findOutcomeIndex, shortHash } from '@actually/core'
+import { findOutcomeIndex, isBelowMinOrderSize, minOrderShares, minOrderUsd, shortHash } from '@actually/core'
 import { trackEvent } from '../background/telemetry'
 import type { GeoErrorReason } from '../background/geo'
 import { MarketAnalytics } from './trade/Analytics'
@@ -636,11 +636,21 @@ const OrderFormWired: React.FC<OrderFormProps> = ({
   const limitInvalid = orderType === 'LIMIT' && !om.isValidTickPrice(limitPrice, tick)
   const noLiquidity = orderType === 'MARKET' && capPrice == null
   const overOrderCap = sizeUsd > MAX_ORDER_USD
+
+  // CLOB's floor is on SHARES, not dollars, so the USD minimum moves with the
+  // price: $1 clears it at 15¢ and misses it at 31¢. Checked here because the
+  // rejection would otherwise land only AFTER the wallet signature.
+  const minShares = minOrderShares(match.market.minOrderSize)
+  const minUsd = activePrice != null ? minOrderUsd(activePrice, match.market.minOrderSize) : null
+  const belowMinSize =
+    activePrice != null && isBelowMinOrderSize(sizeUsd, activePrice, match.market.minOrderSize)
+
   const submitDisabled =
     submitting ||
     !tokenId ||
     sizeUsd <= 0 ||
     overOrderCap ||
+    belowMinSize ||
     limitInvalid ||
     noLiquidity ||
     (slippage != null && slippage > HARD_SLIPPAGE)
@@ -666,12 +676,15 @@ const OrderFormWired: React.FC<OrderFormProps> = ({
         price,
         negRisk: match.market.negRisk ?? false,
         tickSize: match.market.tickSize,
+        minOrderSize: match.market.minOrderSize,
         orderType,
         makerTaker,
       })
       setResult({
         ok: r.ok,
-        msg: r.ok ? `Order placed${r.orderId ? ` · ${r.orderId.slice(0, 10)}…` : ''}` : `Failed: ${r.error}`,
+        msg: r.ok
+          ? `Order placed${r.orderId ? ` · ${r.orderId.slice(0, 10)}…` : ''}`
+          : `Failed: ${humanError(r.error ?? 'unknown_error')}`,
         orderId: r.orderId,
       })
       if (r.ok) onPortfolioChanged?.()
@@ -690,20 +703,44 @@ const OrderFormWired: React.FC<OrderFormProps> = ({
     <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
       {/* order type */}
       <div style={{ display: 'flex', gap: 8 }}>
-        <GlassButton size="sm" full onClick={() => setOrderType('LIMIT')} style={sidePillStyle(orderType === 'LIMIT')}>
+        <GlassButton
+          size="sm"
+          full
+          selected={orderType === 'LIMIT'}
+          onClick={() => setOrderType('LIMIT')}
+          style={sidePillStyle(orderType === 'LIMIT')}
+        >
           Limit
         </GlassButton>
-        <GlassButton size="sm" full onClick={() => setOrderType('MARKET')} style={sidePillStyle(orderType === 'MARKET')}>
+        <GlassButton
+          size="sm"
+          full
+          selected={orderType === 'MARKET'}
+          onClick={() => setOrderType('MARKET')}
+          style={sidePillStyle(orderType === 'MARKET')}
+        >
           Market
         </GlassButton>
       </div>
 
       {/* side */}
       <div style={{ display: 'flex', gap: 8 }}>
-        <GlassButton size="md" full onClick={() => setSide('BUY_YES')} style={sidePillStyle(side === 'BUY_YES')}>
+        <GlassButton
+          size="md"
+          full
+          selected={side === 'BUY_YES'}
+          onClick={() => setSide('BUY_YES')}
+          style={sidePillStyle(side === 'BUY_YES')}
+        >
           BUY YES
         </GlassButton>
-        <GlassButton size="md" full onClick={() => setSide('BUY_NO')} style={sidePillStyle(side === 'BUY_NO')}>
+        <GlassButton
+          size="md"
+          full
+          selected={side === 'BUY_NO'}
+          onClick={() => setSide('BUY_NO')}
+          style={sidePillStyle(side === 'BUY_NO')}
+        >
           BUY NO
         </GlassButton>
       </div>
@@ -750,6 +787,11 @@ const OrderFormWired: React.FC<OrderFormProps> = ({
         {overOrderCap && (
           <span style={{ fontSize: 11, color: '#E24B4A' }}>
             Orders are capped at ${MAX_ORDER_USD} per trade.
+          </span>
+        )}
+        {!overOrderCap && belowMinSize && minUsd != null && (
+          <span style={{ fontSize: 11, color: '#E24B4A' }}>
+            Polymarket's minimum is {minShares} shares — at {fmtC(activePrice)} that's ${minUsd.toFixed(2)}.
           </span>
         )}
       </label>
@@ -977,14 +1019,64 @@ const ErrorBanner: React.FC<{ children: React.ReactNode }> = ({ children }) => (
   </div>
 )
 
-function sidePillStyle(active: boolean): React.CSSProperties {
+/**
+ * Segmented-pill styling for the order-type and side toggles.
+ *
+ * BOTH branches must set background AND borderColor explicitly. The inactive
+ * branch used to be `{}`, letting the pill fall through to `.glass-btn`'s own
+ * rest style — which was pure white until de73548 re-tinted it cold blue.
+ * From that commit on, the *unselected* pill was the one wearing the accent
+ * colour while the "active" white overlay vanished into the light panel, so
+ * the ticket showed BUY NO / Market as picked while it was really signing
+ * BUY YES / Limit. A toggle whose selected state is defined only as "whatever
+ * the base button isn't" inverts the moment the base button changes.
+ */
+export function sidePillStyle(active: boolean): React.CSSProperties {
   return active
-    ? { background: 'rgba(255,255,255,.18)', borderColor: 'rgba(255,255,255,.6)' }
-    : {}
+    ? {
+        background: 'rgba(64,120,215,.34)',
+        borderColor: 'rgba(64,120,215,.9)',
+        color: 'rgba(12,30,70,.98)',
+        fontWeight: 500,
+        boxShadow: 'inset 0 1px 0 rgba(255,255,255,.5), 0 1px 4px -1px rgba(20,60,140,.28)',
+      }
+    : {
+        background: 'rgba(255,255,255,.05)',
+        borderColor: 'rgba(35,45,70,.18)',
+        color: 'rgba(35,45,70,.55)',
+        boxShadow: 'none',
+      }
 }
 
 
+/**
+ * CLOB rejection reasons, now that submitSignedOrder actually forwards them
+ * (it used to flatten every non-2xx into a bare `clob_rejected`). Matched on
+ * substrings and case-insensitively because the exact wording comes from the
+ * CLOB and has drifted between versions — an unmatched reason still falls
+ * through to the raw text below, which is strictly better than the old
+ * "clob_rejected".
+ */
+const CLOB_ERROR_HINTS: Array<[RegExp, string]> = [
+  [/minimum (order )?size|min[_ ]size|order size.*(small|below)/i,
+    "Order is below Polymarket's minimum size for this market — raise the amount."],
+  [/not enough balance|insufficient (balance|funds)|allowance/i,
+    'Not enough USDC in your Polymarket account (or the allowance is unset). Top up at polymarket.com, then retry.'],
+  [/tick size|invalid price/i,
+    "Price isn't a valid tick for this market — adjust it and retry."],
+  [/not accepting orders|market not ready|market is closed|market closed/i,
+    "This market isn't accepting orders right now."],
+  [/fok order not filled|not filled/i,
+    "Couldn't fill the whole order at your cap price — the book moved. Try a limit order."],
+  [/clob_http_401|unauthorized|expired credentials|invalid api key/i,
+    'Your Polymarket session expired — disconnect and reconnect the wallet.'],
+  [/clob_http_429|rate limit/i, 'Polymarket is rate-limiting requests — wait a moment and retry.'],
+]
+
 function humanError(raw: string): string {
+  for (const [pattern, message] of CLOB_ERROR_HINTS) {
+    if (pattern.test(raw)) return message
+  }
   if (raw.includes('wc_project_id_missing')) return 'WalletConnect project ID not configured.'
   if (raw.includes('builder_code_not_configured')) return 'Builder code missing in build.'
   if (raw.includes('geo_blocked')) return 'Trading is not available in your region.'

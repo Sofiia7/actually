@@ -85,6 +85,8 @@ export interface OffscreenPlaceOrderArgs {
   negRisk: boolean
   /** Optional tick size override from the matched market (e.g. "0.001"). */
   tickSize?: string
+  /** Market's minimum order size in shares; falls back to the platform default. */
+  minOrderSize?: number
   /** LIMIT → GTC resting order at `price`; MARKET → FOK capped at `price`. */
   orderType: 'LIMIT' | 'MARKET'
   /** UI-derived maker/taker classification — telemetry only. */

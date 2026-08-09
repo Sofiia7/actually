@@ -230,4 +230,23 @@ describe('placeOrder — MAX_ORDER_USD cap', () => {
     const result = await placeOrder({ ...baseArgs, sizeUsd: MAX_ORDER_USD })
     expect(result.error).not.toContain('order_exceeds_max_usd')
   })
+
+  it("rejects an order under the market's minimum share count, before signing", async () => {
+    // $1 at 31¢ buys 3.22 shares — under CLOB's 5-share floor. Previously
+    // this reached the CLOB and came back as a bare `clob_rejected`, after
+    // the user had already signed it.
+    const result = await placeOrder({ ...baseArgs, price: 0.31, sizeUsd: 1 })
+    expect(result.ok).toBe(false)
+    expect(result.error).toBe('order_below_min_size:5')
+  })
+
+  it('lets the same amount through where the price clears the floor', async () => {
+    const result = await placeOrder({ ...baseArgs, price: 0.15, sizeUsd: 1 })
+    expect(result.error).not.toContain('order_below_min_size')
+  })
+
+  it("honours a per-market minimum when the market provides one", async () => {
+    const result = await placeOrder({ ...baseArgs, price: 0.5, sizeUsd: 5, minOrderSize: 20 })
+    expect(result.error).toBe('order_below_min_size:20')
+  })
 })

@@ -105,6 +105,102 @@ describe('TradeTabWired — wallet gating', () => {
   })
 })
 
+describe('TradeTabWired — selection is legible', () => {
+  // Regression guard for the inverted toggle: `sidePillStyle(false)` used to
+  // return {}, so the UNSELECTED pill inherited .glass-btn's blue accent while
+  // the "selected" white overlay disappeared into the panel. The ticket then
+  // read BUY NO / Market while it was signing BUY YES / Limit.
+  const ACCENT = '64,120,215'
+  // jsdom re-serializes colours as `rgba(64, 120, 215, 0.34)`; drop the
+  // whitespace so the channel match doesn't depend on that formatting.
+  const pillBg = (el: HTMLElement) =>
+    (el.style.background || el.style.backgroundColor).replace(/\s+/g, '')
+
+  function expectSelection(selectedName: string, otherName: string) {
+    const selected = screen.getByRole('button', { name: selectedName })
+    const other = screen.getByRole('button', { name: otherName })
+    expect(selected).toHaveAttribute('aria-pressed', 'true')
+    expect(other).toHaveAttribute('aria-pressed', 'false')
+    // Neither pill may fall through to the stylesheet's default look — that
+    // fall-through is what let a later restyle of .glass-btn invert the pair.
+    expect(pillBg(selected)).not.toBe('')
+    expect(pillBg(other)).not.toBe('')
+    // The accent belongs to the pill that is actually selected.
+    expect(pillBg(selected)).toContain(ACCENT)
+    expect(pillBg(other)).not.toContain(ACCENT)
+  }
+
+  it('highlights the order type that is really in effect', async () => {
+    opsm.restoreWalletViaOffscreen.mockResolvedValue(wallet)
+    render(<TradeTabWired {...props} />)
+    await screen.findByText('Orderbook')
+
+    // Default is LIMIT — and the form below agrees.
+    expect(screen.getByText(/Limit price \(per share/i)).toBeInTheDocument()
+    expectSelection('Limit', 'Market')
+
+    await userEvent.click(screen.getByRole('button', { name: 'Market' }))
+    expect(screen.getByText(/fills now, capped/i)).toBeInTheDocument()
+    expectSelection('Market', 'Limit')
+  })
+
+  it('highlights the side that will actually be bought', async () => {
+    opsm.restoreWalletViaOffscreen.mockResolvedValue(wallet)
+    render(<TradeTabWired {...props} />)
+    await screen.findByText('Orderbook')
+
+    expectSelection('BUY YES', 'BUY NO')
+    await userEvent.click(screen.getByRole('button', { name: 'BUY NO' }))
+    expectSelection('BUY NO', 'BUY YES')
+
+    // …and the side that is highlighted is the one that gets signed.
+    await waitFor(() => expect(screen.getByRole('button', { name: /Place limit order/i })).toBeEnabled())
+    await userEvent.click(screen.getByRole('button', { name: /Place limit order/i }))
+    await userEvent.click(screen.getByRole('button', { name: /Sign in wallet/i }))
+    await waitFor(() => expect(opsm.placeOrderViaOffscreen).toHaveBeenCalledOnce())
+    expect(opsm.placeOrderViaOffscreen.mock.calls[0][0]).toMatchObject({
+      side: 'BUY_NO',
+      tokenId: 'noTok',
+      orderType: 'LIMIT',
+    })
+  })
+})
+
+describe('TradeTabWired — minimum order size', () => {
+  it('blocks a below-minimum order before it costs a wallet signature', async () => {
+    opsm.restoreWalletViaOffscreen.mockResolvedValue(wallet)
+    render(<TradeTabWired {...props} />)
+    await screen.findByText('Orderbook')
+    await waitFor(() => expect(screen.getByRole('button', { name: /Place limit order/i })).toBeEnabled())
+
+    // $1 at the prefilled 42¢ ask buys 2.38 shares — under CLOB's 5-share
+    // floor, which is exactly the order that came back as `clob_rejected`.
+    const amount = screen.getByLabelText(/Amount \(USD/i)
+    fireEvent.change(amount, { target: { value: '1' } })
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /Place limit order/i })).toBeDisabled()
+    })
+    expect(screen.getByText(/minimum is 5 shares/i)).toBeInTheDocument()
+    expect(screen.getByText(/\$2\.10/)).toBeInTheDocument()
+    expect(opsm.placeOrderViaOffscreen).not.toHaveBeenCalled()
+  })
+
+  it('allows the order once the amount clears the share minimum', async () => {
+    opsm.restoreWalletViaOffscreen.mockResolvedValue(wallet)
+    render(<TradeTabWired {...props} />)
+    await screen.findByText('Orderbook')
+
+    const amount = screen.getByLabelText(/Amount \(USD/i)
+    fireEvent.change(amount, { target: { value: '2.10' } })
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /Place limit order/i })).toBeEnabled()
+    })
+    expect(screen.queryByText(/minimum is 5 shares/i)).toBeNull()
+  })
+})
+
 describe('TradeTabWired — order ticket', () => {
   it('toggles between Limit and Market', async () => {
     opsm.restoreWalletViaOffscreen.mockResolvedValue(wallet)

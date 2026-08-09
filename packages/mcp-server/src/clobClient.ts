@@ -154,6 +154,15 @@ export async function signMarketBuyOrder(client: ClobClient, args: MarketBuyOrde
 /**
  * Submit-only step. Posts a previously-signed order to CLOB. `orderType` must
  * match how the order was built: GTC for a resting limit, FOK for a market buy.
+ *
+ * Mirrors extension/src/background/clob.ts. Two distinct failure shapes have
+ * to be read: a *logical* rejection comes back HTTP 200 as
+ * `{ success: false, errorMsg }`, but a rejection the CLOB answers with a
+ * non-2xx status never sets either field — we don't enable `throwOnError`, so
+ * clob-client-v2's errorHandling() resolves it to `{ error, status }`.
+ * Reading only `errorMsg` collapsed every one of those (below-minimum size,
+ * insufficient balance/allowance, bad tick) into a bare "clob_rejected",
+ * leaving the calling agent nothing to act on.
  */
 export async function submitSignedOrder(
   client: ClobClient,
@@ -166,12 +175,33 @@ export async function submitSignedOrder(
     const res = (await client.postOrder(
       signed as Parameters<ClobClient['postOrder']>[0],
       orderType,
-    )) as { success?: boolean; errorMsg?: string; orderID?: string }
+    )) as
+      // `status` is typed `string` on the SDK's success shape (e.g. "matched"),
+      // but the axios-error shape puts the numeric HTTP status in the same
+      // field — hence the union.
+      | { success?: boolean; errorMsg?: string; orderID?: string; error?: unknown; status?: number | string }
+      | undefined
+    if (!res) return { success: false, error: 'empty_response' }
     if (res.success) return { success: true, orderId: res.orderID }
-    return { success: false, error: res.errorMsg ?? 'clob_rejected' }
+    return { success: false, error: clobErrorText(res) ?? 'clob_rejected' }
   } catch (err) {
     return { success: false, error: String(err) }
   }
+}
+
+/** Pull a human-meaningful reason out of either CLOB failure shape, or null
+ * when the response genuinely carries none. */
+function clobErrorText(res: {
+  errorMsg?: string
+  error?: unknown
+  status?: number | string
+}): string | null {
+  if (typeof res.errorMsg === 'string' && res.errorMsg.trim() !== '') return res.errorMsg
+  if (typeof res.error === 'string' && res.error.trim() !== '') return res.error
+  if (res.error !== undefined && res.error !== null) return JSON.stringify(res.error)
+  if (typeof res.status === 'number') return `clob_http_${res.status}`
+  if (typeof res.status === 'string' && res.status.trim() !== '') return `clob_status_${res.status}`
+  return null
 }
 
 export interface SellOrderArgs {

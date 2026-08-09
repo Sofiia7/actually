@@ -25,6 +25,8 @@ type RawGammaMarket = Partial<PolyMarket> & {
   orderPriceMinTickSize?: number | string
   tickSize?: number | string
   minimumTickSize?: number | string
+  orderMinSize?: number | string
+  minimum_order_size?: number | string
 }
 
 /** Normalize one raw Gamma market record into our `PolyMarket` shape. Returns
@@ -47,7 +49,17 @@ function parseGammaMarket(m: RawGammaMarket): PolyMarket | null {
     resolutionSource: m.resolutionSource ?? m.resolution_source,
     negRisk: m.negRisk ?? m.neg_risk ?? false,
     tickSize: normalizeTick(m.orderPriceMinTickSize ?? m.tickSize ?? m.minimumTickSize),
+    minOrderSize: normalizeMinOrderSize(m.orderMinSize ?? m.minimum_order_size),
   }
+}
+
+/** Gamma sends `orderMinSize` as a number, but has shipped it as a string
+ * before (same drift as the tick fields). Anything unusable becomes
+ * undefined so callers fall back to DEFAULT_MIN_ORDER_SHARES. */
+function normalizeMinOrderSize(raw: number | string | undefined): number | undefined {
+  if (raw === undefined || raw === null || raw === '') return undefined
+  const n = Number(raw)
+  return Number.isFinite(n) && n > 0 ? n : undefined
 }
 
 export async function fetchActiveMarkets(

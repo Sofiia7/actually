@@ -121,3 +121,45 @@ describe('sellOrder', () => {
     expect(releasedUsd).toBeCloseTo(12, 6)
   })
 })
+
+describe('sellOrder — minimum order size', () => {
+  it('rejects a sub-minimum share count before signing', async () => {
+    let signed = false
+    const result = await sellOrder(
+      {
+        privateKey: '0xabc',
+        signAndSubmit: async () => {
+          signed = true
+          return { success: true, orderId: 'x' }
+        },
+      },
+      {
+        marketId: 'm1',
+        tokenId: 'tok-yes',
+        side: 'SELL_YES',
+        sizeShares: 3,
+        price: 0.5,
+        orderType: 'LIMIT',
+        negRisk: false,
+      },
+    )
+    expect(result).toEqual({ ok: false, error: 'order_below_min_size:5' })
+    expect(signed).toBe(false)
+  })
+
+  it('allows a sell at exactly the minimum', async () => {
+    const result = await sellOrder(
+      { privateKey: '0xabc', signAndSubmit: async () => ({ success: true, orderId: 'ok' }) },
+      {
+        marketId: 'm1',
+        tokenId: 'tok-yes',
+        side: 'SELL_YES',
+        sizeShares: 5,
+        price: 0.5,
+        orderType: 'LIMIT',
+        negRisk: false,
+      },
+    )
+    expect(result).toEqual({ ok: true, orderId: 'ok' })
+  })
+})

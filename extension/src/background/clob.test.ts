@@ -1,10 +1,60 @@
 import { describe, expect, it } from 'vitest'
-import { cancelOrder } from './clob'
+import { cancelOrder, submitSignedOrder } from './clob'
 import type { ClobClient } from '@polymarket/clob-client-v2'
 
 function fakeClient(cancelOrderImpl: (payload: { orderID: string }) => Promise<unknown>): ClobClient {
   return { cancelOrder: cancelOrderImpl } as unknown as ClobClient
 }
+
+function fakePostClient(postOrderImpl: () => Promise<unknown>): ClobClient {
+  return { postOrder: postOrderImpl } as unknown as ClobClient
+}
+
+describe('submitSignedOrder', () => {
+  it('reports success and the order id', async () => {
+    const client = fakePostClient(async () => ({ success: true, orderID: '0xabc' }))
+    expect(await submitSignedOrder(client, {})).toEqual({ success: true, orderId: '0xabc' })
+  })
+
+  it('surfaces errorMsg from a 200-with-success:false rejection', async () => {
+    const client = fakePostClient(async () => ({ success: false, errorMsg: 'order is expired' }))
+    const r = await submitSignedOrder(client, {})
+    expect(r).toEqual({ success: false, error: 'order is expired' })
+  })
+
+  it('surfaces the reason from an HTTP-error response instead of a bare clob_rejected', async () => {
+    // The shape clob-client-v2's errorHandling() returns for a non-2xx POST
+    // when throwOnError is off: no `success`, no `errorMsg` — only `error` +
+    // `status`. Reading just `errorMsg` here is what turned every real CLOB
+    // rejection ("below minimum size", "not enough balance") into an
+    // undiagnosable "Failed: clob_rejected".
+    const client = fakePostClient(async () => ({ error: 'invalid order minimum size', status: 400 }))
+    const r = await submitSignedOrder(client, {})
+    expect(r.success).toBe(false)
+    expect(r.error).toBe('invalid order minimum size')
+  })
+
+  it('stringifies a structured error body', async () => {
+    const client = fakePostClient(async () => ({ error: { code: 'INVALID_ORDER_MIN_SIZE' }, status: 400 }))
+    const r = await submitSignedOrder(client, {})
+    expect(r.success).toBe(false)
+    expect(r.error).toContain('INVALID_ORDER_MIN_SIZE')
+  })
+
+  it('falls back to clob_rejected only when the response carries no reason at all', async () => {
+    const client = fakePostClient(async () => ({ success: false }))
+    expect(await submitSignedOrder(client, {})).toEqual({ success: false, error: 'clob_rejected' })
+  })
+
+  it('reports failure when the SDK call throws', async () => {
+    const client = fakePostClient(async () => {
+      throw new Error('network_error')
+    })
+    const r = await submitSignedOrder(client, {})
+    expect(r.success).toBe(false)
+    expect(r.error).toContain('network_error')
+  })
+})
 
 describe('cancelOrder', () => {
   it('reports success when the orderId is in the canceled array', async () => {

@@ -1,3 +1,5 @@
+import { isBelowMinOrderSize, minOrderShares } from '@actually/core'
+
 export interface PlaceOrderInput {
   marketId: string
   tokenId: string
@@ -8,6 +10,8 @@ export interface PlaceOrderInput {
   orderType: 'LIMIT' | 'MARKET'
   negRisk: boolean
   tickSize?: string
+  /** Market's minimum order size in shares; falls back to the platform default. */
+  minOrderSize?: number
 }
 
 export interface SignAndSubmitResult {
@@ -56,6 +60,14 @@ export interface PlaceOrderOutput {
 export async function placeOrder(deps: PlaceOrderDeps, input: PlaceOrderInput): Promise<PlaceOrderOutput> {
   if (!deps.privateKey) {
     return { ok: false, error: 'not_configured' }
+  }
+
+  // CLOB refuses anything under the market's minimum order size, and that
+  // floor is on SHARES — so it moves with price ($1 clears it at 15¢, misses
+  // it at 31¢). Checked before reserve() so a doomed order neither burns
+  // budget nor comes back as an opaque CLOB rejection the agent can't act on.
+  if (isBelowMinOrderSize(input.sizeUsd, input.price, input.minOrderSize)) {
+    return { ok: false, error: `order_below_min_size:${minOrderShares(input.minOrderSize)}` }
   }
 
   let reservedDay: string | undefined

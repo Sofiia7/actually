@@ -8,6 +8,12 @@ export interface GlassButtonProps {
   danger?: boolean;
   disabled?: boolean;
   style?: React.CSSProperties;
+  /**
+   * Set on buttons used as a segmented toggle (order type, BUY YES / BUY NO).
+   * Renders `aria-pressed`, so the selected state is exposed to assistive
+   * tech and to tests instead of living only in a colour difference.
+   */
+  selected?: boolean;
 }
 
 /**
@@ -23,6 +29,7 @@ export const GlassButton: React.FC<GlassButtonProps> = ({
   danger = false,
   disabled = false,
   style,
+  selected,
 }) => {
   const pad =
     size === 'lg' ? '12px 18px' : size === 'sm' ? '8px 12px' : '10px 14px';
@@ -35,6 +42,7 @@ export const GlassButton: React.FC<GlassButtonProps> = ({
       className="glass-btn"
       onClick={onClick}
       disabled={disabled}
+      aria-pressed={selected}
       style={{
         width: full ? '100%' : 'auto',
         padding: pad,

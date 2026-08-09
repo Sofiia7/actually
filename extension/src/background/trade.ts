@@ -16,7 +16,7 @@
  * service worker.
  */
 import { OrderType, type ApiKeyCreds } from '@polymarket/clob-client-v2'
-import { deriveSafeAddress } from '@actually/core'
+import { deriveSafeAddress, isBelowMinOrderSize, minOrderShares, orderShares } from '@actually/core'
 import { BUILDER_CODE, GEO_FAIL_OPEN, MAX_ORDER_USD } from '../shared/constants'
 import {
   cancelOrder as clobCancelOrder,
@@ -251,6 +251,8 @@ export interface PlaceOrderArgs {
   negRisk: boolean
   /** Exact tick size from the matched market; falls back to negRisk default. */
   tickSize?: string
+  /** Market's minimum order size in shares; falls back to the platform default. */
+  minOrderSize?: number
   /** LIMIT → GTC resting order; MARKET → FOK capped at `price`. */
   orderType: 'LIMIT' | 'MARKET'
   /** UI-derived maker/taker classification — telemetry only. */
@@ -269,6 +271,13 @@ export async function placeOrder(args: PlaceOrderArgs): Promise<OrderSubmitResul
   // fat-fingered amount fails immediately, not after a geo lookup.
   if (args.sizeUsd > MAX_ORDER_USD) {
     return { ok: false, error: `order_exceeds_max_usd:${MAX_ORDER_USD}` }
+  }
+  // The mirror of the cap: CLOB refuses anything under the market's minimum
+  // order size, and that floor is on SHARES, so it moves with price. The UI
+  // blocks this too, but only this path is guaranteed to run before we ask
+  // the user for a signature they'd otherwise spend on a doomed order.
+  if (isBelowMinOrderSize(args.sizeUsd, args.price, args.minOrderSize)) {
+    return { ok: false, error: `order_below_min_size:${minOrderShares(args.minOrderSize)}` }
   }
   const settings = await getSettings()
   if (!settings.workerUrl || !settings.workerSecret) {
@@ -312,7 +321,8 @@ export async function placeOrder(args: PlaceOrderArgs): Promise<OrderSubmitResul
       })
     } else {
       // Convert USD notional → shares the user receives if filled at `price`.
-      const size = Math.floor((args.sizeUsd / args.price) * 100) / 100
+      // Shared with the minimum-size guard above so the two can't drift.
+      const size = orderShares(args.sizeUsd, args.price)
       signed = await signBuyOrder(client, {
         tokenId: args.tokenId,
         price: args.price,

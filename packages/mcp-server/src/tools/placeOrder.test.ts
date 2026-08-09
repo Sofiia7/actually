@@ -112,3 +112,55 @@ describe('placeOrder', () => {
     expect(releasedUsd).toBe(25)
   })
 })
+
+describe('placeOrder — minimum order size', () => {
+  const base = {
+    marketId: 'm1',
+    tokenId: 'tok-yes',
+    side: 'BUY_YES' as const,
+    orderType: 'LIMIT' as const,
+    negRisk: false,
+  }
+
+  it('rejects a below-minimum order without signing or reserving budget', async () => {
+    let signed = false
+    let reserved = false
+    const result = await placeOrder(
+      {
+        privateKey: '0xabc',
+        signAndSubmit: async () => {
+          signed = true
+          return { success: true, orderId: 'x' }
+        },
+        spendGuard: {
+          reserve: () => {
+            reserved = true
+            return { ok: true as const }
+          },
+          release: () => {},
+        },
+      },
+      // $1 at 31¢ buys 3.22 shares — under CLOB's 5-share floor.
+      { ...base, sizeUsd: 1, price: 0.31 },
+    )
+    expect(result).toEqual({ ok: false, error: 'order_below_min_size:5' })
+    expect(signed).toBe(false)
+    expect(reserved).toBe(false)
+  })
+
+  it('allows the same dollar amount at a price where it clears the floor', async () => {
+    const result = await placeOrder(
+      { privateKey: '0xabc', signAndSubmit: async () => ({ success: true, orderId: 'ok' }) },
+      { ...base, sizeUsd: 1, price: 0.15 }, // 6.66 shares
+    )
+    expect(result).toEqual({ ok: true, orderId: 'ok' })
+  })
+
+  it('honours a per-market minimum from the resolved market', async () => {
+    const result = await placeOrder(
+      { privateKey: '0xabc', signAndSubmit: async () => ({ success: true, orderId: 'ok' }) },
+      { ...base, sizeUsd: 5, price: 0.5, minOrderSize: 20 }, // 10 shares < 20
+    )
+    expect(result).toEqual({ ok: false, error: 'order_below_min_size:20' })
+  })
+})

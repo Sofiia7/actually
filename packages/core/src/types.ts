@@ -24,6 +24,12 @@ export interface PolyMarket {
    * value prevents CLOB from rejecting orders with `invalid_tick`.
    */
   tickSize?: string
+  /**
+   * Minimum order size in SHARES (Gamma's `orderMinSize`, mirroring CLOB's
+   * `minimum_order_size`). Absent on records that predate this field —
+   * callers fall back to DEFAULT_MIN_ORDER_SHARES (see ./orderSize).
+   */
+  minOrderSize?: number
 }
 
 export interface CachedMarket extends PolyMarket {

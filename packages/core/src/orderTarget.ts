@@ -7,6 +7,8 @@ export interface OrderTarget {
   tokenId: string
   negRisk: boolean
   tickSize?: string
+  /** Market's minimum order size in shares (see ./orderSize). */
+  minOrderSize?: number
 }
 
 /**
@@ -35,5 +37,10 @@ export function resolveOrderToken(market: PolyMarket, outcome: Outcome): OrderTa
   if (!tokenId) {
     throw new Error(`market_missing_token_for_outcome:${outcome}`)
   }
-  return { tokenId, negRisk: market.negRisk ?? false, tickSize: market.tickSize }
+  return {
+    tokenId,
+    negRisk: market.negRisk ?? false,
+    tickSize: market.tickSize,
+    minOrderSize: market.minOrderSize,
+  }
 }

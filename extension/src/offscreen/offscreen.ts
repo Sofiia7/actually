@@ -299,6 +299,7 @@ async function handle(msg: OffscreenRequest): Promise<OffscreenResponse> {
         price: msg.args.price,
         negRisk: msg.args.negRisk,
         tickSize: msg.args.tickSize,
+        minOrderSize: msg.args.minOrderSize,
         orderType: msg.args.orderType,
         makerTaker: msg.args.makerTaker,
       })
