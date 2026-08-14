@@ -40,9 +40,19 @@ export async function getSignClient(): Promise<WCSignClient> {
     throw new Error('wc_project_id_missing')
   }
   if (!clientPromise) {
+    // Drop the cached promise if init fails. Without this, one transient
+    // failure (relay unreachable while the laptop's network comes back, or
+    // the offscreen document being torn down mid-init) leaves a permanently
+    // rejected promise in the module cache — and then EVERY later call, in
+    // this document's whole lifetime, re-throws that same stale error. The
+    // user sees a wallet that can never reconnect until Chrome recycles the
+    // offscreen document.
     clientPromise = SignClient.init({
       projectId: WC_PROJECT_ID,
       metadata: WC_METADATA,
+    }).catch((err) => {
+      clientPromise = null
+      throw err
     })
   }
   return clientPromise
@@ -53,23 +63,70 @@ export interface ActiveSession {
   address: string // EOA, lowercased
 }
 
+function sessionAddress(s: { namespaces: { eip155?: { accounts?: string[] } } }): string | undefined {
+  const account = s.namespaces.eip155?.accounts?.[0] // "eip155:137:0xABC..."
+  return account?.split(':')[2]?.toLowerCase()
+}
+
 /**
- * Returns the most recently active session if one exists. Used on popup open
- * to restore a previously connected wallet without re-prompting.
+ * Look up the live WC session, preferring the exact topic the caller already
+ * has stored.
+ *
+ * `preferredTopic` is the whole point of this function. Nothing prunes WC
+ * sessions on the wallet's side, so a user who has connected more than once
+ * has several live sessions at the same time. Picking "the one with the
+ * furthest expiry" — as this used to, unconditionally — then returns an
+ * arbitrary one of them, which the caller reads as "you're connected to a
+ * different wallet now". Ask for our own topic first; fall back to
+ * furthest-expiry only when the caller has no topic to ask for (a cold
+ * lookup with nothing in storage).
  */
-export async function restoreSession(): Promise<ActiveSession | null> {
+export async function restoreSession(preferredTopic?: string): Promise<ActiveSession | null> {
   if (!WC_PROJECT_ID) return null
   const client = await getSignClient()
   const sessions = client.session.getAll()
   if (sessions.length === 0) return null
-  // Newest first — WC v2 returns them in roughly creation order; we sort
-  // defensively in case the order changes.
-  const sorted = [...sessions].sort((a, b) => b.expiry - a.expiry)
-  const s = sorted[0]
-  const account = s.namespaces.eip155?.accounts?.[0] // "eip155:137:0xABC..."
-  const address = account?.split(':')[2]?.toLowerCase()
+
+  const preferred = preferredTopic ? sessions.find((s) => s.topic === preferredTopic) : undefined
+  // Sorted defensively — WC v2 returns sessions in roughly creation order.
+  const s = preferred ?? [...sessions].sort((a, b) => b.expiry - a.expiry)[0]
+  const address = sessionAddress(s)
   if (!address) return null
   return { topic: s.topic, address }
+}
+
+/**
+ * Disconnect every live session except `keepTopic`, and report how many were
+ * dropped.
+ *
+ * Called right after a successful connect. Each connect leaves the previous
+ * session live on the relay, and that pile-up is what made session lookup
+ * ambiguous in the first place — one session in the store means there is
+ * nothing to pick wrong. Best-effort per session: a relay that won't take the
+ * teardown must not fail the connect the user just completed.
+ */
+export async function pruneOtherSessions(keepTopic: string): Promise<number> {
+  if (!WC_PROJECT_ID) return 0
+  let dropped = 0
+  try {
+    const client = await getSignClient()
+    const stale = client.session.getAll().filter((s) => s.topic !== keepTopic)
+    for (const s of stale) {
+      try {
+        await client.disconnect({
+          topic: s.topic,
+          reason: { code: 6000, message: 'superseded_by_new_session' },
+        })
+        dropped++
+      } catch {
+        // Best-effort — see above.
+      }
+    }
+  } catch {
+    // Client unavailable — nothing to prune, and definitely not worth
+    // failing the connect over.
+  }
+  return dropped
 }
 
 export interface ConnectStart {

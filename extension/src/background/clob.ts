@@ -81,23 +81,52 @@ export function makeClient({
  * CLOB API key/secret/passphrase that authenticates all subsequent order
  * submissions for this EOA.
  *
- * SDK method names have drifted across versions. We probe the union of known
- * shapes (`createOrDeriveApiKey`, `deriveApiKey`, `createApiKey`) so a minor
- * SDK bump doesn't silently break onboarding. Whichever method exists is
- * called; all are expected to return ApiKeyCreds.
+ * DERIVE IS TRIED FIRST, AND THE ORDER IS THE POINT. Each of these SDK calls
+ * builds L1 auth headers, and building them costs one `eth_signTypedData_v4`
+ * — i.e. one wallet prompt the user has to approve. The SDK's own
+ * `createOrDeriveApiKey` helper POSTs *create* first and only falls back to
+ * derive when that comes back without a key. But create fails for any address
+ * that already has a CLOB key — which is everyone who has ever connected
+ * before, here or on polymarket.com — so the helper's normal path is
+ * create-then-derive: two prompts, every single connect, for the same one
+ * credential. Derive alone succeeds for those users in one prompt, and a
+ * genuinely new key still gets created by the fallback below.
+ *
+ * The list is also why method names are probed rather than called directly:
+ * they have drifted across SDK versions, so a minor bump can't silently break
+ * onboarding.
  */
 export async function deriveCredentials(
   client: ClobClient,
 ): Promise<ApiKeyCreds> {
-  const c = client as unknown as Record<string, undefined | ((this: ClobClient) => Promise<ApiKeyCreds>)>
-  const fn =
-    c.createOrDeriveApiKey ??
-    c.deriveApiKey ??
-    c.createApiKey
-  if (typeof fn !== 'function') {
+  type KeyFn = (this: ClobClient) => Promise<ApiKeyCreds>
+  const c = client as unknown as Record<string, undefined | KeyFn>
+  const attempts: Array<{ name: string; fn: KeyFn }> = []
+  for (const name of ['deriveApiKey', 'createApiKey', 'createOrDeriveApiKey']) {
+    const fn = c[name]
+    if (typeof fn === 'function') attempts.push({ name, fn })
+  }
+
+  if (attempts.length === 0) {
     throw new Error('clob_sdk_missing_api_key_method')
   }
-  return fn.call(client)
+
+  const failures: string[] = []
+  for (const { name, fn } of attempts) {
+    let creds: ApiKeyCreds | undefined
+    try {
+      creds = await fn.call(client)
+    } catch (err) {
+      failures.push(`${name}:${err instanceof Error ? err.message : String(err)}`)
+      continue
+    }
+    // A non-2xx resolves to an error object rather than throwing (we don't
+    // set the SDK's `throwOnError`), so "returned something" is not the same
+    // as "returned credentials" — check the fields we actually need.
+    if (creds?.key && creds.secret && creds.passphrase) return creds
+    failures.push(`${name}:empty_credentials`)
+  }
+  throw new Error(`clob_api_key_failed:${failures.join('; ')}`)
 }
 
 export async function fetchOrderBook(

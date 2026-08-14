@@ -29,12 +29,13 @@ import {
   signMarketBuyOrder,
   submitSignedOrder,
 } from './clob'
-import type { OpenOrderSummary } from '../shared/types'
+import type { OpenOrderSummary, Settings } from '../shared/types'
 import {
   type ActiveSession,
   WCSigner,
   disconnect as wcDisconnect,
   resetSignClient,
+  pruneOtherSessions,
   restoreSession,
   startConnect,
 } from './wallet'
@@ -52,6 +53,27 @@ export interface WalletState {
 export interface ConnectCallbacks {
   onUri: (uri: string) => void
   onApproved?: (session: ActiveSession) => void
+}
+
+/**
+ * Credentials already stored for `address`, or null.
+ *
+ * CLOB API credentials are derived deterministically from a signature by the
+ * address that owns them, so the ones on disk stay valid for that address
+ * across any number of WalletConnect sessions. Reconnecting the same wallet
+ * therefore does not need a fresh derivation — and skipping it removes a
+ * whole wallet-signature prompt from the reconnect flow.
+ */
+function reusableCreds(
+  settings: Pick<Settings, 'walletAddress' | 'clobApiKey' | 'clobApiSecret' | 'clobApiPassphrase'>,
+  address: string,
+): ApiKeyCreds | null {
+  if (!settings.walletAddress || settings.walletAddress.toLowerCase() !== address.toLowerCase()) {
+    return null
+  }
+  const { clobApiKey, clobApiSecret, clobApiPassphrase } = settings
+  if (!clobApiKey || !clobApiSecret || !clobApiPassphrase) return null
+  return { key: clobApiKey, secret: clobApiSecret, passphrase: clobApiPassphrase }
 }
 
 /**
@@ -100,15 +122,25 @@ export async function connectWallet(cb: ConnectCallbacks): Promise<WalletState> 
     throw err
   }
 
-  // 3. Resolve user's Polymarket Safe (funder)
+  // 3. Drop any session this connect superseded. Nothing on the wallet side
+  //    expires them promptly, and a store holding several live sessions is
+  //    what makes "which one is mine?" ambiguous on every later restore.
+  await pruneOtherSessions(session.topic)
+
+  // 4. Resolve user's Polymarket Safe (funder)
   const safeAddress = deriveSafeAddress(session.address)
 
-  // 4. Derive CLOB API credentials (one-time signature)
+  // 5. CLOB API credentials. Reuse the ones already stored for this exact
+  //    address instead of re-deriving: derivation costs a wallet signature,
+  //    and the credentials are a pure function of the address, so a
+  //    reconnect of the same wallet does not need a new one. Only a
+  //    different address (or nothing stored yet) pays that prompt.
   const signer = new WCSigner(session.topic, session.address)
   const client = makeClient({ signer, funderAddress: safeAddress })
-  const creds = await deriveCredentials(client)
+  const creds =
+    reusableCreds(settings, session.address) ?? (await deriveCredentials(client))
 
-  // 5. Persist everything for next popup open
+  // 6. Persist everything for next popup open
   await saveSettings({
     wcSessionTopic: session.topic,
     walletAddress: session.address,
@@ -150,31 +182,30 @@ export async function restoreWallet(): Promise<WalletState | null> {
   ) {
     return null
   }
-  const session = await restoreSession()
-  if (!session) {
-    // restoreSession() found no active WC session at all. This is
-    // deliberately NOT treated as "definitely disconnected, wipe stored
-    // creds" — a fresh SignClient (e.g. right after the offscreen document
-    // was recreated) can transiently report zero sessions for a moment
-    // before its own persisted store finishes loading, and a single
-    // missed lookup must not permanently destroy a connection that would
-    // have restored fine on the very next call. Report "not restorable
-    // right now" without touching storage; a caller that needs certainty
-    // (the explicit "Disconnect & wipe" button) clears storage itself.
+  // Ask for OUR topic by name rather than "whichever session looks newest".
+  const session = await restoreSession(s.wcSessionTopic)
+  if (!session || session.topic !== s.wcSessionTopic) {
+    // Either no session came back at all, or ours specifically isn't in the
+    // store right now.
+    //
+    // NEITHER wipes storage. A fresh SignClient (right after the offscreen
+    // document was recreated — MV3 evicts it during any idle stretch, e.g.
+    // while the user reads the article) can report zero sessions, or a
+    // partially-hydrated subset, for a moment before its own IndexedDB store
+    // finishes loading. Treating that as "you connected a different wallet"
+    // and clearing the API credentials is what turned an ordinary popup
+    // reopen into "connect again, scan again, sign again" — and because the
+    // reconnect left the old session live too, the next lookup was even more
+    // ambiguous than the last. Report "not restorable right now" and let the
+    // next call succeed; the only thing that clears credentials is the user
+    // pressing Disconnect, or a completed connect overwriting them.
     return null
   }
-  if (session.topic !== s.wcSessionTopic) {
-    // A DIFFERENT session now exists in place of the one we had stored —
-    // an actual, positive signal of staleness (not just a failed lookup),
-    // so clearing here is safe.
-    await saveSettings({
-      wcSessionTopic: undefined,
-      walletAddress: undefined,
-      safeAddress: undefined,
-      clobApiKey: undefined,
-      clobApiSecret: undefined,
-      clobApiPassphrase: undefined,
-    })
+  if (session.address.toLowerCase() !== s.walletAddress.toLowerCase()) {
+    // Same topic, different account selected in the wallet. The stored CLOB
+    // credentials belong to the old address and must not be used to sign for
+    // the new one — but they're still valid for their own address, so this
+    // reports "reconnect needed" without destroying them either.
     return null
   }
   return {

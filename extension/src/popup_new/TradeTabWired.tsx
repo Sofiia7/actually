@@ -128,6 +128,16 @@ export const TradeTabWired: React.FC<TradeTabWiredProps> = ({
       // hiccup) must not read as "you have no positions" — keep whatever we
       // last knew and surface the error instead of silently clearing it.
       const errors = [!pRes.ok ? pRes.error : null, !oRes.ok ? oRes.error : null].filter(Boolean) as string[]
+      if (errors.some((e) => e === 'no_wallet')) {
+        // The offscreen side says there is no usable session, while this
+        // component is still rendering a full order ticket from the wallet it
+        // restored on mount. That split is what produced a popup where every
+        // control was live but every action answered `no_wallet` — surface
+        // the truth and fall back to the Connect panel instead.
+        setWallet(null)
+        setPortfolioError(null)
+        return
+      }
       if (errors.length > 0) {
         setPortfolioError(errors.join('; '))
       } else {

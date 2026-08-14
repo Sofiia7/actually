@@ -1,6 +1,74 @@
-import { describe, expect, it } from 'vitest'
-import { cancelOrder, submitSignedOrder } from './clob'
+import { describe, expect, it, vi } from 'vitest'
+import { cancelOrder, deriveCredentials, submitSignedOrder } from './clob'
 import type { ClobClient } from '@polymarket/clob-client-v2'
+
+const creds = { key: 'k', secret: 's', passphrase: 'p' }
+
+describe('deriveCredentials — one wallet prompt, not two', () => {
+  it('derives first and never calls create when the address already has a key', async () => {
+    // Every one of these SDK calls builds L1 auth headers, and that costs one
+    // eth_signTypedData_v4 — a wallet prompt the user must approve. The SDK's
+    // createOrDeriveApiKey POSTs create first, which fails for any address
+    // that already has a CLOB key (i.e. every returning user) and only then
+    // derives: two prompts for one credential, on every single connect.
+    const deriveApiKey = vi.fn(async () => creds)
+    const createApiKey = vi.fn(async () => creds)
+    const createOrDeriveApiKey = vi.fn(async () => creds)
+    const client = { deriveApiKey, createApiKey, createOrDeriveApiKey } as unknown as ClobClient
+
+    expect(await deriveCredentials(client)).toEqual(creds)
+    expect(deriveApiKey).toHaveBeenCalledTimes(1)
+    expect(createApiKey).not.toHaveBeenCalled()
+    expect(createOrDeriveApiKey).not.toHaveBeenCalled()
+  })
+
+  it('falls back to create for a brand-new key, when derive has nothing to derive', async () => {
+    // A non-2xx resolves to an error object rather than throwing (we don't
+    // set the SDK's throwOnError), so "returned something" ≠ "returned
+    // credentials".
+    const deriveApiKey = vi.fn(async () => ({ error: 'no api key exists' }) as never)
+    const createApiKey = vi.fn(async () => creds)
+    const client = { deriveApiKey, createApiKey } as unknown as ClobClient
+
+    expect(await deriveCredentials(client)).toEqual(creds)
+    expect(deriveApiKey).toHaveBeenCalledTimes(1)
+    expect(createApiKey).toHaveBeenCalledTimes(1)
+  })
+
+  it('falls back when derive throws outright', async () => {
+    const client = {
+      deriveApiKey: vi.fn(async () => {
+        throw new Error('derive_boom')
+      }),
+      createApiKey: vi.fn(async () => creds),
+    } as unknown as ClobClient
+    expect(await deriveCredentials(client)).toEqual(creds)
+  })
+
+  it('reports every attempt when none of them yield credentials', async () => {
+    const client = {
+      deriveApiKey: vi.fn(async () => ({}) as never),
+      createApiKey: vi.fn(async () => {
+        throw new Error('create_boom')
+      }),
+    } as unknown as ClobClient
+    await expect(deriveCredentials(client)).rejects.toThrow(/deriveApiKey:empty_credentials/)
+    await expect(deriveCredentials(client)).rejects.toThrow(/createApiKey:create_boom/)
+  })
+
+  it('still works against an SDK exposing only the combined helper', async () => {
+    const createOrDeriveApiKey = vi.fn(async () => creds)
+    const client = { createOrDeriveApiKey } as unknown as ClobClient
+    expect(await deriveCredentials(client)).toEqual(creds)
+    expect(createOrDeriveApiKey).toHaveBeenCalledTimes(1)
+  })
+
+  it('throws a recognisable error when the SDK exposes no key method at all', async () => {
+    await expect(deriveCredentials({} as unknown as ClobClient)).rejects.toThrow(
+      'clob_sdk_missing_api_key_method',
+    )
+  })
+})
 
 function fakeClient(cancelOrderImpl: (payload: { orderID: string }) => Promise<unknown>): ClobClient {
   return { cancelOrder: cancelOrderImpl } as unknown as ClobClient

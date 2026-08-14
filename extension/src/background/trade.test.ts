@@ -9,10 +9,15 @@ const { restoreSessionMock } = vi.hoisted(() => ({
   restoreSessionMock: vi.fn(async () => null as { topic: string; address: string } | null),
 }))
 
+const { pruneOtherSessionsMock } = vi.hoisted(() => ({
+  pruneOtherSessionsMock: vi.fn(async () => 0),
+}))
+
 vi.mock('./wallet', () => ({
   disconnect: disconnectMock,
   resetSignClient: resetSignClientMock,
   restoreSession: restoreSessionMock,
+  pruneOtherSessions: pruneOtherSessionsMock,
   startConnect: vi.fn(),
   WCSigner: class {},
 }))
@@ -196,13 +201,51 @@ describe('restoreWallet — session-lookup failures must not destroy stored cred
     })
   })
 
-  it('clears storage when restoreSession() finds a DIFFERENT session in place of the stored one (genuine staleness, not a lookup miss)', async () => {
+  it('asks restoreSession() for the stored topic by name instead of letting it pick a session', async () => {
+    // The lookup used to take "whichever live session expires last". Nothing
+    // prunes WC sessions, so a user who connected more than once has several
+    // — and that pick could land on a session that was never ours.
+    restoreSessionMock.mockResolvedValue({ topic: 'topic-1', address: '0xabc' })
+    await restoreWallet()
+    expect(restoreSessionMock).toHaveBeenCalledWith('topic-1')
+  })
+
+  it('regression: a DIFFERENT session coming back does NOT wipe stored credentials either', async () => {
+    // This is the case that cost a reconnect-with-signature every time it
+    // hit. It is not proof of staleness: the store can be mid-hydration, and
+    // ours may simply not be visible yet. Report "not right now" and stay
+    // recoverable — a real disconnect goes through the Disconnect button,
+    // and a real reconnect overwrites these fields anyway.
     restoreSessionMock.mockResolvedValue({ topic: 'a-different-topic', address: '0xdef' })
     const result = await restoreWallet()
     expect(result).toBeNull()
     const s = await getSettings()
-    expect(s.wcSessionTopic).toBeUndefined()
-    expect(s.clobApiKey).toBeUndefined()
+    expect(s.wcSessionTopic).toBe('topic-1')
+    expect(s.clobApiKey).toBe('key')
+    expect(s.clobApiSecret).toBe('secret')
+    expect(s.clobApiPassphrase).toBe('pass')
+  })
+
+  it('recovers on the very next call after a transient lookup miss, with no reconnect', async () => {
+    restoreSessionMock.mockResolvedValueOnce(null)
+    expect(await restoreWallet()).toBeNull()
+    restoreSessionMock.mockResolvedValueOnce({ topic: 'topic-1', address: '0xabc' })
+    expect(await restoreWallet()).toEqual({
+      topic: 'topic-1',
+      address: '0xabc',
+      safeAddress: '0xsafe',
+      creds: { key: 'key', secret: 'secret', passphrase: 'pass' },
+    })
+  })
+
+  it('refuses to pair stored credentials with a different account on the same topic', async () => {
+    // Same session, user switched accounts in the wallet. The stored CLOB
+    // credentials belong to 0xabc and must not sign for 0xdef — but they are
+    // still valid for 0xabc, so they are kept, not destroyed.
+    restoreSessionMock.mockResolvedValue({ topic: 'topic-1', address: '0xdef' })
+    expect(await restoreWallet()).toBeNull()
+    const s = await getSettings()
+    expect(s.clobApiKey).toBe('key')
   })
 })
 

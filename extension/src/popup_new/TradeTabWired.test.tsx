@@ -166,6 +166,43 @@ describe('TradeTabWired — selection is legible', () => {
   })
 })
 
+describe('TradeTabWired — dead session must not look live', () => {
+  it('falls back to Connect when the offscreen side reports no_wallet', async () => {
+    // The popup restores a wallet on mount and renders the whole ticket from
+    // it, while every offscreen op re-derives the session independently. When
+    // those disagreed, the result was a fully live-looking order form where
+    // each action answered `no_wallet` — the "подключила, а не работает
+    // ничего" state.
+    opsm.restoreWalletViaOffscreen.mockResolvedValue(wallet)
+    opsm.getPositionsViaOffscreen.mockResolvedValue({ ok: false, error: 'no_wallet' })
+    opsm.getOpenOrdersViaOffscreen.mockResolvedValue({ ok: false, error: 'no_wallet' })
+
+    render(<TradeTabWired {...props} />)
+
+    // The fallback lands two async hops after mount (restore → refresh →
+    // setWallet(null)), so poll for it rather than asserting on the first
+    // paint.
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: /Connect wallet/i })).toBeInTheDocument(),
+    )
+    expect(screen.queryByRole('button', { name: /Place limit order/i })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'BUY YES' })).toBeNull()
+    // …and it does not also shout the raw error at the user.
+    expect(screen.queryByText(/no_wallet/i)).toBeNull()
+  })
+
+  it('keeps the ticket and surfaces the error for an ordinary refresh failure', async () => {
+    opsm.restoreWalletViaOffscreen.mockResolvedValue(wallet)
+    opsm.getPositionsViaOffscreen.mockResolvedValue({ ok: false, error: 'rate_limited' })
+    opsm.getOpenOrdersViaOffscreen.mockResolvedValue({ ok: true, orders: [] })
+
+    render(<TradeTabWired {...props} />)
+    await screen.findByText('Orderbook')
+    expect(await screen.findByText(/rate_limited/i)).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'BUY YES' })).toBeInTheDocument()
+  })
+})
+
 describe('TradeTabWired — minimum order size', () => {
   it('blocks a below-minimum order before it costs a wallet signature', async () => {
     opsm.restoreWalletViaOffscreen.mockResolvedValue(wallet)
