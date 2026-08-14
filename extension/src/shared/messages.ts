@@ -74,6 +74,7 @@ export type OffscreenRequest =
   // flight instead of stranding it and starting another.
   | { target: 'offscreen'; type: 'OS_POLL_CONNECT'; sessionId?: string }
   | { target: 'offscreen'; type: 'OS_PLACE_ORDER'; args: OffscreenPlaceOrderArgs }
+  | { target: 'offscreen'; type: 'OS_SELL_ORDER'; args: OffscreenSellOrderArgs }
   | { target: 'offscreen'; type: 'OS_CANCEL_ORDER'; orderId: string }
   | { target: 'offscreen'; type: 'OS_GET_OPEN_ORDERS'; marketId?: string }
   | { target: 'offscreen'; type: 'OS_GET_POSITIONS' }
@@ -96,6 +97,18 @@ export interface OffscreenPlaceOrderArgs {
   orderType: 'LIMIT' | 'MARKET'
   /** UI-derived maker/taker classification — telemetry only. */
   makerTaker?: 'maker' | 'taker'
+}
+
+export interface OffscreenSellOrderArgs {
+  tokenId: string
+  /** Shares to sell — a sell is denominated in what you hold, not in USD. */
+  sizeShares: number
+  /** LIMIT → the resting limit price; MARKET → the worst-acceptable FLOOR price. */
+  price: number
+  negRisk: boolean
+  tickSize?: string
+  minOrderSize?: number
+  orderType: 'LIMIT' | 'MARKET'
 }
 
 export type OffscreenResponse =

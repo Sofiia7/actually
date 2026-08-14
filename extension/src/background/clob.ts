@@ -199,6 +199,79 @@ export async function signBuyOrder(
   return client.createOrder(userOrder, opts)
 }
 
+export interface SellOrderArgs {
+  tokenId: string
+  /** Price per share in USDC (0..1) */
+  price: number
+  /** Shares to sell — NOT USD notional. A sell is denominated in what you hold. */
+  size: number
+  negRisk?: boolean
+  tickSize?: string
+}
+
+/**
+ * Sign-only step for a resting (GTC) SELL — the position-closing mirror of
+ * signBuyOrder. Mirrors packages/mcp-server/src/clobClient.ts.
+ */
+export async function signSellOrder(
+  client: ClobClient,
+  args: SellOrderArgs,
+): Promise<unknown> {
+  if (!BUILDER_CODE) throw new Error('builder_code_not_configured')
+  const userOrder: UserOrderV2 = {
+    tokenID: args.tokenId,
+    price: args.price,
+    size: args.size,
+    side: Side.SELL,
+    builderCode: BUILDER_CODE,
+  }
+  // Unlike the buy path, a sell is initiated from the positions list, where we
+  // hold no Gamma record for the market — so tick size and neg-risk are often
+  // genuinely unknown. Omitting them lets the SDK resolve the real values from
+  // the CLOB; guessing via fallbackTick would get the order rejected as
+  // invalid_tick on every market whose tick isn't the guess.
+  const opts = {
+    ...(args.tickSize ? { tickSize: args.tickSize } : {}),
+    ...(args.negRisk != null ? { negRisk: args.negRisk } : {}),
+  } as Parameters<ClobClient['createOrder']>[1]
+  return client.createOrder(userOrder, opts)
+}
+
+export interface MarketSellOrderArgs {
+  tokenId: string
+  /** Shares to sell (SDK `amount` for a SELL market order). */
+  sizeShares: number
+  /**
+   * Worst-acceptable price FLOOR (0..1) — the mirror of a buy's cap. A FOK
+   * sell can't fill below it, which is the slippage guard.
+   */
+  capPrice?: number
+  negRisk?: boolean
+  tickSize?: string
+}
+
+/** Sign-only step for a MARKET (FOK) sell. */
+export async function signMarketSellOrder(
+  client: ClobClient,
+  args: MarketSellOrderArgs,
+): Promise<unknown> {
+  if (!BUILDER_CODE) throw new Error('builder_code_not_configured')
+  const userMarketOrder: UserMarketOrderV2 = {
+    tokenID: args.tokenId,
+    amount: args.sizeShares,
+    side: Side.SELL,
+    orderType: OrderType.FOK,
+    builderCode: BUILDER_CODE,
+    ...(args.capPrice != null ? { price: args.capPrice } : {}),
+  }
+  // Same reasoning as signSellOrder: resolve from the CLOB when we don't know.
+  const opts = {
+    ...(args.tickSize ? { tickSize: args.tickSize } : {}),
+    ...(args.negRisk != null ? { negRisk: args.negRisk } : {}),
+  } as Parameters<ClobClient['createMarketOrder']>[1]
+  return client.createMarketOrder(userMarketOrder, opts)
+}
+
 export interface MarketBuyOrderArgs {
   tokenId: string
   /** USD notional to spend (SDK `amount` for a BUY market order). */

@@ -1,7 +1,8 @@
-import React from 'react'
+import React, { useState } from 'react'
 import { IceCard } from './IceCard'
 import { Etched } from './Etched'
 import { LinkAction } from './LinkAction'
+import { SellTicket } from '../SellTicket'
 import type { OpenOrderSummary, Position } from '../../shared/types'
 
 export interface PositionsPanelProps {
@@ -37,6 +38,10 @@ export const PositionsPanel: React.FC<PositionsPanelProps> = ({
   portfolioError,
   cancelError,
 }) => {
+  // Which position's sell ticket is open. One at a time, by tokenId — an
+  // expanded ticket per row would let two sells be half-filled in at once.
+  const [sellingTokenId, setSellingTokenId] = useState<string | null>(null)
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 10 }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
@@ -84,6 +89,24 @@ export const PositionsPanel: React.FC<PositionsPanelProps> = ({
               {fmtUsd(p.cashPnl)} ({fmtPct(p.percentPnl)})
             </Etched>
           </div>
+
+          {/* A resolved market no longer trades — offering Sell there would
+              only ever produce a CLOB rejection. Those are redeemed instead. */}
+          {p.redeemable ? (
+            <Etched size={10.5} weight={300} color="rgba(35,45,70,.55)" style={{ display: 'block', marginTop: 5 }}>
+              Market resolved — redeem this position on Polymarket.
+            </Etched>
+          ) : sellingTokenId === p.tokenId ? (
+            <SellTicket
+              position={p}
+              onDone={() => { setSellingTokenId(null); onRefresh() }}
+              onCancel={() => setSellingTokenId(null)}
+            />
+          ) : (
+            <div style={{ marginTop: 5 }}>
+              <LinkAction onClick={() => setSellingTokenId(p.tokenId)}>Sell →</LinkAction>
+            </div>
+          )}
         </IceCard>
       ))}
 

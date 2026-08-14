@@ -9,6 +9,7 @@
 import type {
   OffscreenPlaceOrderArgs,
   OffscreenResponse,
+  OffscreenSellOrderArgs,
   SerializableWalletState,
 } from '../shared/messages'
 import type { ArticleData } from '../shared/types'
@@ -116,6 +117,18 @@ export async function placeOrderViaOffscreen(
   const r = await call<Extract<OffscreenResponse, { type: 'OS_ORDER_RESULT' }> | Extract<OffscreenResponse, { type: 'OS_ERROR' }>>({
     target: 'offscreen',
     type: 'OS_PLACE_ORDER',
+    args,
+  })
+  if (r.type === 'OS_ERROR') return { ok: false, error: r.error }
+  return { ok: r.ok, orderId: r.orderId, error: r.error }
+}
+
+export async function sellOrderViaOffscreen(
+  args: OffscreenSellOrderArgs,
+): Promise<{ ok: boolean; orderId?: string; error?: string }> {
+  const r = await call<Extract<OffscreenResponse, { type: 'OS_ORDER_RESULT' }> | Extract<OffscreenResponse, { type: 'OS_ERROR' }>>({
+    target: 'offscreen',
+    type: 'OS_SELL_ORDER',
     args,
   })
   if (r.type === 'OS_ERROR') return { ok: false, error: r.error }

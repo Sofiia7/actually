@@ -28,6 +28,7 @@ import {
   getOrderbookSnapshot,
   placeOrder,
   restoreWallet,
+  sellOrder,
   type WalletState,
 } from '../background/trade'
 import { resolveHistoryMarket } from '../background/resolveHistoryMarket'
@@ -353,6 +354,22 @@ async function handle(msg: OffscreenRequest): Promise<OffscreenResponse> {
         minOrderSize: msg.args.minOrderSize,
         orderType: msg.args.orderType,
         makerTaker: msg.args.makerTaker,
+      })
+      return { type: 'OS_ORDER_RESULT', ...r }
+    }
+
+    case 'OS_SELL_ORDER': {
+      const w = await rehydrateWallet()
+      if (!w) return { type: 'OS_ORDER_RESULT', ok: false, error: 'no_wallet' }
+      const r = await sellOrder({
+        state: w,
+        tokenId: msg.args.tokenId,
+        sizeShares: msg.args.sizeShares,
+        price: msg.args.price,
+        negRisk: msg.args.negRisk,
+        tickSize: msg.args.tickSize,
+        minOrderSize: msg.args.minOrderSize,
+        orderType: msg.args.orderType,
       })
       return { type: 'OS_ORDER_RESULT', ...r }
     }

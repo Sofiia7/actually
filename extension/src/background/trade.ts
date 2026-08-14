@@ -27,6 +27,8 @@ import {
   pollOrderStatus,
   signBuyOrder,
   signMarketBuyOrder,
+  signMarketSellOrder,
+  signSellOrder,
   submitSignedOrder,
 } from './clob'
 import type { OpenOrderSummary, Settings } from '../shared/types'
@@ -468,6 +470,104 @@ export async function placeOrder(args: PlaceOrderArgs): Promise<OrderSubmitResul
     })()
   }
 
+  return { ok: true, orderId: result.orderId }
+}
+
+export interface SellOrderArgs {
+  state: WalletState
+  /** Token being sold — the outcome token the position is held in. */
+  tokenId: string
+  /** Shares to sell. A sell is denominated in what you hold, not in USD. */
+  sizeShares: number
+  /** LIMIT → resting limit price; MARKET → worst-acceptable FLOOR price (0..1). */
+  price: number
+  negRisk: boolean
+  tickSize?: string
+  minOrderSize?: number
+  orderType: 'LIMIT' | 'MARKET'
+}
+
+/**
+ * Sell (part of) a position.
+ *
+ * Deliberately NOT geo-gated, for the same reason cancelOrder isn't: closing a
+ * position only ever reduces exposure. Refusing to let someone out of a trade
+ * because a region lookup failed is the wrong failure direction — the geo gate
+ * exists to stop new exposure being opened.
+ *
+ * MAX_ORDER_USD still applies, measured on the proceeds, so a fat-fingered
+ * size can't quietly exceed the same per-trade ceiling buys respect.
+ */
+export async function sellOrder(args: SellOrderArgs): Promise<OrderSubmitResult> {
+  if (!(args.sizeShares > 0)) {
+    return { ok: false, error: 'invalid_size' }
+  }
+  // A sell is already denominated in shares, so the CLOB minimum applies
+  // directly — no USD conversion, unlike the buy path.
+  const minShares = minOrderShares(args.minOrderSize)
+  if (args.sizeShares < minShares) {
+    return { ok: false, error: `order_below_min_size:${minShares}` }
+  }
+  const estimatedUsd = args.sizeShares * args.price
+  if (estimatedUsd > MAX_ORDER_USD) {
+    return { ok: false, error: `order_exceeds_max_usd:${MAX_ORDER_USD}` }
+  }
+
+  const settings = await getSettings()
+  const signer = new WCSigner(args.state.topic, args.state.address)
+  const client = makeClient({
+    signer,
+    funderAddress: args.state.safeAddress,
+    creds: args.state.creds,
+  })
+
+  const isMarket = args.orderType === 'MARKET'
+  let signed: unknown
+  try {
+    signed = isMarket
+      ? await signMarketSellOrder(client, {
+          tokenId: args.tokenId,
+          sizeShares: args.sizeShares,
+          capPrice: args.price,
+          negRisk: args.negRisk,
+          tickSize: args.tickSize,
+        })
+      : await signSellOrder(client, {
+          tokenId: args.tokenId,
+          price: args.price,
+          size: args.sizeShares,
+          negRisk: args.negRisk,
+          tickSize: args.tickSize,
+        })
+  } catch (err) {
+    void trackEvent('order_failed', settings, { side: 'SELL', stage: 'sign', reason: String(err) })
+    return { ok: false, error: `sign_failed:${err}` }
+  }
+
+  void trackEvent('order_signed', settings, {
+    side: 'SELL',
+    size_bucket: sizeBucket(estimatedUsd),
+    order_type: args.orderType,
+  })
+
+  const result = await submitSignedOrder(
+    client,
+    signed,
+    isMarket ? OrderType.FOK : OrderType.GTC,
+  )
+  if (!result.success) {
+    void trackEvent('order_failed', settings, {
+      side: 'SELL',
+      stage: 'submit',
+      reason: result.error ?? 'unknown',
+    })
+    return { ok: false, error: result.error ?? 'unknown_error' }
+  }
+  void trackEvent('order_submitted', settings, {
+    side: 'SELL',
+    size_bucket: sizeBucket(estimatedUsd),
+    order_type: args.orderType,
+  })
   return { ok: true, orderId: result.orderId }
 }
 

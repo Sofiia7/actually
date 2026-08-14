@@ -42,7 +42,7 @@ vi.mock('./clob', async (importOriginal) => ({
   deriveCredentials: deriveCredentialsMock,
 }))
 
-import { connectWallet, disconnectWallet, placeOrder, restoreWallet } from './trade'
+import { connectWallet, disconnectWallet, placeOrder, restoreWallet, sellOrder } from './trade'
 import { getSettings, saveSettings } from './settings'
 import { MAX_ORDER_USD } from '../shared/constants'
 import type { WalletState } from './trade'
@@ -383,5 +383,47 @@ describe('placeOrder — MAX_ORDER_USD cap', () => {
   it("honours a per-market minimum when the market provides one", async () => {
     const result = await placeOrder({ ...baseArgs, price: 0.5, sizeUsd: 5, minOrderSize: 20 })
     expect(result.error).toBe('order_below_min_size:20')
+  })
+})
+
+describe('sellOrder — guards before any signature', () => {
+  const base = {
+    state: fakeState,
+    tokenId: 'tok-yes',
+    price: 0.5,
+    negRisk: false,
+    orderType: 'LIMIT' as const,
+  }
+
+  it('rejects a size under the CLOB minimum — measured in SHARES, not dollars', async () => {
+    // The buy path converts USD → shares; a sell is already denominated in
+    // shares, so the floor applies directly. 3 shares is under it at any price.
+    const r = await sellOrder({ ...base, sizeShares: 3 })
+    expect(r).toEqual({ ok: false, error: 'order_below_min_size:5' })
+  })
+
+  it('honours a per-market minimum', async () => {
+    const r = await sellOrder({ ...base, sizeShares: 10, minOrderSize: 20 })
+    expect(r).toEqual({ ok: false, error: 'order_below_min_size:20' })
+  })
+
+  it('rejects a non-positive size instead of signing nonsense', async () => {
+    expect((await sellOrder({ ...base, sizeShares: 0 })).error).toBe('invalid_size')
+    expect((await sellOrder({ ...base, sizeShares: -5 })).error).toBe('invalid_size')
+  })
+
+  it('caps proceeds at MAX_ORDER_USD, the same ceiling buys respect', async () => {
+    // 300 shares at 50¢ = $150 of proceeds.
+    const r = await sellOrder({ ...base, sizeShares: 300, price: 0.5 })
+    expect(r.error).toBe(`order_exceeds_max_usd:${MAX_ORDER_USD}`)
+  })
+
+  it('does not geo-gate — closing a position must never be blocked by a region lookup', async () => {
+    // Worker is unconfigured in this suite, which is what makes placeOrder
+    // bail with worker_not_configured. A sell must get past that: refusing to
+    // let someone OUT of a trade is the wrong failure direction.
+    const r = await sellOrder({ ...base, sizeShares: 10 })
+    expect(r.error).not.toBe('worker_not_configured')
+    expect(r.error).not.toBe('geo_blocked')
   })
 })
