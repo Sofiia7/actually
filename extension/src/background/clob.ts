@@ -102,9 +102,17 @@ export async function deriveCredentials(
   type KeyFn = (this: ClobClient) => Promise<ApiKeyCreds>
   const c = client as unknown as Record<string, undefined | KeyFn>
   const attempts: Array<{ name: string; fn: KeyFn }> = []
-  for (const name of ['deriveApiKey', 'createApiKey', 'createOrDeriveApiKey']) {
+  for (const name of ['deriveApiKey', 'createApiKey']) {
     const fn = c[name]
     if (typeof fn === 'function') attempts.push({ name, fn })
+  }
+  // The combined helper is a LAST RESORT, never an extra attempt appended to
+  // the two above: it internally performs create-then-derive, so running it
+  // after they have both already been tried repeats both calls — and each
+  // call is another wallet prompt. Use it only when this SDK version doesn't
+  // expose the individual methods at all.
+  if (attempts.length === 0 && typeof c.createOrDeriveApiKey === 'function') {
+    attempts.push({ name: 'createOrDeriveApiKey', fn: c.createOrDeriveApiKey })
   }
 
   if (attempts.length === 0) {

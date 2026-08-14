@@ -105,23 +105,45 @@ export async function restoreSession(preferredTopic?: string): Promise<ActiveSes
  * nothing to pick wrong. Best-effort per session: a relay that won't take the
  * teardown must not fail the connect the user just completed.
  */
+const PRUNE_TIMEOUT_MS = 4000
+
+function withTimeout<T>(p: Promise<T>, ms: number): Promise<T> {
+  return Promise.race([
+    p,
+    new Promise<never>((_, reject) => setTimeout(() => reject(new Error('timeout')), ms)),
+  ])
+}
+
 export async function pruneOtherSessions(keepTopic: string): Promise<number> {
   if (!WC_PROJECT_ID) return 0
   let dropped = 0
   try {
     const client = await getSignClient()
     const stale = client.session.getAll().filter((s) => s.topic !== keepTopic)
-    for (const s of stale) {
-      try {
-        await client.disconnect({
-          topic: s.topic,
-          reason: { code: 6000, message: 'superseded_by_new_session' },
-        })
-        dropped++
-      } catch {
-        // Best-effort — see above.
-      }
-    }
+    // Time-boxed and concurrent. Each teardown is a relay round-trip to a peer
+    // that is, by definition, most likely gone, so an unbounded `await` can
+    // stall indefinitely — and doing them one after another multiplies that by
+    // however many sessions have piled up.
+    const results = await Promise.all(
+      stale.map(async (s) => {
+        try {
+          await withTimeout(
+            client.disconnect({
+              topic: s.topic,
+              reason: { code: 6000, message: 'superseded_by_new_session' },
+            }),
+            PRUNE_TIMEOUT_MS,
+          )
+          return true
+        } catch {
+          // Best-effort — see above. An un-torn-down session is harmless:
+          // restoreSession() now looks its topic up by name rather than
+          // guessing, and WC expires it on its own.
+          return false
+        }
+      }),
+    )
+    dropped = results.filter(Boolean).length
   } catch {
     // Client unavailable — nothing to prune, and definitely not worth
     // failing the connect over.

@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 const { disconnectMock, resetSignClientMock } = vi.hoisted(() => ({
   disconnectMock: vi.fn(async () => {}),
@@ -9,8 +9,12 @@ const { restoreSessionMock } = vi.hoisted(() => ({
   restoreSessionMock: vi.fn(async () => null as { topic: string; address: string } | null),
 }))
 
-const { pruneOtherSessionsMock } = vi.hoisted(() => ({
+const { pruneOtherSessionsMock, startConnectMock } = vi.hoisted(() => ({
   pruneOtherSessionsMock: vi.fn(async () => 0),
+  startConnectMock: vi.fn(async () => ({
+    uri: 'wc:test',
+    approval: Promise.resolve({ topic: 'topic-new', address: '0xabcabcabcabcabcabcabcabcabcabcabcabcabca' }),
+  })),
 }))
 
 vi.mock('./wallet', () => ({
@@ -18,11 +22,27 @@ vi.mock('./wallet', () => ({
   resetSignClient: resetSignClientMock,
   restoreSession: restoreSessionMock,
   pruneOtherSessions: pruneOtherSessionsMock,
-  startConnect: vi.fn(),
+  startConnect: startConnectMock,
   WCSigner: class {},
 }))
 
-import { disconnectWallet, placeOrder, restoreWallet } from './trade'
+vi.mock('./geo', () => ({
+  getGeoStatus: vi.fn(async () => ({ country: 'RS', blocked: false, unknown: false })),
+}))
+
+const { deriveCredentialsMock } = vi.hoisted(() => ({
+  deriveCredentialsMock: vi.fn(async () => ({ key: 'k2', secret: 's2', passphrase: 'p2' })),
+}))
+
+// Only the two pieces connectWallet needs stubbed — everything else keeps its
+// real implementation so the order-path tests below are unaffected.
+vi.mock('./clob', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('./clob')>()),
+  makeClient: vi.fn(() => ({}) as never),
+  deriveCredentials: deriveCredentialsMock,
+}))
+
+import { connectWallet, disconnectWallet, placeOrder, restoreWallet } from './trade'
 import { getSettings, saveSettings } from './settings'
 import { MAX_ORDER_USD } from '../shared/constants'
 import type { WalletState } from './trade'
@@ -246,6 +266,78 @@ describe('restoreWallet — session-lookup failures must not destroy stored cred
     expect(await restoreWallet()).toBeNull()
     const s = await getSettings()
     expect(s.clobApiKey).toBe('key')
+  })
+})
+
+describe('connectWallet — housekeeping must never gate the connect', () => {
+  beforeEach(async () => {
+    vi.clearAllMocks()
+    startConnectMock.mockResolvedValue({
+      uri: 'wc:test',
+      approval: Promise.resolve({ topic: 'topic-new', address: '0xabcabcabcabcabcabcabcabcabcabcabcabcabca' }),
+    })
+    deriveCredentialsMock.mockResolvedValue({ key: 'k2', secret: 's2', passphrase: 'p2' })
+    pruneOtherSessionsMock.mockResolvedValue(0)
+    await saveSettings({
+      workerUrl: 'https://w',
+      workerSecret: 'sec',
+      wcSessionTopic: undefined,
+      walletAddress: undefined,
+      safeAddress: undefined,
+      clobApiKey: undefined,
+      clobApiSecret: undefined,
+      clobApiPassphrase: undefined,
+    })
+  })
+
+  // Settings are a single shared store across this file — hand the worker
+  // config back the way the later order-path tests expect to find it.
+  afterEach(async () => {
+    await saveSettings({ workerUrl: undefined, workerSecret: undefined })
+  })
+
+  it('regression: a prune that never resolves does not stall the connect or the save', async () => {
+    // Tearing down a superseded session is a relay round-trip to a peer that
+    // is probably gone. Awaiting it BEFORE persisting put every one of those
+    // between the user's signature and a usable wallet: the popup sat on
+    // "Connect wallet" forever, and reopening it found nothing stored.
+    pruneOtherSessionsMock.mockImplementation(() => new Promise<number>(() => {}))
+
+    const state = await connectWallet({ onUri: () => {} })
+
+    expect(state.topic).toBe('topic-new')
+    const s = await getSettings()
+    expect(s.wcSessionTopic).toBe('topic-new')
+    expect(s.clobApiKey).toBe('k2')
+  })
+
+  it('prunes superseded sessions once the new one is safely stored', async () => {
+    await connectWallet({ onUri: () => {} })
+    expect(pruneOtherSessionsMock).toHaveBeenCalledWith('topic-new')
+  })
+
+  it('reuses stored credentials for the same address — a reconnect costs no signature', async () => {
+    await saveSettings({
+      walletAddress: '0xABCABCABCABCABCABCABCABCABCABCABCABCABCA', // casing must not matter
+      clobApiKey: 'k',
+      clobApiSecret: 's',
+      clobApiPassphrase: 'p',
+    })
+    const state = await connectWallet({ onUri: () => {} })
+    expect(deriveCredentialsMock).not.toHaveBeenCalled()
+    expect(state.creds).toEqual({ key: 'k', secret: 's', passphrase: 'p' })
+  })
+
+  it('derives fresh credentials when a different address connects', async () => {
+    await saveSettings({
+      walletAddress: '0xdifferent',
+      clobApiKey: 'k',
+      clobApiSecret: 's',
+      clobApiPassphrase: 'p',
+    })
+    const state = await connectWallet({ onUri: () => {} })
+    expect(deriveCredentialsMock).toHaveBeenCalledTimes(1)
+    expect(state.creds).toEqual({ key: 'k2', secret: 's2', passphrase: 'p2' })
   })
 })
 

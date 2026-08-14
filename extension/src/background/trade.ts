@@ -122,15 +122,10 @@ export async function connectWallet(cb: ConnectCallbacks): Promise<WalletState> 
     throw err
   }
 
-  // 3. Drop any session this connect superseded. Nothing on the wallet side
-  //    expires them promptly, and a store holding several live sessions is
-  //    what makes "which one is mine?" ambiguous on every later restore.
-  await pruneOtherSessions(session.topic)
-
-  // 4. Resolve user's Polymarket Safe (funder)
+  // 3. Resolve user's Polymarket Safe (funder)
   const safeAddress = deriveSafeAddress(session.address)
 
-  // 5. CLOB API credentials. Reuse the ones already stored for this exact
+  // 4. CLOB API credentials. Reuse the ones already stored for this exact
   //    address instead of re-deriving: derivation costs a wallet signature,
   //    and the credentials are a pure function of the address, so a
   //    reconnect of the same wallet does not need a new one. Only a
@@ -140,7 +135,7 @@ export async function connectWallet(cb: ConnectCallbacks): Promise<WalletState> 
   const creds =
     reusableCreds(settings, session.address) ?? (await deriveCredentials(client))
 
-  // 6. Persist everything for next popup open
+  // 5. Persist everything for next popup open
   await saveSettings({
     wcSessionTopic: session.topic,
     walletAddress: session.address,
@@ -149,6 +144,16 @@ export async function connectWallet(cb: ConnectCallbacks): Promise<WalletState> 
     clobApiSecret: creds.secret,
     clobApiPassphrase: creds.passphrase,
   })
+
+  // 6. Only now drop the sessions this connect superseded — AFTER the new one
+  //    is on disk, and without awaiting it. Tearing down a stale session is a
+  //    relay round-trip to a peer that is, by definition, probably gone, so it
+  //    can stall for a long time or never answer at all. Doing it before the
+  //    save (as this briefly did) put every one of those round-trips between
+  //    the user's signature and the moment the wallet became usable: the
+  //    connect appeared to hang forever, and reopening the popup found nothing
+  //    stored. Pruning is housekeeping — it must never gate the connect.
+  void pruneOtherSessions(session.topic)
 
   void trackEvent('wallet_connect_success', settings)
   return { topic: session.topic, address: session.address, safeAddress, creds }

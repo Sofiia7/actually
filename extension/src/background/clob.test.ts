@@ -56,6 +56,22 @@ describe('deriveCredentials — one wallet prompt, not two', () => {
     await expect(deriveCredentials(client)).rejects.toThrow(/createApiKey:create_boom/)
   })
 
+  it('never falls through to the combined helper on top of the individual calls', async () => {
+    // createOrDeriveApiKey internally does create-then-derive. Appending it
+    // after derive and create have already been tried repeats both — and each
+    // call is another wallet prompt, so a failing connect could ask the user
+    // to sign four times.
+    const deriveApiKey = vi.fn(async () => ({}) as never)
+    const createApiKey = vi.fn(async () => ({}) as never)
+    const createOrDeriveApiKey = vi.fn(async () => creds)
+    const client = { deriveApiKey, createApiKey, createOrDeriveApiKey } as unknown as ClobClient
+
+    await expect(deriveCredentials(client)).rejects.toThrow(/clob_api_key_failed/)
+    expect(deriveApiKey).toHaveBeenCalledTimes(1)
+    expect(createApiKey).toHaveBeenCalledTimes(1)
+    expect(createOrDeriveApiKey).not.toHaveBeenCalled()
+  })
+
   it('still works against an SDK exposing only the combined helper', async () => {
     const createOrDeriveApiKey = vi.fn(async () => creds)
     const client = { createOrDeriveApiKey } as unknown as ClobClient
