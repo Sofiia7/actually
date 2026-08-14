@@ -16,11 +16,27 @@ import { SignClient } from '@walletconnect/sign-client'
 const POLYGON_CHAIN_ID = 'eip155:137'
 const POLYGON_CHAIN_ID_NUM = 137n
 
-const WC_METADATA = {
-  name: 'Actually',
-  description: 'What markets really think — trade news in your browser',
-  url: 'https://actually.app',
-  icons: ['https://actually.app/icon-128.png'],
+const SIGN_METHOD = 'eth_signTypedData_v4'
+
+/**
+ * `url` must be the page WalletConnect actually runs on, not our marketing
+ * domain. With `https://actually.app` the SDK logs "The configured
+ * WalletConnect 'metadata.url' differs from the actual page url … can lead to
+ * issues", and wallets that check origin through the Verify API see a dapp
+ * whose claimed origin doesn't match where the request came from — which some
+ * of them handle by quietly not surfacing the request at all.
+ */
+function wcMetadata() {
+  const origin =
+    typeof chrome !== 'undefined' && chrome.runtime?.getURL
+      ? chrome.runtime.getURL('').replace(/\/$/, '')
+      : 'https://actually.app'
+  return {
+    name: 'Actually',
+    description: 'What markets really think — trade news in your browser',
+    url: origin,
+    icons: ['https://actually.app/icon-128.png'],
+  }
 }
 
 /**
@@ -49,7 +65,7 @@ export async function getSignClient(): Promise<WCSignClient> {
     // offscreen document.
     clientPromise = SignClient.init({
       projectId: WC_PROJECT_ID,
-      metadata: WC_METADATA,
+      metadata: wcMetadata(),
     }).catch((err) => {
       clientPromise = null
       throw err
@@ -165,10 +181,23 @@ export interface ConnectStart {
  */
 export async function startConnect(): Promise<ConnectStart> {
   const client = await getSignClient()
+  // `requiredNamespaces` is deprecated — the SDK logs "requiredNamespaces are
+  // deprecated and are automatically assigned to optionalNamespaces" and does
+  // exactly that. So nothing we ask for is actually required any more: the
+  // wallet is free to approve a session that grants neither Polygon nor
+  // eth_signTypedData_v4, and the approval still succeeds. That is the split
+  // that made this look like "I approved it and nothing happened" — the
+  // session connects, and only the LATER signature request fails, because the
+  // method it needs was never in the approved namespaces.
+  //
+  // Declared as optionalNamespaces directly (no deprecated field), with the
+  // signing methods wallets actually recognise, so there is the best chance of
+  // being granted what we need — and checked below, so a session that lacks it
+  // fails immediately with something the user can act on.
   const { uri, approval } = await client.connect({
-    requiredNamespaces: {
+    optionalNamespaces: {
       eip155: {
-        methods: ['eth_signTypedData_v4'],
+        methods: [SIGN_METHOD, 'eth_signTypedData', 'personal_sign'],
         chains: [POLYGON_CHAIN_ID],
         events: ['chainChanged', 'accountsChanged'],
       },
@@ -178,9 +207,22 @@ export async function startConnect(): Promise<ConnectStart> {
     throw new Error('wc_no_uri')
   }
   const approvalPromise = approval().then((session) => {
-    const account = session.namespaces.eip155?.accounts?.[0]
-    const address = account?.split(':')[2]?.toLowerCase()
+    const ns = session.namespaces.eip155
+    const accounts = ns?.accounts ?? []
+    // Prefer an account the wallet granted ON Polygon. Signing Polymarket's
+    // EIP-712 payload (whose domain says chainId 137) through a session scoped
+    // to another chain is what wallets reject with "provided chainId must
+    // match the active chainId".
+    const polygonAccount = accounts.find((a) => a.startsWith(`${POLYGON_CHAIN_ID}:`))
+    if (!polygonAccount) {
+      const granted = accounts.map((a) => a.split(':').slice(0, 2).join(':')).join(',')
+      throw new Error(`wc_no_polygon_account:${granted || 'none'}`)
+    }
+    const address = polygonAccount.split(':')[2]?.toLowerCase()
     if (!address) throw new Error('wc_session_missing_account')
+    if (!(ns?.methods ?? []).includes(SIGN_METHOD)) {
+      throw new Error(`wc_method_not_granted:${SIGN_METHOD}`)
+    }
     return { topic: session.topic, address }
   })
   return { uri, approval: approvalPromise }

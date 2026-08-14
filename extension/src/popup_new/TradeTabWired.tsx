@@ -137,6 +137,19 @@ export const TradeTabWired: React.FC<TradeTabWiredProps> = ({
           signing: pending.stage === 'signing',
         })
         void pumpConnect(undefined, ++connectGenRef.current)
+        return
+      }
+      // A connect that FAILED while the popup was shut. `unknown_session`
+      // just means there was never one to report; anything else is a real
+      // reason the user needs to see. Dropping it here (as this did) is why a
+      // failing connect still looked like a connect that had never happened.
+      if (pending.stage === 'error' && pending.error && pending.error !== 'unknown_session') {
+        setConnect({
+          kind: 'connecting',
+          uri: null,
+          qrDataUrl: null,
+          error: humanError(pending.error),
+        })
       }
     })()
     return () => { cancelled = true }
@@ -1164,6 +1177,12 @@ const CLOB_ERROR_HINTS: Array<[RegExp, string]> = [
 function humanError(raw: string): string {
   if (raw.includes('signature_timeout')) {
     return "Your wallet never returned the signature. Open the wallet app, make sure there's no pending request waiting, and connect again."
+  }
+  if (raw.includes('wc_no_polygon_account')) {
+    return 'Your wallet connected, but not on Polygon — Polymarket needs it. Switch the wallet to the Polygon network, then connect again.'
+  }
+  if (raw.includes('wc_method_not_granted')) {
+    return "Your wallet connected but didn't grant permission to sign messages, so the account can't be verified. Reconnect and approve the full request — if your wallet lists permissions, allow signing."
   }
   for (const [pattern, message] of CLOB_ERROR_HINTS) {
     if (pattern.test(raw)) return message

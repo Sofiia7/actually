@@ -195,6 +195,30 @@ describe('TradeTabWired — a connect survives the popup closing', () => {
     expect(await screen.findByText('Orderbook')).toBeInTheDocument()
   })
 
+  it('shows why a connect failed while the popup was shut', async () => {
+    opsm.restoreWalletViaOffscreen.mockResolvedValue(null)
+    opsm.pollConnectViaOffscreen.mockResolvedValue({
+      stage: 'error',
+      error: 'Error: wc_no_polygon_account:eip155:1',
+    })
+
+    render(<TradeTabWired {...props} />)
+
+    // Not the raw code — the thing to actually do about it.
+    expect(await screen.findByText(/Switch the wallet to the Polygon network/i)).toBeInTheDocument()
+  })
+
+  it('explains a session that never granted signing permission', async () => {
+    opsm.restoreWalletViaOffscreen.mockResolvedValue(null)
+    opsm.pollConnectViaOffscreen.mockResolvedValue({
+      stage: 'error',
+      error: 'Error: wc_method_not_granted:eth_signTypedData_v4',
+    })
+
+    render(<TradeTabWired {...props} />)
+    expect(await screen.findByText(/didn't grant permission to sign messages/i)).toBeInTheDocument()
+  })
+
   it('stays on Connect when there is no connect in flight', async () => {
     opsm.restoreWalletViaOffscreen.mockResolvedValue(null)
     opsm.pollConnectViaOffscreen.mockResolvedValue({ stage: 'error', error: 'unknown_session' })
