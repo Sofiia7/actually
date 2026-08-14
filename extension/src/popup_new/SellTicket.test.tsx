@@ -126,6 +126,35 @@ describe('SellTicket', () => {
     await waitFor(() => expect(opsm.sellOrderViaOffscreen).toHaveBeenCalledOnce())
     expect(onDone).not.toHaveBeenCalled()
   })
+
+  it('hands the confirmation UP rather than showing it and unmounting', async () => {
+    // The ticket closes on success, so a message it owns dies with it — which
+    // read as "the sell did nothing". The panel outlives the ticket.
+    const onDone = vi.fn()
+    render(<SellTicket position={position} onDone={onDone} onCancel={noop} />)
+    await waitFor(() => expect(screen.getByRole('button', { name: /Sell now/i })).toBeEnabled())
+    await userEvent.click(screen.getByRole('button', { name: /Sell now/i }))
+    await userEvent.click(screen.getByRole('button', { name: /Sign in wallet/i }))
+    await waitFor(() => expect(onDone).toHaveBeenCalledOnce())
+    const msg = onDone.mock.calls[0][0] as string
+    expect(msg).toContain('Sell placed')
+    expect(msg).toContain('0xsell1234')
+    // …and it warns that the numbers lag, instead of leaving the user to
+    // conclude the sale failed.
+    expect(msg).toMatch(/few seconds/i)
+  })
+
+  it('says a limit sell is resting, not filled', async () => {
+    const onDone = vi.fn()
+    render(<SellTicket position={position} onDone={onDone} onCancel={noop} />)
+    await screen.findByLabelText(/Shares to sell/i)
+    await userEvent.click(screen.getByRole('button', { name: 'Limit' }))
+    await waitFor(() => expect(screen.getByRole('button', { name: /Sell at limit/i })).toBeEnabled())
+    await userEvent.click(screen.getByRole('button', { name: /Sell at limit/i }))
+    await userEvent.click(screen.getByRole('button', { name: /Sign in wallet/i }))
+    await waitFor(() => expect(onDone).toHaveBeenCalledOnce())
+    expect(onDone.mock.calls[0][0]).toMatch(/resting on the book/i)
+  })
 })
 
 describe('humanSellError', () => {

@@ -11,7 +11,14 @@ const FLOOR_PCT = 0.02
 
 export interface SellTicketProps {
   position: Position
-  onDone: () => void
+  /**
+   * Called on a successful sell, with the message to show. The ticket closes
+   * itself at that point, so it CANNOT own that message: setting it locally
+   * and then unmounting means the user watches the ticket vanish and sees no
+   * confirmation at all — indistinguishable from nothing having happened.
+   * The panel outlives the ticket, so the panel says so.
+   */
+  onDone: (message: string) => void
   onCancel: () => void
 }
 
@@ -87,8 +94,12 @@ export const SellTicket: React.FC<SellTicketProps> = ({ position, onDone, onCanc
         orderType,
       })
       if (r.ok) {
-        setResult(`Sell placed${r.orderId ? ` · ${r.orderId.slice(0, 10)}…` : ''}`)
-        onDone()
+        onDone(
+          `Sell placed${r.orderId ? ` · ${r.orderId.slice(0, 10)}…` : ''}` +
+            (orderType === 'LIMIT'
+              ? ' — resting on the book until it fills.'
+              : ' — positions can take a few seconds to catch up.'),
+        )
       } else {
         setResult(`Failed: ${humanSellError(r.error ?? 'unknown_error', minShares)}`)
       }

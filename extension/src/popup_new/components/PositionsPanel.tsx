@@ -1,4 +1,4 @@
-import React, { useState } from 'react'
+import React, { useEffect, useRef, useState } from 'react'
 import { IceCard } from './IceCard'
 import { Etched } from './Etched'
 import { LinkAction } from './LinkAction'
@@ -41,6 +41,29 @@ export const PositionsPanel: React.FC<PositionsPanelProps> = ({
   // Which position's sell ticket is open. One at a time, by tokenId — an
   // expanded ticket per row would let two sells be half-filled in at once.
   const [sellingTokenId, setSellingTokenId] = useState<string | null>(null)
+  // Confirmation for a sell that has already closed its ticket. Held here
+  // because the panel outlives the ticket — see SellTicket's onDone.
+  const [sellNotice, setSellNotice] = useState<string | null>(null)
+  const lagRefreshRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  useEffect(
+    () => () => {
+      if (lagRefreshRef.current) clearTimeout(lagRefreshRef.current)
+    },
+    [],
+  )
+
+  function onSold(message: string) {
+    setSellNotice(message)
+    setSellingTokenId(null)
+    onRefresh()
+    // Polymarket's positions API is eventually consistent: a fill is accepted
+    // by the CLOB before it shows up here, so the immediate refresh above
+    // usually returns the pre-sale numbers and the row looks untouched. Come
+    // back once more after the lag rather than leaving the user staring at a
+    // position they just sold.
+    if (lagRefreshRef.current) clearTimeout(lagRefreshRef.current)
+    lagRefreshRef.current = setTimeout(onRefresh, 5000)
+  }
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 10 }}>
@@ -61,6 +84,15 @@ export const PositionsPanel: React.FC<PositionsPanelProps> = ({
         <Etched size={11.5} weight={300} color="rgba(160,40,40,.9)">
           Cancel failed: {cancelError}
         </Etched>
+      )}
+
+      {sellNotice && (
+        <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, alignItems: 'baseline' }}>
+          <Etched size={11.5} weight={300} color="rgba(30,110,60,.9)" style={{ flex: 1, minWidth: 0 }}>
+            {sellNotice}
+          </Etched>
+          <LinkAction onClick={() => setSellNotice(null)}>Dismiss</LinkAction>
+        </div>
       )}
 
       {positions.length === 0 && openOrders.length === 0 && !loading && !portfolioError && (
@@ -97,11 +129,7 @@ export const PositionsPanel: React.FC<PositionsPanelProps> = ({
               Market resolved — redeem this position on Polymarket.
             </Etched>
           ) : sellingTokenId === p.tokenId ? (
-            <SellTicket
-              position={p}
-              onDone={() => { setSellingTokenId(null); onRefresh() }}
-              onCancel={() => setSellingTokenId(null)}
-            />
+            <SellTicket position={p} onDone={onSold} onCancel={() => setSellingTokenId(null)} />
           ) : (
             <div style={{ marginTop: 5 }}>
               <LinkAction onClick={() => setSellingTokenId(p.tokenId)}>Sell →</LinkAction>
