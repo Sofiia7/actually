@@ -34,18 +34,20 @@ beforeEach(() => {
 })
 
 describe('startConnect — the approved session must actually grant what signing needs', () => {
-  it('asks for optionalNamespaces, not the deprecated requiredNamespaces', async () => {
-    // The SDK logs "requiredNamespaces are deprecated and are automatically
-    // assigned to optionalNamespaces" and does exactly that — so asking via
-    // the old field guarantees nothing while looking like it does.
+  it('sends BOTH namespace fields — wallets that render from requiredNamespaces must not be starved', async () => {
+    // Sending only optionalNamespaces (to silence the SDK's deprecation
+    // warning) left such wallets with nothing to build an approval screen
+    // from: they spin forever and never prompt. The warning is noise;
+    // interop is not.
     approvedWith({
       eip155: { accounts: [`${POLY}:0xABC`], methods: ['eth_signTypedData_v4'], events: [] },
     })
     await startConnect()
     const arg = connectMock.mock.calls[0][0]
-    expect(arg.requiredNamespaces).toBeUndefined()
-    expect(arg.optionalNamespaces.eip155.chains).toContain(POLY)
-    expect(arg.optionalNamespaces.eip155.methods).toContain('eth_signTypedData_v4')
+    for (const field of ['requiredNamespaces', 'optionalNamespaces'] as const) {
+      expect(arg[field].eip155.chains).toContain(POLY)
+      expect(arg[field].eip155.methods).toContain('eth_signTypedData_v4')
+    }
   })
 
   it('accepts a session granting Polygon and the signing method', async () => {

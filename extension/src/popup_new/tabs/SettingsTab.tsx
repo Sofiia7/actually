@@ -208,6 +208,10 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
 
       {walletSlot && <Field label="Wallet">{walletSlot}</Field>}
 
+      <Field label="Wallet connect log">
+        <ConnectLogPanel />
+      </Field>
+
       <Field label="About">
         <div
           style={{
@@ -234,6 +238,82 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
           </div>
         </div>
       </Field>
+    </div>
+  );
+};
+
+/**
+ * The connect flow's own trace, shown in the UI.
+ *
+ * Everything that goes wrong in wallet connect has been invisible: Chrome
+ * closes the popup (and its console) on focus loss, the offscreen document's
+ * console is buried behind chrome://extensions → Inspect views, and no
+ * external tool can attach to another extension's pages at all. So a failure
+ * could only ever be described by its symptom — which is exactly how the same
+ * bug got "fixed" more than once without being found. This makes the last
+ * attempt readable and copyable in two clicks.
+ */
+const ConnectLogPanel: React.FC = () => {
+  const [text, setText] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
+
+  async function load() {
+    const { getConnectLog, formatConnectLog } = await import('../../background/connectLog');
+    setText(formatConnectLog(await getConnectLog()));
+    setCopied(false);
+  }
+
+  return (
+    <div
+      style={{
+        padding: '9px 12px',
+        borderRadius: 8,
+        background: 'rgba(255,255,255,.05)',
+        border: '1px solid rgba(255,255,255,.2)',
+        display: 'flex',
+        flexDirection: 'column',
+        gap: 8,
+      }}
+    >
+      <Etched size={11} weight={300} color="rgba(35,45,70,.6)" style={{ lineHeight: 1.45 }}>
+        A step-by-step trace of your last connect attempt. No keys, signatures
+        or full addresses are recorded.
+      </Etched>
+
+      {text === null ? (
+        <GlassButton size="sm" onClick={load}>Show last attempt</GlassButton>
+      ) : (
+        <>
+          <pre
+            style={{
+              margin: 0,
+              maxHeight: 180,
+              overflow: 'auto',
+              fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Consolas, monospace',
+              fontSize: 10.5,
+              lineHeight: 1.5,
+              color: 'rgba(35,45,70,.85)',
+              whiteSpace: 'pre-wrap',
+              wordBreak: 'break-word',
+            }}
+          >
+            {text}
+          </pre>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <GlassButton
+              size="sm"
+              full
+              onClick={() => {
+                void navigator.clipboard.writeText(text);
+                setCopied(true);
+              }}
+            >
+              {copied ? 'Copied ✓' : 'Copy'}
+            </GlassButton>
+            <GlassButton size="sm" full onClick={load}>Refresh</GlassButton>
+          </div>
+        </>
+      )}
     </div>
   );
 };

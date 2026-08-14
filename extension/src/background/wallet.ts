@@ -12,6 +12,7 @@
  * the popup). The SW only uses the types.
  */
 import { SignClient } from '@walletconnect/sign-client'
+import { logConnect } from './connectLog'
 
 const POLYGON_CHAIN_ID = 'eip155:137'
 const POLYGON_CHAIN_ID_NUM = 137n
@@ -19,24 +20,20 @@ const POLYGON_CHAIN_ID_NUM = 137n
 const SIGN_METHOD = 'eth_signTypedData_v4'
 
 /**
- * `url` must be the page WalletConnect actually runs on, not our marketing
- * domain. With `https://actually.app` the SDK logs "The configured
- * WalletConnect 'metadata.url' differs from the actual page url … can lead to
- * issues", and wallets that check origin through the Verify API see a dapp
- * whose claimed origin doesn't match where the request came from — which some
- * of them handle by quietly not surfacing the request at all.
+ * Stays an https URL on purpose.
+ *
+ * The SDK warns that this differs from the actual `chrome-extension://` page
+ * URL and "can lead to issues", and setting it to the extension's own origin
+ * does silence that. But wallets render their approval screen from this
+ * metadata and expect an http(s) origin — several handle an unknown scheme by
+ * showing a spinner and never producing an approval at all. A cosmetic console
+ * warning is not worth a wallet that won't connect; the warning stays.
  */
-function wcMetadata() {
-  const origin =
-    typeof chrome !== 'undefined' && chrome.runtime?.getURL
-      ? chrome.runtime.getURL('').replace(/\/$/, '')
-      : 'https://actually.app'
-  return {
-    name: 'Actually',
-    description: 'What markets really think — trade news in your browser',
-    url: origin,
-    icons: ['https://actually.app/icon-128.png'],
-  }
+const WC_METADATA = {
+  name: 'Actually',
+  description: 'What markets really think — trade news in your browser',
+  url: 'https://actually.app',
+  icons: ['https://actually.app/icon-128.png'],
 }
 
 /**
@@ -65,9 +62,10 @@ export async function getSignClient(): Promise<WCSignClient> {
     // offscreen document.
     clientPromise = SignClient.init({
       projectId: WC_PROJECT_ID,
-      metadata: wcMetadata(),
+      metadata: WC_METADATA,
     }).catch((err) => {
       clientPromise = null
+      void logConnect('signclient_init_failed', err)
       throw err
     })
   }
@@ -194,14 +192,21 @@ export async function startConnect(): Promise<ConnectStart> {
   // signing methods wallets actually recognise, so there is the best chance of
   // being granted what we need — and checked below, so a session that lacks it
   // fails immediately with something the user can act on.
+  const eip155 = {
+    methods: [SIGN_METHOD, 'eth_signTypedData', 'personal_sign'],
+    chains: [POLYGON_CHAIN_ID],
+    events: ['chainChanged', 'accountsChanged'],
+  }
+  // BOTH fields, deliberately, despite the deprecation warning on the first.
+  // Dropping requiredNamespaces to silence that warning was a mistake: plenty
+  // of wallets still build their approval screen from requiredNamespaces, and
+  // a proposal carrying only optionalNamespaces gives them nothing to render —
+  // they sit on a spinner and never produce an approval at all. The warning is
+  // noise; interop is not. The post-approval check below is what actually
+  // guarantees we got Polygon and the signing method, on any wallet.
   const { uri, approval } = await client.connect({
-    optionalNamespaces: {
-      eip155: {
-        methods: [SIGN_METHOD, 'eth_signTypedData', 'personal_sign'],
-        chains: [POLYGON_CHAIN_ID],
-        events: ['chainChanged', 'accountsChanged'],
-      },
-    },
+    requiredNamespaces: { eip155 },
+    optionalNamespaces: { eip155 },
   })
   if (!uri) {
     throw new Error('wc_no_uri')
@@ -213,6 +218,10 @@ export async function startConnect(): Promise<ConnectStart> {
     // EIP-712 payload (whose domain says chainId 137) through a session scoped
     // to another chain is what wallets reject with "provided chainId must
     // match the active chainId".
+    void logConnect(
+      'session_namespaces',
+      `chains=[${accounts.map((a) => a.split(':').slice(0, 2).join(':')).join(' ')}] methods=[${(ns?.methods ?? []).join(' ')}]`,
+    )
     const polygonAccount = accounts.find((a) => a.startsWith(`${POLYGON_CHAIN_ID}:`))
     if (!polygonAccount) {
       const granted = accounts.map((a) => a.split(':').slice(0, 2).join(':')).join(',')

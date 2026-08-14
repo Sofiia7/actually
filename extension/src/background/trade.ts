@@ -40,6 +40,7 @@ import {
   startConnect,
 } from './wallet'
 import { getGeoStatus } from './geo'
+import { clearConnectLog, logConnect } from './connectLog'
 import { getSettings, saveSettings } from './settings'
 import { trackEvent } from './telemetry'
 
@@ -134,15 +135,22 @@ export async function connectWallet(cb: ConnectCallbacks): Promise<WalletState> 
   }
 
   void trackEvent('wallet_connect_started', settings)
+  // Fresh log per attempt — the previous attempt's trace is only noise once a
+  // new one starts, and this keeps what the user copies short and relevant.
+  await clearConnectLog()
+  await logConnect('connect_started')
 
   // 2. Start WC session — caller renders the QR / deeplink
   let session: ActiveSession
   try {
     const { uri, approval } = await startConnect()
+    await logConnect('qr_ready', `uri length ${uri.length}`)
     cb.onUri(uri)
     session = await approval
+    await logConnect('wallet_approved', `account ${session.address}`)
     cb.onApproved?.(session)
   } catch (err) {
+    await logConnect('failed_at_approval', err)
     void trackEvent('wallet_connect_failed', settings, { stage: 'wc_approval' })
     throw err
   }
@@ -158,16 +166,26 @@ export async function connectWallet(cb: ConnectCallbacks): Promise<WalletState> 
   const signer = new WCSigner(session.topic, session.address)
   const client = makeClient({ signer, funderAddress: safeAddress })
   let creds = reusableCreds(settings, session.address)
+  if (creds) {
+    await logConnect('credentials_reused', 'no signature needed for this address')
+  }
   if (!creds) {
+    await logConnect('signature_requested', 'waiting for the wallet to sign ClobAuth')
     // Tell the UI before blocking on it — this is the step where the wallet
     // raises its second prompt, and the user has to go back to the wallet app
     // to approve it. Silence here read as "the connect did nothing".
     cb.onStage?.('signing')
-    creds = await withTimeout(
-      deriveCredentials(client),
-      SIGNATURE_TIMEOUT_MS,
-      'signature_timeout',
-    )
+    try {
+      creds = await withTimeout(
+        deriveCredentials(client),
+        SIGNATURE_TIMEOUT_MS,
+        'signature_timeout',
+      )
+    } catch (err) {
+      await logConnect('failed_at_signature', err)
+      throw err
+    }
+    await logConnect('signature_received')
   }
 
   // 5. Persist everything for next popup open
@@ -190,6 +208,7 @@ export async function connectWallet(cb: ConnectCallbacks): Promise<WalletState> 
   //    stored. Pruning is housekeeping — it must never gate the connect.
   void pruneOtherSessions(session.topic)
 
+  await logConnect('connect_complete', 'wallet is ready to trade')
   void trackEvent('wallet_connect_success', settings)
   return { topic: session.topic, address: session.address, safeAddress, creds }
 }
