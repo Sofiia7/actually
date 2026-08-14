@@ -53,6 +53,31 @@ export interface WalletState {
 export interface ConnectCallbacks {
   onUri: (uri: string) => void
   onApproved?: (session: ActiveSession) => void
+  /** Progress for the UI. `signing` means the QR was approved and we are now
+   * waiting on the SECOND wallet prompt (the CLOB-auth signature). */
+  onStage?: (stage: 'signing') => void
+}
+
+/**
+ * How long to wait for the CLOB-auth signature before giving up.
+ *
+ * This request goes out over the WalletConnect session as a separate prompt
+ * from the QR approval — a second thing to approve, raised by the wallet app
+ * on its own schedule, and easy to miss if the wallet is in the background.
+ * `client.request` has no timeout of its own, so an unapproved prompt used to
+ * park the whole connect forever with the popup still showing the QR screen
+ * and nothing to indicate what it was waiting for.
+ */
+const SIGNATURE_TIMEOUT_MS = 180_000
+
+function withTimeout<T>(p: Promise<T>, ms: number, label: string): Promise<T> {
+  let timer: ReturnType<typeof setTimeout>
+  return Promise.race([
+    p.finally(() => clearTimeout(timer)),
+    new Promise<never>((_, reject) => {
+      timer = setTimeout(() => reject(new Error(label)), ms)
+    }),
+  ])
 }
 
 /**
@@ -132,8 +157,18 @@ export async function connectWallet(cb: ConnectCallbacks): Promise<WalletState> 
   //    different address (or nothing stored yet) pays that prompt.
   const signer = new WCSigner(session.topic, session.address)
   const client = makeClient({ signer, funderAddress: safeAddress })
-  const creds =
-    reusableCreds(settings, session.address) ?? (await deriveCredentials(client))
+  let creds = reusableCreds(settings, session.address)
+  if (!creds) {
+    // Tell the UI before blocking on it — this is the step where the wallet
+    // raises its second prompt, and the user has to go back to the wallet app
+    // to approve it. Silence here read as "the connect did nothing".
+    cb.onStage?.('signing')
+    creds = await withTimeout(
+      deriveCredentials(client),
+      SIGNATURE_TIMEOUT_MS,
+      'signature_timeout',
+    )
+  }
 
   // 5. Persist everything for next popup open
   await saveSettings({

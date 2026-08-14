@@ -92,8 +92,11 @@ export async function startConnectViaOffscreen(): Promise<string> {
   return r.sessionId
 }
 
-export async function pollConnectViaOffscreen(sessionId: string): Promise<{
-  stage: 'pending' | 'awaiting_approval' | 'done' | 'error'
+/** Omit `sessionId` to ask about whatever connect the offscreen document is
+ * currently running — used when the popup was closed mid-connect and no
+ * longer has its own id. */
+export async function pollConnectViaOffscreen(sessionId?: string): Promise<{
+  stage: 'pending' | 'awaiting_approval' | 'signing' | 'done' | 'error'
   uri?: string
   wallet?: SerializableWalletState
   error?: string

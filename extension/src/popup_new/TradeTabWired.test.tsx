@@ -83,6 +83,9 @@ beforeEach(() => {
   opsm.priceHistoryViaOffscreen.mockResolvedValue([])
   opsm.orderbookSnapshotViaOffscreen.mockResolvedValue({ bestBid: 0.4, bestAsk: 0.42, spread: 0.02, bids: [], asks: [], estimate: null })
   opsm.placeOrderViaOffscreen.mockResolvedValue({ ok: true, orderId: '0x123' })
+  // Default: the offscreen document knows of no connect. The popup probes for
+  // one on every mount so it can rejoin a flow it was closed out of.
+  opsm.pollConnectViaOffscreen.mockResolvedValue({ stage: 'error', error: 'unknown_session' })
 })
 
 describe('TradeTabWired — wallet gating', () => {
@@ -163,6 +166,55 @@ describe('TradeTabWired — selection is legible', () => {
       tokenId: 'noTok',
       orderType: 'LIMIT',
     })
+  })
+})
+
+describe('TradeTabWired — a connect survives the popup closing', () => {
+  it('rejoins an in-flight connect on reopen instead of showing Connect again', async () => {
+    // Chrome closes the popup on any focus loss — including the user
+    // switching to their wallet app to approve. The connect keeps running in
+    // the offscreen document, but the popup used to come back with no way to
+    // ask about it: a plain "Connect wallet" screen while the real flow sat
+    // waiting on a signature the user never saw.
+    opsm.restoreWalletViaOffscreen.mockResolvedValue(null)
+    opsm.pollConnectViaOffscreen.mockResolvedValue({ stage: 'signing' })
+
+    render(<TradeTabWired {...props} />)
+
+    expect(await screen.findByText(/Approve the signature in your wallet/i)).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /^Connect wallet$/i })).toBeNull()
+    // …and it asks without a sessionId, which the closed popup no longer has.
+    expect(opsm.pollConnectViaOffscreen).toHaveBeenCalledWith()
+  })
+
+  it('picks up a connect that finished while the popup was shut', async () => {
+    opsm.restoreWalletViaOffscreen.mockResolvedValue(null)
+    opsm.pollConnectViaOffscreen.mockResolvedValue({ stage: 'done', wallet })
+
+    render(<TradeTabWired {...props} />)
+    expect(await screen.findByText('Orderbook')).toBeInTheDocument()
+  })
+
+  it('stays on Connect when there is no connect in flight', async () => {
+    opsm.restoreWalletViaOffscreen.mockResolvedValue(null)
+    opsm.pollConnectViaOffscreen.mockResolvedValue({ stage: 'error', error: 'unknown_session' })
+
+    render(<TradeTabWired {...props} />)
+    expect(await screen.findByRole('button', { name: /Connect wallet/i })).toBeInTheDocument()
+  })
+
+  it('shows the signing step rather than the QR once the QR is approved', async () => {
+    opsm.restoreWalletViaOffscreen.mockResolvedValue(null)
+    opsm.pollConnectViaOffscreen.mockResolvedValue({ stage: 'error', error: 'unknown_session' })
+    opsm.startConnectViaOffscreen.mockResolvedValue('cs_1')
+    render(<TradeTabWired {...props} />)
+    await screen.findByRole('button', { name: /Connect wallet/i })
+
+    opsm.pollConnectViaOffscreen.mockResolvedValue({ stage: 'signing', uri: 'wc:abc' })
+    await userEvent.click(screen.getByRole('button', { name: /Connect wallet/i }))
+
+    expect(await screen.findByText(/Approve the signature in your wallet/i)).toBeInTheDocument()
+    expect(screen.queryByText(/Scan the QR/i)).toBeNull()
   })
 })
 
@@ -321,7 +373,10 @@ describe('TradeTabWired — connect loop race', () => {
     const staleS1PollPromise = new Promise<{ stage: string; error?: string }>((resolve) => {
       resolveStaleS1Poll = resolve
     })
-    opsm.pollConnectViaOffscreen.mockImplementation(async (sessionId: string) => {
+    opsm.pollConnectViaOffscreen.mockImplementation(async (sessionId?: string) => {
+      // The mount-time probe carries no sessionId — answer it with "nothing
+      // in flight" so this test still starts from the Connect screen.
+      if (sessionId === undefined) return { stage: 'error', error: 'unknown_session' }
       if (sessionId === 's1') return staleS1PollPromise
       return { stage: 'done', wallet }
     })

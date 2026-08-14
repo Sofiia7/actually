@@ -51,7 +51,15 @@ export interface TradeTabWiredProps {
 
 type ConnectStage =
   | { kind: 'idle' }
-  | { kind: 'connecting'; uri: string | null; qrDataUrl: string | null; error?: string }
+  | {
+      kind: 'connecting'
+      uri: string | null
+      qrDataUrl: string | null
+      error?: string
+      /** True once the QR was approved and we're waiting on the wallet's
+       * SECOND prompt (the CLOB-auth signature). */
+      signing?: boolean
+    }
 
 type GeoInfo = {
   blocked: boolean
@@ -106,8 +114,33 @@ export const TradeTabWired: React.FC<TradeTabWiredProps> = ({
       setWallet(w)
       if (g) setGeo(g)
       setLoaded(true)
+
+      // No wallet on disk yet — but a connect may still be running in the
+      // offscreen document from before this popup was (re)opened. Chrome
+      // closes the popup on any focus loss, so the single most common way to
+      // approve a QR — switching to the wallet app — always destroys the
+      // popup that started the flow. Without this the user came back to a
+      // plain "Connect wallet" screen, with the real connect still waiting on
+      // a signature they had no way to see.
+      if (w) return
+      const pending = await pollConnectViaOffscreen().catch(() => null)
+      if (cancelled || !pending) return
+      if (pending.stage === 'done' && pending.wallet) {
+        setWallet(pending.wallet)
+        return
+      }
+      if (pending.stage === 'pending' || pending.stage === 'awaiting_approval' || pending.stage === 'signing') {
+        setConnect({
+          kind: 'connecting',
+          uri: pending.uri ?? null,
+          qrDataUrl: null,
+          signing: pending.stage === 'signing',
+        })
+        void pumpConnect(undefined, ++connectGenRef.current)
+      }
     })()
     return () => { cancelled = true }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [settings.workerUrl, settings.workerSecret])
 
   // Bumped on every refreshPortfolio() call. wallet-connect, a cancel's
@@ -191,12 +224,17 @@ export const TradeTabWired: React.FC<TradeTabWiredProps> = ({
     return () => { cancelled = true }
   }, [connect])
 
-  async function startConnect() {
-    const gen = ++connectGenRef.current
+  /**
+   * Drive one connect to completion.
+   *
+   * `sessionId` is optional so a popup that was closed mid-connect — which
+   * Chrome does on any focus loss, including switching to the wallet app —
+   * can rejoin the flow still running in the offscreen document instead of
+   * abandoning it and starting a competing one.
+   */
+  async function pumpConnect(sessionId: string | undefined, gen: number) {
     const stale = () => connectGenRef.current !== gen
-    setConnect({ kind: 'connecting', uri: null, qrDataUrl: null })
     try {
-      const sessionId = await startConnectViaOffscreen()
       // Poll until done. 5 minutes is enough for a user to unlock their
       // wallet app, scan the QR, and approve — beyond that the popup is
       // almost certainly closed/abandoned, and an active poll loop just
@@ -210,6 +248,11 @@ export const TradeTabWired: React.FC<TradeTabWiredProps> = ({
         if (s.uri && s.uri !== lastUri) {
           lastUri = s.uri
           setConnect({ kind: 'connecting', uri: s.uri, qrDataUrl: null })
+        }
+        if (s.stage === 'signing') {
+          setConnect((prev) =>
+            prev.kind === 'connecting' && prev.signing ? prev : { ...(prev.kind === 'connecting' ? prev : { kind: 'connecting' as const, uri: lastUri ?? null, qrDataUrl: null }), signing: true },
+          )
         }
         if (s.stage === 'done' && s.wallet) {
           setWallet(s.wallet)
@@ -227,6 +270,19 @@ export const TradeTabWired: React.FC<TradeTabWiredProps> = ({
       }
     } catch (err) {
       if (!stale()) {
+        setConnect({ kind: 'connecting', uri: null, qrDataUrl: null, error: humanError(String(err)) })
+      }
+    }
+  }
+
+  async function startConnect() {
+    const gen = ++connectGenRef.current
+    setConnect({ kind: 'connecting', uri: null, qrDataUrl: null })
+    try {
+      const sessionId = await startConnectViaOffscreen()
+      await pumpConnect(sessionId, gen)
+    } catch (err) {
+      if (connectGenRef.current === gen) {
         setConnect({ kind: 'connecting', uri: null, qrDataUrl: null, error: humanError(String(err)) })
       }
     }
@@ -309,6 +365,28 @@ export const TradeTabWired: React.FC<TradeTabWiredProps> = ({
             cancelError={cancelError}
           />
         )}
+      </Panel>
+    )
+  }
+
+  if (connect.kind === 'connecting' && connect.signing && !connect.error) {
+    // The QR is done with; the wallet is now holding a SECOND prompt (the
+    // CLOB-auth signature). Showing the QR here — as this used to — made an
+    // approved connect look like one that had never started.
+    return (
+      <Panel>
+        <Etched size={13} weight={400}>Approve the signature in your wallet</Etched>
+        <Etched size={11} weight={300} color="rgba(35,45,70,.6)" style={{ lineHeight: 1.45 }}>
+          Wallet connected. It's now asking you to sign a one-time message that
+          proves you own the account — open your wallet app to approve it. This
+          signs nothing on-chain and costs no gas.
+        </Etched>
+        <div style={{ display: 'flex', justifyContent: 'center', padding: 10 }}>
+          <NeutralScanner />
+        </div>
+        <div style={{ display: 'flex', justifyContent: 'center' }}>
+          <GlassButton size="sm" onClick={cancelConnect}>Cancel</GlassButton>
+        </div>
       </Panel>
     )
   }
@@ -1084,6 +1162,9 @@ const CLOB_ERROR_HINTS: Array<[RegExp, string]> = [
 ]
 
 function humanError(raw: string): string {
+  if (raw.includes('signature_timeout')) {
+    return "Your wallet never returned the signature. Open the wallet app, make sure there's no pending request waiting, and connect again."
+  }
   for (const [pattern, message] of CLOB_ERROR_HINTS) {
     if (pattern.test(raw)) return message
   }

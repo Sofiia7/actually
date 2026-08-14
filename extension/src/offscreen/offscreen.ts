@@ -50,12 +50,29 @@ installStorageBridge()
 // The widget polls every 500ms until stage === 'done' | 'error'.
 // ============================================================
 interface ConnectSession {
-  stage: 'pending' | 'awaiting_approval' | 'done' | 'error'
+  stage: 'pending' | 'awaiting_approval' | 'signing' | 'done' | 'error'
   uri?: string
   wallet?: SerializableWalletState
   error?: string
 }
 const sessions = new Map<string, ConnectSession>()
+
+/**
+ * The connect the popup should be looking at, if it lost track of its own
+ * sessionId.
+ *
+ * It loses it constantly: Chrome closes an extension popup on any focus loss,
+ * including the user switching to their wallet app to approve — and the
+ * sessionId lived only in the popup's component state. The connect itself
+ * keeps running here, so without this the popup came back with no way to ask
+ * about it, showed "Connect wallet" as if nothing had happened, and a second
+ * click started a competing flow behind the first.
+ */
+let currentConnectId: string | null = null
+
+function isInFlight(s: ConnectSession | undefined): boolean {
+  return s?.stage === 'pending' || s?.stage === 'awaiting_approval' || s?.stage === 'signing'
+}
 
 // §12: lazy cache TTL. After a match is returned we kick off a non-blocking
 // refresh if the cache is older than CACHE_TTL_MINUTES, deduped so concurrent
@@ -252,14 +269,26 @@ async function handle(msg: OffscreenRequest): Promise<OffscreenResponse> {
     }
 
     case 'OS_START_CONNECT': {
+      // Rejoin an in-flight connect rather than racing a second one against
+      // it. Two live flows means two QR codes, two pairings, and a wallet
+      // prompt that belongs to whichever one the user isn't looking at.
+      if (currentConnectId && isInFlight(sessions.get(currentConnectId))) {
+        return { type: 'OS_CONNECT_STARTED', sessionId: currentConnectId }
+      }
       const sessionId = newSessionId()
+      sessions.clear() // at most one record is ever worth keeping
       sessions.set(sessionId, { stage: 'pending' })
+      currentConnectId = sessionId
       // Run the connect flow in the background; updates the session
-      // record as URI / wallet / error become known.
+      // record as URI / stage / wallet / error become known.
       void (async () => {
         try {
           const result = await connectWallet({
             onUri: (uri) => sessions.set(sessionId, { stage: 'awaiting_approval', uri }),
+            onStage: (stage) => {
+              const prev = sessions.get(sessionId)
+              sessions.set(sessionId, { ...prev, stage })
+            },
           })
           sessions.set(sessionId, {
             stage: 'done',
@@ -273,12 +302,14 @@ async function handle(msg: OffscreenRequest): Promise<OffscreenResponse> {
     }
 
     case 'OS_POLL_CONNECT': {
-      const s = sessions.get(msg.sessionId)
+      const id = msg.sessionId ?? currentConnectId
+      const s = id ? sessions.get(id) : undefined
       if (!s) return { type: 'OS_CONNECT_STATUS', stage: 'error', error: 'unknown_session' }
-      // Clean up completed sessions on the read-after-final-state.
-      if (s.stage === 'done' || s.stage === 'error') {
-        sessions.delete(msg.sessionId)
-      }
+      // Deliberately NOT deleted on read. The popup can be closed and
+      // reopened at any point (Chrome does it on focus loss), and a record
+      // dropped on the first read of a final state left the next popup with
+      // no way to learn that the connect it started had already succeeded.
+      // A finished record is superseded by the next OS_START_CONNECT instead.
       return {
         type: 'OS_CONNECT_STATUS',
         stage: s.stage,

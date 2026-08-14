@@ -67,7 +67,12 @@ export type OffscreenRequest =
   | { target: 'offscreen'; type: 'OS_RESTORE_WALLET' }
   | { target: 'offscreen'; type: 'OS_DISCONNECT_WALLET' }
   | { target: 'offscreen'; type: 'OS_START_CONNECT' }
-  | { target: 'offscreen'; type: 'OS_POLL_CONNECT'; sessionId: string }
+  // `sessionId` is optional: the popup loses it whenever Chrome closes the
+  // popup (which happens on any focus loss — including switching to the
+  // wallet app). Omitting it asks for whatever connect the offscreen document
+  // currently knows about, so a reopened popup can rejoin one already in
+  // flight instead of stranding it and starting another.
+  | { target: 'offscreen'; type: 'OS_POLL_CONNECT'; sessionId?: string }
   | { target: 'offscreen'; type: 'OS_PLACE_ORDER'; args: OffscreenPlaceOrderArgs }
   | { target: 'offscreen'; type: 'OS_CANCEL_ORDER'; orderId: string }
   | { target: 'offscreen'; type: 'OS_GET_OPEN_ORDERS'; marketId?: string }
@@ -100,7 +105,15 @@ export type OffscreenResponse =
   | { type: 'OS_GEO_RESULT'; country: string; blocked: boolean; unknown: boolean; errorReason?: string }
   | { type: 'OS_WALLET_RESTORED'; wallet: SerializableWalletState | null }
   | { type: 'OS_CONNECT_STARTED'; sessionId: string }
-  | { type: 'OS_CONNECT_STATUS'; stage: 'pending' | 'awaiting_approval' | 'done' | 'error'; uri?: string; wallet?: SerializableWalletState; error?: string }
+  | {
+      type: 'OS_CONNECT_STATUS'
+      /** `signing` = session approved, now waiting on the CLOB-auth signature —
+       * a SECOND prompt the wallet raises separately from the QR approval. */
+      stage: 'pending' | 'awaiting_approval' | 'signing' | 'done' | 'error'
+      uri?: string
+      wallet?: SerializableWalletState
+      error?: string
+    }
   | { type: 'OS_ORDER_RESULT'; ok: boolean; orderId?: string; error?: string }
   | {
       type: 'OS_ORDERBOOK'
