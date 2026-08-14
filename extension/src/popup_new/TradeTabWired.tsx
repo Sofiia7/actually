@@ -225,17 +225,26 @@ export const TradeTabWired: React.FC<TradeTabWiredProps> = ({
     }
   }
 
-  // Render the WC QR whenever a new URI comes in
+  // Render the WC QR whenever a new URI comes in.
+  //
+  // Keyed on the URI STRING, not the connect object. Keyed on the object this
+  // spun forever: the effect's own setConnect spreads into a fresh object, so
+  // `connect` had a new identity on every pass, which re-ran the effect, which
+  // re-encoded the QR, which set state again. While the QR screen was up the
+  // popup sat in an unbroken render loop — burning CPU and starving everything
+  // else the popup was trying to do, including the poll that advances the
+  // connect. The URI is the only input the encoding actually depends on.
+  const connectUri = connect.kind === 'connecting' ? connect.uri : null
   useEffect(() => {
-    if (connect.kind !== 'connecting' || !connect.uri) return
+    if (!connectUri) return
     let cancelled = false
-    void QRCode.toDataURL(connect.uri, { margin: 1, width: 200 })
+    void QRCode.toDataURL(connectUri, { margin: 1, width: 200 })
       .then((url) => {
         if (!cancelled) setConnect((s) => (s.kind === 'connecting' ? { ...s, qrDataUrl: url } : s))
       })
       .catch(() => undefined)
     return () => { cancelled = true }
-  }, [connect])
+  }, [connectUri])
 
   /**
    * Drive one connect to completion.

@@ -33,11 +33,27 @@ import {
 import { resolveHistoryMarket } from '../background/resolveHistoryMarket'
 import { fetchPositions } from '../background/positions'
 import { installStorageBridge } from './storage-bridge'
+import { runningInOffscreenDocument } from './context'
+
+/**
+ * THIS GUARD IS LOAD-BEARING — see ./context.ts for the full explanation.
+ *
+ * Short version: this module registers a global chrome.runtime.onMessage
+ * listener at import time, and the bundler also puts its chunk in the popup
+ * page and the service worker. Since `routeToOffscreen` forwards by broadcast,
+ * every context holding this listener handled every request — so every
+ * offscreen operation ran once per context. The rejoin guard in
+ * OS_START_CONNECT could never catch that: `sessions` and `currentConnectId`
+ * are module-level, so each context had its own empty copy.
+ */
+const IS_OFFSCREEN_DOC = runningInOffscreenDocument()
 
 // Some Chrome builds don't expose chrome.storage to offscreen documents. Install
 // a proxy to the service worker BEFORE any handler touches storage (settings,
 // cache, history). No-op when the native API is present.
-installStorageBridge()
+if (IS_OFFSCREEN_DOC) {
+  installStorageBridge()
+}
 
 // ============================================================
 // Connect-session registry
@@ -123,16 +139,20 @@ interface ForwardEnvelope {
   payload: OffscreenRequest
 }
 
-chrome.runtime.onMessage.addListener((env: unknown, _sender, sendResponse) => {
-  const e = env as ForwardEnvelope | null
-  if (!e || e.__forward !== true) return false
-  const msg = e.payload
-  if (!msg || (msg as { target?: string }).target !== 'offscreen') return false
-  void handle(msg).then(sendResponse).catch((err) => {
-    sendResponse({ type: 'OS_ERROR', error: String(err) } satisfies OffscreenResponse)
+// See IS_OFFSCREEN_DOC above — registering this anywhere else makes every
+// offscreen operation run twice.
+if (IS_OFFSCREEN_DOC) {
+  chrome.runtime.onMessage.addListener((env: unknown, _sender, sendResponse) => {
+    const e = env as ForwardEnvelope | null
+    if (!e || e.__forward !== true) return false
+    const msg = e.payload
+    if (!msg || (msg as { target?: string }).target !== 'offscreen') return false
+    void handle(msg).then(sendResponse).catch((err) => {
+      sendResponse({ type: 'OS_ERROR', error: String(err) } satisfies OffscreenResponse)
+    })
+    return true // async
   })
-  return true // async
-})
+}
 
 async function handle(msg: OffscreenRequest): Promise<OffscreenResponse> {
   switch (msg.type) {
