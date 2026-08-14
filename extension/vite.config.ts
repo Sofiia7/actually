@@ -29,8 +29,40 @@ function tightenConnectSrc(workerUrl: string | undefined): typeof manifest {
   }
 }
 
-export default defineConfig(({ mode }) => {
+/**
+ * Every value here is baked into the bundle at build time and has no runtime
+ * fallback — an empty one produces an extension that installs fine and then
+ * does nothing: "Worker not configured" on Check, `wc_project_id_missing` on
+ * connect, `builder_code_not_configured` on every order.
+ *
+ * Silence is the danger. A build with no env present succeeds, looks normal,
+ * and only fails once it is loaded in a browser — which is exactly how a dead
+ * build got shipped after a verification run that had moved .env.local aside.
+ * CI supplies deliberate stub values for these, so requiring them non-empty
+ * costs nothing there and makes an accidental env-less build impossible.
+ */
+const REQUIRED_BUILD_ENV = [
+  'VITE_WORKER_URL',
+  'VITE_WORKER_SECRET',
+  'VITE_WC_PROJECT_ID',
+  'VITE_BUILDER_CODE',
+] as const
+
+export default defineConfig(({ mode, command }) => {
   const env = loadEnv(mode, process.cwd(), '')
+
+  if (command === 'build') {
+    const missing = REQUIRED_BUILD_ENV.filter((k) => !env[k]?.trim())
+    if (missing.length > 0) {
+      throw new Error(
+        `Refusing to build without: ${missing.join(', ')}.\n` +
+          'These are baked in at build time with no runtime fallback, so an\n' +
+          'empty value ships an extension that loads and then does nothing.\n' +
+          'Set them in extension/.env.local (or the environment) and rebuild.',
+      )
+    }
+  }
+
   const finalManifest = tightenConnectSrc(env.VITE_WORKER_URL)
 
   return {
