@@ -3,7 +3,26 @@ import { IceCard } from './IceCard'
 import { Etched } from './Etched'
 import { LinkAction } from './LinkAction'
 import { SellTicket } from '../SellTicket'
+import { redeemPositionViaOffscreen } from '../ops'
 import type { OpenOrderSummary, Position } from '../../shared/types'
+
+/** Redeem failures the user can actually do something about. */
+export function humanRedeemError(raw: string): string {
+  if (/not_yet_redeemable/.test(raw)) {
+    return "Polymarket doesn't consider this resolved yet — try again once it settles."
+  }
+  if (/position_not_found/.test(raw)) return 'That position is no longer held — refresh.'
+  if (/no_wallet/.test(raw)) return 'Wallet session expired — reconnect and try again.'
+  if (/worker_not_configured/.test(raw)) return 'Set the Worker URL and secret in Settings first.'
+  if (/wc_provider_unsupported_method|personal_sign/i.test(raw)) {
+    return "Your wallet didn't grant permission to sign this. Reconnect and approve the full request."
+  }
+  if (/relayer_state/.test(raw)) {
+    return 'Polymarket\'s relayer rejected the transaction. Nothing was redeemed — try again shortly.'
+  }
+  if (/user rejected|user disapproved|rejected/i.test(raw)) return 'You declined the signature in your wallet.'
+  return raw
+}
 
 export interface PositionsPanelProps {
   positions: Position[]
@@ -51,6 +70,32 @@ export const PositionsPanel: React.FC<PositionsPanelProps> = ({
     },
     [],
   )
+
+  const [redeemingId, setRedeemingId] = useState<string | null>(null)
+
+  async function onRedeem(conditionId: string) {
+    // A LinkAction is a plain <a> with no native disabled state, and this one
+    // signs an on-chain call — guard synchronously so a double-click can't
+    // submit two relayer transactions for the same position.
+    if (redeemingId) return
+    setRedeemingId(conditionId)
+    setSellNotice(null)
+    try {
+      const r = await redeemPositionViaOffscreen(conditionId)
+      setSellNotice(
+        r.ok
+          ? `Redeemed${r.transactionId ? ` · ${r.transactionId.slice(0, 10)}…` : ''} — the payout lands in your Polymarket balance.`
+          : `Redeem failed: ${humanRedeemError(r.error ?? 'unknown_error')}`,
+      )
+    } catch (err) {
+      setSellNotice(`Redeem failed: ${String(err)}`)
+    } finally {
+      setRedeemingId(null)
+      onRefresh()
+      if (lagRefreshRef.current) clearTimeout(lagRefreshRef.current)
+      lagRefreshRef.current = setTimeout(onRefresh, 5000)
+    }
+  }
 
   function onSold(message: string) {
     setSellNotice(message)
@@ -125,9 +170,14 @@ export const PositionsPanel: React.FC<PositionsPanelProps> = ({
           {/* A resolved market no longer trades — offering Sell there would
               only ever produce a CLOB rejection. Those are redeemed instead. */}
           {p.redeemable ? (
-            <Etched size={10.5} weight={300} color="rgba(35,45,70,.55)" style={{ display: 'block', marginTop: 5 }}>
-              Market resolved — redeem this position on Polymarket.
-            </Etched>
+            <div style={{ marginTop: 5, display: 'flex', alignItems: 'baseline', gap: 8 }}>
+              <LinkAction onClick={() => void onRedeem(p.conditionId)}>
+                {redeemingId === p.conditionId ? 'Redeeming…' : 'Redeem →'}
+              </LinkAction>
+              <Etched size={10.5} weight={300} color="rgba(35,45,70,.5)">
+                Market resolved · no gas needed
+              </Etched>
+            </div>
           ) : sellingTokenId === p.tokenId ? (
             <SellTicket position={p} onDone={onSold} onCancel={() => setSellingTokenId(null)} />
           ) : (

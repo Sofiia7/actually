@@ -92,6 +92,12 @@ export interface Position {
   slug: string
   /** True once the market has resolved and this position can be redeemed. */
   redeemable: boolean
+  /** 0 or 1 — which binary outcome slot these tokens occupy. Required to build
+   * a neg-risk redeem, which takes explicit per-slot amounts. */
+  outcomeIndex: number
+  /** Neg-risk markets redeem through a different contract with a different
+   * calling convention entirely — see @actually/core's buildRedeemTransaction. */
+  negativeRisk: boolean
 }
 
 export interface TestKeysResult {

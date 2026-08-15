@@ -13,6 +13,8 @@ interface RawPosition {
   redeemable?: boolean
   title?: string
   slug?: string
+  outcomeIndex?: number
+  negativeRisk?: boolean
 }
 
 /**
@@ -42,5 +44,7 @@ export async function fetchPositions(address: string, workerUrl: string, workerS
     redeemable: p.redeemable ?? false,
     title: p.title ?? '',
     slug: p.slug ?? '',
+    outcomeIndex: p.outcomeIndex ?? 0,
+    negativeRisk: p.negativeRisk ?? false,
   }))
 }

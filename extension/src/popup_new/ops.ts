@@ -135,6 +135,18 @@ export async function sellOrderViaOffscreen(
   return { ok: r.ok, orderId: r.orderId, error: r.error }
 }
 
+export async function redeemPositionViaOffscreen(
+  conditionId: string,
+): Promise<{ ok: boolean; transactionId?: string; error?: string }> {
+  const r = await call<Extract<OffscreenResponse, { type: 'OS_REDEEM_RESULT' }> | Extract<OffscreenResponse, { type: 'OS_ERROR' }>>({
+    target: 'offscreen',
+    type: 'OS_REDEEM_POSITION',
+    conditionId,
+  })
+  if (r.type === 'OS_ERROR') return { ok: false, error: r.error }
+  return { ok: r.ok, transactionId: r.transactionId, error: r.error }
+}
+
 export async function resolveHistoryMarketViaOffscreen(
   marketId: string,
 ): Promise<{ market: PolyMarket | null; error?: 'not_found' | 'closed' }> {

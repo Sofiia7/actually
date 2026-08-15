@@ -32,6 +32,7 @@ import {
   type WalletState,
 } from '../background/trade'
 import { resolveHistoryMarket } from '../background/resolveHistoryMarket'
+import { redeemPosition } from '../background/redeem'
 import { fetchPositions } from '../background/positions'
 import { installStorageBridge } from './storage-bridge'
 import { runningInOffscreenDocument } from './context'
@@ -372,6 +373,32 @@ async function handle(msg: OffscreenRequest): Promise<OffscreenResponse> {
         orderType: msg.args.orderType,
       })
       return { type: 'OS_ORDER_RESULT', ...r }
+    }
+
+    case 'OS_REDEEM_POSITION': {
+      const w = await rehydrateWallet()
+      if (!w) return { type: 'OS_REDEEM_RESULT', ok: false, error: 'no_wallet' }
+      const settings = await getSettings()
+      if (!settings.workerUrl || !settings.workerSecret) {
+        return { type: 'OS_REDEEM_RESULT', ok: false, error: 'worker_not_configured' }
+      }
+      // Positions are re-fetched here rather than trusted from the popup: the
+      // redeem amount for a neg-risk market comes straight off the held size,
+      // and a stale number from a popup that has been open a while would
+      // encode the wrong amount into an on-chain call.
+      let positions
+      try {
+        positions = await fetchPositions(w.safeAddress, settings.workerUrl, settings.workerSecret)
+      } catch (err) {
+        return { type: 'OS_REDEEM_RESULT', ok: false, error: `positions_unavailable:${err}` }
+      }
+      const r = await redeemPosition({
+        topic: w.topic,
+        address: w.address,
+        conditionId: msg.conditionId,
+        positions,
+      })
+      return { type: 'OS_REDEEM_RESULT', ...r }
     }
 
     case 'OS_CANCEL_ORDER': {

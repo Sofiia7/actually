@@ -27,6 +27,8 @@ const position: Position = {
   title: 'US announces end of Iranian blockade by August 15, 2026?',
   slug: 'us-blockade',
   redeemable: false,
+  outcomeIndex: 0,
+  negativeRisk: false,
 }
 
 beforeEach(() => {

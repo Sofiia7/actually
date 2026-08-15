@@ -264,6 +264,28 @@ export function resetSignClient(): void {
 }
 
 /**
+ * Send one raw JSON-RPC request over the active WC session.
+ *
+ * The generic form behind signTypedData, exposed so the redeem path can back
+ * an EIP-1193 provider with this session (viem needs one to build a
+ * WalletClient, which is the only signer shape Polymarket's relayer accepts
+ * short of a private key). Only methods the wallet actually granted will be
+ * accepted — the SDK validates each request against the approved namespaces.
+ */
+export async function wcRequest(
+  topic: string,
+  method: string,
+  params: unknown,
+): Promise<unknown> {
+  const client = await getSignClient()
+  return client.request({
+    topic,
+    chainId: POLYGON_CHAIN_ID,
+    request: { method, params },
+  })
+}
+
+/**
  * Sign EIP-712 typed data via the active WC session. Returns a hex signature.
  */
 export async function signTypedData(

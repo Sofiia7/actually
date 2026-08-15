@@ -75,6 +75,7 @@ export type OffscreenRequest =
   | { target: 'offscreen'; type: 'OS_POLL_CONNECT'; sessionId?: string }
   | { target: 'offscreen'; type: 'OS_PLACE_ORDER'; args: OffscreenPlaceOrderArgs }
   | { target: 'offscreen'; type: 'OS_SELL_ORDER'; args: OffscreenSellOrderArgs }
+  | { target: 'offscreen'; type: 'OS_REDEEM_POSITION'; conditionId: string }
   | { target: 'offscreen'; type: 'OS_CANCEL_ORDER'; orderId: string }
   | { target: 'offscreen'; type: 'OS_GET_OPEN_ORDERS'; marketId?: string }
   | { target: 'offscreen'; type: 'OS_GET_POSITIONS' }
@@ -117,6 +118,7 @@ export type OffscreenResponse =
   | { type: 'OS_CACHE_REFRESHED'; added: number; reused: number; removed: number }
   | { type: 'OS_GEO_RESULT'; country: string; blocked: boolean; unknown: boolean; errorReason?: string }
   | { type: 'OS_WALLET_RESTORED'; wallet: SerializableWalletState | null }
+  | { type: 'OS_REDEEM_RESULT'; ok: boolean; transactionId?: string; error?: string }
   | { type: 'OS_CONNECT_STARTED'; sessionId: string }
   | {
       type: 'OS_CONNECT_STATUS'
