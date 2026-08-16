@@ -198,7 +198,13 @@ function clobErrorText(res: {
 }): string | null {
   if (typeof res.errorMsg === 'string' && res.errorMsg.trim() !== '') return res.errorMsg
   if (typeof res.error === 'string' && res.error.trim() !== '') return res.error
-  if (res.error !== undefined && res.error !== null) return JSON.stringify(res.error)
+  // Only stringify a STRUCTURED error that stringifies to something readable.
+  // An empty string or bare {} would otherwise surface as '""' / '{}' — worse
+  // than the status fallback below.
+  if (res.error !== undefined && res.error !== null && typeof res.error !== 'string') {
+    const s = JSON.stringify(res.error)
+    if (s && s !== '{}' && s !== '[]') return s
+  }
   if (typeof res.status === 'number') return `clob_http_${res.status}`
   if (typeof res.status === 'string' && res.status.trim() !== '') return `clob_status_${res.status}`
   return null
