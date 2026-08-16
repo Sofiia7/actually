@@ -3,6 +3,7 @@ import { Etched } from './components/Etched'
 import { GlassButton } from './components/GlassButton'
 import { minOrderShares } from '@actually/core'
 import type { Position } from '../shared/types'
+import { MAX_ORDER_USD } from '../shared/constants'
 import { orderbookSnapshotViaOffscreen, sellOrderViaOffscreen } from './ops'
 
 /** Worst-acceptable slippage below the bid for a market (FOK) sell. Mirrors
@@ -67,9 +68,20 @@ export const SellTicket: React.FC<SellTicketProps> = ({ position, onDone, onCanc
   const tooFew = Number.isFinite(shares) && shares > 0 && shares < minShares
   const tooMany = Number.isFinite(shares) && shares > heldShares
   const positionUnsellable = heldShares < minShares
-  const noBid = orderType === 'MARKET' && floorPrice == null
+  // Distinguish "the book lookup itself failed" from "an honestly empty book"
+  // — the former used to render as "No bids", sending the user chasing a
+  // liquidity problem when the actual problem was e.g. an expired wallet
+  // session.
+  const bookFailed = book.error != null
+  const noBid = orderType === 'MARKET' && !bookFailed && floorPrice == null
   const priceInvalid =
     orderType === 'LIMIT' && !(Number.isFinite(limitPrice) && limitPrice > 0 && limitPrice < 1)
+  // Pre-check the same per-order ceiling the background enforces, so a big
+  // position doesn't default to a full-size sell that can only fail after
+  // the wallet signature.
+  const overCap = activePrice != null && shares > 0 && shares * activePrice > MAX_ORDER_USD
+  const maxSharesAtPrice =
+    activePrice != null && activePrice > 0 ? Math.floor(MAX_ORDER_USD / activePrice) : null
 
   const disabled =
     submitting ||
@@ -79,6 +91,7 @@ export const SellTicket: React.FC<SellTicketProps> = ({ position, onDone, onCanc
     positionUnsellable ||
     noBid ||
     priceInvalid ||
+    overCap ||
     activePrice == null
 
   async function submit() {
@@ -90,7 +103,9 @@ export const SellTicket: React.FC<SellTicketProps> = ({ position, onDone, onCanc
         tokenId: position.tokenId,
         sizeShares: shares,
         price: activePrice,
-        negRisk: false, // ignored — see the module comment; the SDK resolves it
+        // negRisk deliberately omitted — the SDK resolves the real flag from
+        // the CLOB. Sending `false` here (as this once did) forced the normal
+        // exchange contract and got every neg-risk sell rejected.
         orderType,
       })
       if (r.ok) {
@@ -179,6 +194,19 @@ export const SellTicket: React.FC<SellTicketProps> = ({ position, onDone, onCanc
           No bids on the book right now — nobody to sell to. Try a limit order.
         </Etched>
       )}
+      {bookFailed && (
+        <Etched size={11} weight={300} color="rgba(160,40,40,.9)">
+          {book.error === 'wallet_not_restored'
+            ? "Couldn't confirm your wallet session for live pricing — reopen the popup or reconnect in Settings."
+            : `Couldn't load the order book (${book.error}) — close and reopen this ticket to retry.`}
+        </Etched>
+      )}
+      {overCap && (
+        <Etched size={11} weight={300} color="rgba(160,40,40,.9)">
+          Sells are capped at ${MAX_ORDER_USD} per order, same as buys
+          {maxSharesAtPrice != null ? ` — up to ${maxSharesAtPrice} shares at this price` : ''}. Sell in parts.
+        </Etched>
+      )}
 
       {!confirming ? (
         <div style={{ display: 'flex', gap: 6 }}>
@@ -240,5 +268,7 @@ export function humanSellError(raw: string, minShares: number): string {
     return "That price isn't a valid tick for this market."
   }
   if (/no_wallet/i.test(raw)) return 'Wallet session expired — reconnect and try again.'
+  const cap = raw.match(/order_exceeds_max_usd:(\d+)/)
+  if (cap) return `Over the $${cap[1]} per-order cap — sell in smaller parts.`
   return raw
 }

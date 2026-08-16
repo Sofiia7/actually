@@ -106,7 +106,15 @@ export interface OffscreenSellOrderArgs {
   sizeShares: number
   /** LIMIT → the resting limit price; MARKET → the worst-acceptable FLOOR price. */
   price: number
-  negRisk: boolean
+  /**
+   * OMIT unless the caller holds a trusted Gamma record for this market. The
+   * CLOB SDK only auto-resolves the market's real neg-risk flag when the
+   * option is absent (`options?.negRisk ?? await getNegRisk(tokenID)`) — an
+   * explicit `false` here forces the normal exchange contract and gets every
+   * neg-risk sell rejected with a signature error. Positions come from the
+   * data API with no Gamma record, so the sell ticket must not send this.
+   */
+  negRisk?: boolean
   tickSize?: string
   minOrderSize?: number
   orderType: 'LIMIT' | 'MARKET'

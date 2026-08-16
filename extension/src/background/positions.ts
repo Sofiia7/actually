@@ -44,7 +44,9 @@ export async function fetchPositions(address: string, workerUrl: string, workerS
     redeemable: p.redeemable ?? false,
     title: p.title ?? '',
     slug: p.slug ?? '',
-    outcomeIndex: p.outcomeIndex ?? 0,
+    // -1, not 0: a missing outcomeIndex must FAIL redeem validation
+    // (invalid_outcome_index), not silently redeem outcome slot 0.
+    outcomeIndex: p.outcomeIndex ?? -1,
     negativeRisk: p.negativeRisk ?? false,
   }))
 }

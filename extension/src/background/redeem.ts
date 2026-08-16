@@ -125,12 +125,48 @@ export async function redeemPosition(args: RedeemArgs): Promise<RedeemResult> {
     // execute() resolves once the relayer ACCEPTS the transaction, not once
     // it is mined — wait() polls to a terminal on-chain state so this reports
     // a definitive outcome instead of "we submitted something".
-    const mined = await submitted.wait()
-    const terminal = mined ?? { state: submitted.state, transactionID: submitted.transactionID }
-    if (terminal.state === 'STATE_FAILED' || terminal.state === 'STATE_INVALID') {
-      return { ok: false, transactionId: terminal.transactionID, error: `relayer_state:${terminal.state}` }
+    //
+    // wait()'s contract (pollUntilState in the relayer client) is subtle and
+    // was mishandled here once: it resolves with the transaction ONLY on
+    // STATE_MINED/STATE_CONFIRMED, and resolves with UNDEFINED both when the
+    // transaction hit STATE_FAILED and when polling timed out. Falling back to
+    // `submitted.state` (the state at submission time, STATE_NEW) turned every
+    // on-chain failure into a green "Redeemed" toast. undefined must never be
+    // read as success.
+    let mined: Awaited<ReturnType<typeof submitted.wait>>
+    try {
+      mined = await submitted.wait()
+    } catch (err) {
+      // The redeem was ACCEPTED — a poll hiccup after that does not mean it
+      // failed. Report the outcome as unknown and keep the id so the user
+      // (and the log) can still find the transaction.
+      return {
+        ok: false,
+        transactionId: submitted.transactionID,
+        error: `redeem_status_unknown:${err instanceof Error ? err.message : String(err)}`,
+      }
     }
-    return { ok: true, transactionId: terminal.transactionID }
+    if (!mined) {
+      // Failed on-chain or timed out — one direct status read tells us which.
+      let lastState: string | undefined
+      try {
+        lastState = (await submitted.getTransaction())[0]?.state
+      } catch {
+        // status stays unknown
+      }
+      if (lastState === 'STATE_FAILED' || lastState === 'STATE_INVALID') {
+        return { ok: false, transactionId: submitted.transactionID, error: `relayer_state:${lastState}` }
+      }
+      return { ok: false, transactionId: submitted.transactionID, error: 'redeem_status_unknown:poll_timeout' }
+    }
+    // Belt and braces: today's wait() cannot resolve with a failed state (it
+    // resolves undefined for those), but reading it as success if a future
+    // SDK version starts returning the transaction would repeat the original
+    // bug in the opposite direction.
+    if (mined.state === 'STATE_FAILED' || mined.state === 'STATE_INVALID') {
+      return { ok: false, transactionId: mined.transactionID ?? submitted.transactionID, error: `relayer_state:${mined.state}` }
+    }
+    return { ok: true, transactionId: mined.transactionID ?? submitted.transactionID }
   } catch (err) {
     return { ok: false, error: String(err instanceof Error ? err.message : err) }
   }

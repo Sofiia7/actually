@@ -481,7 +481,8 @@ export interface SellOrderArgs {
   sizeShares: number
   /** LIMIT → resting limit price; MARKET → worst-acceptable FLOOR price (0..1). */
   price: number
-  negRisk: boolean
+  /** Omit to let the CLOB SDK resolve the real flag — see OffscreenSellOrderArgs. */
+  negRisk?: boolean
   tickSize?: string
   minOrderSize?: number
   orderType: 'LIMIT' | 'MARKET'

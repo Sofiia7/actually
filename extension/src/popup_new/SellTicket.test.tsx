@@ -172,3 +172,45 @@ describe('humanSellError', () => {
     expect(humanSellError('some_new_clob_code', 5)).toBe('some_new_clob_code')
   })
 })
+
+describe('SellTicket — regressions from the 2026-08-16 audit', () => {
+  it('omits negRisk entirely so the SDK resolves the real flag (an explicit false broke every neg-risk sell)', async () => {
+    render(<SellTicket position={{ ...position, negativeRisk: true }} onDone={noop} onCancel={noop} />)
+    await waitFor(() => expect(screen.getByRole('button', { name: /Sell now/i })).toBeEnabled())
+    await userEvent.click(screen.getByRole('button', { name: /Sell now/i }))
+    await userEvent.click(screen.getByRole('button', { name: /Sign in wallet/i }))
+    await waitFor(() => expect(opsm.sellOrderViaOffscreen).toHaveBeenCalledOnce())
+    // Not negRisk:false and not negRisk:true — the key must be ABSENT, since
+    // the SDK only auto-resolves when the option is missing.
+    expect('negRisk' in opsm.sellOrderViaOffscreen.mock.calls[0][0]).toBe(false)
+  })
+
+  it('pre-blocks a sell over the $100 cap with a human message instead of a doomed signature', async () => {
+    // 500 shares defaulting to a full-size sell at a 0.49 floor = $245.
+    render(<SellTicket position={{ ...position, size: 500 }} onDone={noop} onCancel={noop} />)
+    await screen.findByLabelText(/Shares to sell/i)
+    await waitFor(() => expect(screen.getByText(/capped at \$100 per order/i)).toBeInTheDocument())
+    expect(screen.getByRole('button', { name: /Sell now/i })).toBeDisabled()
+    expect(opsm.sellOrderViaOffscreen).not.toHaveBeenCalled()
+    // And the message says how many shares WOULD fit, so the fix is one edit
+    // away: floor(100 / 0.49) = 204.
+    expect(screen.getByText(/up to 204 shares/i)).toBeInTheDocument()
+  })
+
+  it('reports a failed book lookup as a session problem, not as an empty book', async () => {
+    opsm.orderbookSnapshotViaOffscreen.mockResolvedValue({
+      bestBid: null, bestAsk: null, spread: null, bids: [], asks: [], estimate: null,
+      error: 'wallet_not_restored',
+    })
+    render(<SellTicket position={position} onDone={noop} onCancel={noop} />)
+    await waitFor(() =>
+      expect(screen.getByText(/Couldn't confirm your wallet session/i)).toBeInTheDocument(),
+    )
+    // The old message sent users chasing liquidity that was there all along.
+    expect(screen.queryByText(/No bids on the book/i)).not.toBeInTheDocument()
+  })
+
+  it('translates the $100-cap rejection as a backstop for the limit path', () => {
+    expect(humanSellError('order_exceeds_max_usd:100', 5)).toMatch(/\$100 per-order cap/)
+  })
+})

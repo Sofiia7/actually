@@ -3,9 +3,10 @@ import { describe, expect, it, vi, beforeEach } from 'vitest'
 const { wcRequestMock } = vi.hoisted(() => ({ wcRequestMock: vi.fn(async () => '0xsig') }))
 vi.mock('./wallet', () => ({ wcRequest: wcRequestMock }))
 
-const { executeMock, waitMock } = vi.hoisted(() => ({
+const { executeMock, waitMock, getTransactionMock } = vi.hoisted(() => ({
   executeMock: vi.fn(),
   waitMock: vi.fn(),
+  getTransactionMock: vi.fn(),
 }))
 vi.mock('@polymarket/builder-relayer-client', () => ({
   RelayClient: class {
@@ -36,8 +37,17 @@ const resolved: Position = {
 
 beforeEach(() => {
   vi.clearAllMocks()
-  waitMock.mockResolvedValue({ state: 'STATE_EXECUTED', transactionID: '0xtx1234567890' })
-  executeMock.mockResolvedValue({ state: 'STATE_NEW', transactionID: '0xtx1234567890', wait: waitMock })
+  // The real wait() (pollUntilState) resolves the transaction ONLY on
+  // STATE_MINED/STATE_CONFIRMED — and resolves UNDEFINED both for an on-chain
+  // failure and for a poll timeout. The mocks mirror that contract.
+  waitMock.mockResolvedValue({ state: 'STATE_MINED', transactionID: '0xtx1234567890' })
+  getTransactionMock.mockResolvedValue([{ state: 'STATE_MINED', transactionID: '0xtx1234567890' }])
+  executeMock.mockResolvedValue({
+    state: 'STATE_NEW',
+    transactionID: '0xtx1234567890',
+    wait: waitMock,
+    getTransaction: getTransactionMock,
+  })
 })
 
 describe('makeWcProvider — only signing goes to the wallet', () => {
@@ -127,5 +137,51 @@ describe('redeemPosition', () => {
     const r = await redeemPosition({ topic: 't', address: '0x00000000000000000000000000000000000000ab', conditionId: '0x1111111111111111111111111111111111111111111111111111111111111111', positions: [resolved] })
     expect(r.ok).toBe(false)
     expect(r.error).toContain('User rejected')
+  })
+
+  // wait() resolving UNDEFINED is how the real SDK reports both an on-chain
+  // failure and a poll timeout. Reading it as success (via a fallback to the
+  // submission-time state) once turned every failed redeem into a green
+  // "Redeemed" toast — these pin the honest behavior.
+  const argsBase = {
+    topic: 't',
+    address: '0x00000000000000000000000000000000000000ab',
+    conditionId: '0x1111111111111111111111111111111111111111111111111111111111111111',
+    positions: [resolved],
+  }
+
+  it('reports an on-chain failure (wait() → undefined, status shows STATE_FAILED) as a failure', async () => {
+    waitMock.mockResolvedValue(undefined)
+    getTransactionMock.mockResolvedValue([{ state: 'STATE_FAILED', transactionID: '0xtx1234567890' }])
+    const r = await redeemPosition(argsBase)
+    expect(r.ok).toBe(false)
+    expect(r.error).toBe('relayer_state:STATE_FAILED')
+    expect(r.transactionId).toBe('0xtx1234567890')
+  })
+
+  it('reports a poll timeout as unknown — never as success, never as a definite failure', async () => {
+    waitMock.mockResolvedValue(undefined)
+    getTransactionMock.mockResolvedValue([{ state: 'STATE_EXECUTED', transactionID: '0xtx1234567890' }])
+    const r = await redeemPosition(argsBase)
+    expect(r.ok).toBe(false)
+    expect(r.error).toBe('redeem_status_unknown:poll_timeout')
+    expect(r.transactionId).toBe('0xtx1234567890')
+  })
+
+  it('keeps the transactionId when polling itself errors after a successful submission', async () => {
+    waitMock.mockRejectedValue(new Error('ECONNRESET'))
+    const r = await redeemPosition(argsBase)
+    expect(r.ok).toBe(false)
+    expect(r.error).toBe('redeem_status_unknown:ECONNRESET')
+    expect(r.transactionId).toBe('0xtx1234567890')
+  })
+
+  it('still reports unknown when even the follow-up status read fails', async () => {
+    waitMock.mockResolvedValue(undefined)
+    getTransactionMock.mockRejectedValue(new Error('boom'))
+    const r = await redeemPosition(argsBase)
+    expect(r.ok).toBe(false)
+    expect(r.error).toBe('redeem_status_unknown:poll_timeout')
+    expect(r.transactionId).toBe('0xtx1234567890')
   })
 })

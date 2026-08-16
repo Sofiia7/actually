@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import { cancelOrder, deriveCredentials, submitSignedOrder } from './clob'
+import { cancelOrder, deriveCredentials, signMarketSellOrder, signSellOrder, submitSignedOrder } from './clob'
 import type { ClobClient } from '@polymarket/clob-client-v2'
 
 const creds = { key: 'k', secret: 's', passphrase: 'p' }
@@ -178,5 +178,39 @@ describe('cancelOrder', () => {
     const result = await cancelOrder(client, 'o1')
     expect(result.success).toBe(false)
     expect(result.error).toContain('network_error')
+  })
+})
+
+describe('sell signing — negRisk must reach the SDK only when genuinely known', () => {
+  // The SDK resolves the market's real neg-risk flag ONLY when the option is
+  // absent (`options?.negRisk ?? await getNegRisk(tokenID)`). An explicit
+  // `false` for a neg-risk market signs against the wrong exchange contract
+  // and the CLOB rejects the order — which is exactly how sells of every
+  // multi-outcome position silently broke once. These tests pin the contract:
+  // omitted in → omitted out, provided in → forwarded out.
+
+  type SignOpts = Record<string, unknown>
+
+  it('signSellOrder omits negRisk (and tickSize) when the caller does not know them', async () => {
+    const createOrder = vi.fn(async (_o: unknown, opts?: SignOpts) => ({ signed: true, opts }))
+    await signSellOrder({ createOrder } as never, { tokenId: 't1', price: 0.5, size: 10 })
+    const opts = createOrder.mock.calls[0]![1]!
+    expect('negRisk' in opts).toBe(false)
+    expect('tickSize' in opts).toBe(false)
+  })
+
+  it('signSellOrder forwards negRisk when the caller genuinely knows it', async () => {
+    const createOrder = vi.fn(async (_o: unknown, opts?: SignOpts) => ({ signed: true, opts }))
+    await signSellOrder({ createOrder } as never, { tokenId: 't1', price: 0.5, size: 10, negRisk: true })
+    expect(createOrder.mock.calls[0]![1]!.negRisk).toBe(true)
+  })
+
+  it('signMarketSellOrder omits negRisk when unknown and forwards it when known', async () => {
+    const createMarketOrder = vi.fn(async (_o: unknown, opts?: SignOpts) => ({ signed: true, opts }))
+    await signMarketSellOrder({ createMarketOrder } as never, { tokenId: 't1', sizeShares: 10 })
+    expect('negRisk' in createMarketOrder.mock.calls[0]![1]!).toBe(false)
+
+    await signMarketSellOrder({ createMarketOrder } as never, { tokenId: 't1', sizeShares: 10, negRisk: true })
+    expect(createMarketOrder.mock.calls[1]![1]!.negRisk).toBe(true)
   })
 })

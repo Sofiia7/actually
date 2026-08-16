@@ -77,3 +77,34 @@ describe('buildRedeemTransaction', () => {
     expect(() => buildRedeemTransaction(CONDITION_ID, positions)).toThrow('inconsistent_negative_risk_flag')
   })
 })
+
+describe('buildRedeemTransaction — float-noise hardening (2026-08-16)', () => {
+  const iface = new Interface(['function redeemPositions(bytes32 conditionId, uint256[] amounts)'])
+
+  it('floors a float-noise tail beyond 6 decimals instead of throwing', () => {
+    // Real data-api sizes go through JS floats; 129.16999999999999 has more
+    // decimals than parseUnits(6) accepts and used to brick the redeem.
+    const tx = buildRedeemTransaction(CONDITION_ID, [
+      { conditionId: CONDITION_ID, outcomeIndex: 0, size: 129.16999999999999, negativeRisk: true },
+    ])
+    const decoded = iface.decodeFunctionData('redeemPositions', tx.data)
+    // Floored, never rounded up: over-asking the adapter reverts on-chain.
+    expect(String(decoded.amounts[0])).toBe('129169999')
+  })
+
+  it('rejects a nonsensical size rather than encoding it', () => {
+    expect(() =>
+      buildRedeemTransaction(CONDITION_ID, [
+        { conditionId: CONDITION_ID, outcomeIndex: 0, size: Number.NaN, negativeRisk: true },
+      ]),
+    ).toThrow(/invalid_size/)
+  })
+
+  it('rejects a missing outcomeIndex (mapped to -1 upstream) instead of redeeming slot 0', () => {
+    expect(() =>
+      buildRedeemTransaction(CONDITION_ID, [
+        { conditionId: CONDITION_ID, outcomeIndex: -1, size: 5, negativeRisk: true },
+      ]),
+    ).toThrow('invalid_outcome_index:-1')
+  })
+})

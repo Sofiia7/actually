@@ -17,8 +17,11 @@ export function humanRedeemError(raw: string): string {
   if (/wc_provider_unsupported_method|personal_sign/i.test(raw)) {
     return "Your wallet didn't grant permission to sign this. Reconnect and approve the full request."
   }
+  if (/redeem_status_unknown/.test(raw)) {
+    return "The redeem was submitted but its final status couldn't be confirmed — wait a minute and refresh your positions before retrying."
+  }
   if (/relayer_state/.test(raw)) {
-    return 'Polymarket\'s relayer rejected the transaction. Nothing was redeemed — try again shortly.'
+    return 'The transaction failed on-chain. Nothing was redeemed — try again shortly.'
   }
   if (/user rejected|user disapproved|rejected/i.test(raw)) return 'You declined the signature in your wallet.'
   return raw
@@ -61,8 +64,10 @@ export const PositionsPanel: React.FC<PositionsPanelProps> = ({
   // expanded ticket per row would let two sells be half-filled in at once.
   const [sellingTokenId, setSellingTokenId] = useState<string | null>(null)
   // Confirmation for a sell that has already closed its ticket. Held here
-  // because the panel outlives the ticket — see SellTicket's onDone.
-  const [sellNotice, setSellNotice] = useState<string | null>(null)
+  // because the panel outlives the ticket — see SellTicket's onDone. Redeem
+  // outcomes land here too, so the notice carries its own tone: a failure
+  // painted in the success green reads as a confirmation to anyone skimming.
+  const [sellNotice, setSellNotice] = useState<{ text: string; isError: boolean } | null>(null)
   const lagRefreshRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   useEffect(
     () => () => {
@@ -84,11 +89,11 @@ export const PositionsPanel: React.FC<PositionsPanelProps> = ({
       const r = await redeemPositionViaOffscreen(conditionId)
       setSellNotice(
         r.ok
-          ? `Redeemed${r.transactionId ? ` · ${r.transactionId.slice(0, 10)}…` : ''} — the payout lands in your Polymarket balance.`
-          : `Redeem failed: ${humanRedeemError(r.error ?? 'unknown_error')}`,
+          ? { text: `Redeemed${r.transactionId ? ` · ${r.transactionId.slice(0, 10)}…` : ''} — the payout lands in your Polymarket balance.`, isError: false }
+          : { text: `Redeem failed: ${humanRedeemError(r.error ?? 'unknown_error')}`, isError: true },
       )
     } catch (err) {
-      setSellNotice(`Redeem failed: ${String(err)}`)
+      setSellNotice({ text: `Redeem failed: ${String(err)}`, isError: true })
     } finally {
       setRedeemingId(null)
       onRefresh()
@@ -98,7 +103,7 @@ export const PositionsPanel: React.FC<PositionsPanelProps> = ({
   }
 
   function onSold(message: string) {
-    setSellNotice(message)
+    setSellNotice({ text: message, isError: false })
     setSellingTokenId(null)
     onRefresh()
     // Polymarket's positions API is eventually consistent: a fill is accepted
@@ -133,8 +138,13 @@ export const PositionsPanel: React.FC<PositionsPanelProps> = ({
 
       {sellNotice && (
         <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, alignItems: 'baseline' }}>
-          <Etched size={11.5} weight={300} color="rgba(30,110,60,.9)" style={{ flex: 1, minWidth: 0 }}>
-            {sellNotice}
+          <Etched
+            size={11.5}
+            weight={300}
+            color={sellNotice.isError ? 'rgba(160,40,40,.9)' : 'rgba(30,110,60,.9)'}
+            style={{ flex: 1, minWidth: 0 }}
+          >
+            {sellNotice.text}
           </Etched>
           <LinkAction onClick={() => setSellNotice(null)}>Dismiss</LinkAction>
         </div>

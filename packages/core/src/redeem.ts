@@ -34,6 +34,20 @@ export interface EncodedRedeemTx {
 }
 
 /**
+ * Human shares → 6-decimal base units, rounded DOWN to the encoder's
+ * precision. Sizes arrive as data-api floats; a tail beyond 6 decimals
+ * (float noise like 129.16999999999999) would make parseUnits throw and
+ * brick the redeem outright. Flooring is the safe direction: asking the
+ * adapter for a dust more than the wallet holds reverts the whole
+ * transaction, while a dust less merely leaves ≤1e-6 shares unredeemed.
+ */
+function toBaseUnits(size: number): bigint {
+  if (!Number.isFinite(size) || size < 0) throw new Error(`invalid_size:${size}`)
+  const floored = Math.floor(size * 10 ** COLLATERAL_DECIMALS) / 10 ** COLLATERAL_DECIMALS
+  return parseUnits(floored.toFixed(COLLATERAL_DECIMALS), COLLATERAL_DECIMALS)
+}
+
+/**
  * Builds the on-chain redeem call for one conditionId. `positions` is every
  * position the caller holds for that condition (normally one, occasionally
  * two if they somehow hold both outcomes). Two entirely different contracts
@@ -70,7 +84,7 @@ export function buildRedeemTransaction(conditionId: string, positions: Redeemabl
     if (p.outcomeIndex !== 0 && p.outcomeIndex !== 1) {
       throw new Error(`invalid_outcome_index:${p.outcomeIndex}`)
     }
-    amounts[p.outcomeIndex as 0 | 1] = parseUnits(p.size.toString(), COLLATERAL_DECIMALS)
+    amounts[p.outcomeIndex as 0 | 1] = toBaseUnits(p.size)
   }
   const data = NEG_RISK_INTERFACE.encodeFunctionData('redeemPositions', [conditionId, amounts])
   return { to: NEG_RISK_ADAPTER_ADDRESS, data, value: '0' }
