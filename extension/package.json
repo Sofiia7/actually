@@ -19,6 +19,7 @@
     "models:fetch": "node scripts/fetch-model.mjs",
     "preflight": "node scripts/preflight.mjs",
     "smoke": "node scripts/smoke.mjs",
+    "e2e": "node scripts/e2e-smoke.mjs",
     "lint": "tsc --noEmit"
   },
   "dependencies": {
@@ -44,6 +45,7 @@
     "@types/react-dom": "^18.3.0",
     "@vitejs/plugin-react": "^6.0.4",
     "jsdom": "^29.1.1",
+    "playwright-core": "^1.62.1",
     "typescript": "^5.4.5",
     "vite": "^8.1.5",
     "vitest": "^4.1.10",

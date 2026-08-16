@@ -7,7 +7,8 @@
  * Checks:
  *   - dist/manifest.json exists and has a version
  *   - CSP connect-src has no `*.workers.dev` wildcard (prod must pin one origin)
- *   - host_permissions is exactly the single CLOB host
+ *   - host_permissions is exactly the expected allowlist (CLOB + builder
+ *     relayer + Polygon RPC — the latter two added for in-app sell/redeem)
  *   - no known-burned secret is baked into any shipped file
  *   - manifest.json's `key` still hashes to the extension ID the Worker
  *     allowlists (see below) — catches an accidental key regeneration
@@ -48,9 +49,17 @@ if (csp.includes('*.workers.dev')) {
   ok('CSP has no *.workers.dev wildcard')
 }
 
+// Exact allowlist, order-sensitive on purpose: any drift (an added host, a
+// dropped one, a typo'd wildcard) must be a conscious edit HERE, reviewed
+// together with the manifest change that caused it.
+const EXPECTED_HOST_PERMISSIONS = [
+  'https://clob.polymarket.com/*', // CLOB REST (orders, books)
+  'https://relayer-v2.polymarket.com/*', // builder relayer (sell/redeem)
+  'https://polygon.drpc.org/*', // Polygon RPC reads (positions/redeem)
+]
 const hp = JSON.stringify(manifest.host_permissions ?? [])
-if (hp === JSON.stringify(['https://clob.polymarket.com/*'])) {
-  ok('host_permissions = ["https://clob.polymarket.com/*"]')
+if (hp === JSON.stringify(EXPECTED_HOST_PERMISSIONS)) {
+  ok(`host_permissions match expected allowlist (${EXPECTED_HOST_PERMISSIONS.length} hosts)`)
 } else {
   bad(`host_permissions unexpected: ${hp}`)
 }

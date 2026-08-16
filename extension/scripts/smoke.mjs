@@ -65,9 +65,30 @@ let iconsOk = icons.length > 0
 for (const ic of icons) if (!exists(ic)) iconsOk = false
 iconsOk ? ok(`icons present (${icons.length})`) : bad('one or more manifest icons missing')
 
-// 5. A self-hosted woff2 font is bundled (CSP is font-src 'self').
-const hasFont = [...walk(DIST)].some((f) => f.endsWith('.woff2'))
-hasFont ? ok('bundled woff2 font present') : bad('no woff2 font in dist (run npm run fonts:fetch)')
+// 5. Every url() reference in shipped CSS resolves to a bundled file.
+// (Generalizes the old "a woff2 must exist" check from the Marck Script era —
+// the UI moved to the system font stack 2026-08-06, so no font file is
+// required anymore, but a CSS reference to a file the build didn't emit
+// would still silently degrade the popup, e.g. the cyrillic-only-font bug of
+// 2026-08-02. data:/blob:/#fragment refs are inline and need no file.)
+let cssRefs = 0
+let cssRefsBad = 0
+for (const f of [...walk(DIST)].filter((p) => p.endsWith('.css'))) {
+  const rel = f.slice(DIST.length + 1).replaceAll('\\', '/')
+  const css = readFileSync(f, 'utf8')
+  for (const [, raw] of css.matchAll(/url\(\s*(?:"([^"]*)"|'([^']*)'|([^"')]+))\s*\)/g)) {
+    const ref = (raw ?? '').trim()
+    if (!ref || /^(data:|blob:|#)/.test(ref)) continue
+    cssRefs++
+    const target = ref.startsWith('/') ? ref.slice(1) : join(dirname(rel), ref)
+    const clean = target.split(/[?#]/)[0]
+    if (!exists(clean)) {
+      bad(`${rel} -> missing asset ${ref}`)
+      cssRefsBad++
+    }
+  }
+}
+if (cssRefsBad === 0) ok(`all CSS url() references resolve (${cssRefs} file refs checked)`)
 
 // 6. Each HTML entry references at least one script, and every referenced
 //    script resolves to a real file. A dangling <script src> means a broken
