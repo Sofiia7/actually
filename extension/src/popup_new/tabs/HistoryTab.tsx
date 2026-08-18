@@ -20,6 +20,18 @@ export type HistoryState =
   | { kind: 'empty' }
   | { kind: 'success'; items: HistoryRow[] };
 
+/** One row of the activity log — see TradeLogItem for where it comes from. */
+export interface TradeRow {
+  kind: 'BUY' | 'SELL' | 'REDEEM';
+  status: 'placed' | 'failed' | 'unknown';
+  q: string;
+  /** Pre-formatted detail line, e.g. "$2.00 · Yes @ 6.0¢ · limit". */
+  detail: string;
+  when: string;
+  error?: string;
+  onOpen?: () => void;
+}
+
 export interface HistoryTabProps {
   state: HistoryState;
   /** `index` is this row's position in `state.items` — use it to address the
@@ -27,6 +39,10 @@ export interface HistoryTabProps {
   onSelect: (row: HistoryRow, index: number) => void;
   onOpenArticle: (row: HistoryRow, index: number) => void;
   onClear: () => void;
+  /** Your own trades, newest first. Rendered above the match list — a trade
+   * you made outranks a story you glanced at. */
+  trades?: TradeRow[];
+  onClearTrades?: () => void;
 }
 
 // =============================================================
@@ -100,13 +116,126 @@ const Row: React.FC<HistoryRow & { onClick?: () => void; onOpenArticle?: () => v
   </IceCard>
 );
 
+const KIND_LABEL: Record<TradeRow['kind'], string> = {
+  BUY: 'Bought',
+  SELL: 'Sold',
+  REDEEM: 'Redeemed',
+};
+
+const TradeRowView: React.FC<TradeRow> = ({ kind, status, q, detail, when, error, onOpen }) => {
+  const failed = status === 'failed';
+  const unknown = status === 'unknown';
+  const accent = failed
+    ? 'rgba(160,40,40,.9)'
+    : unknown
+      ? 'rgba(150,105,20,.95)'
+      : 'rgba(30,110,60,.9)';
+  return (
+    <div
+      style={{
+        padding: '8px 11px',
+        borderRadius: 8,
+        background: 'rgba(255,255,255,.05)',
+        border: '1px solid rgba(255,255,255,.22)',
+        display: 'flex',
+        flexDirection: 'column',
+        gap: 2,
+      }}
+    >
+      <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, alignItems: 'baseline' }}>
+        <Etched size={11} weight={500} color={accent}>
+          {KIND_LABEL[kind]}
+          {failed ? ' · failed' : unknown ? ' · unconfirmed' : ''}
+        </Etched>
+        <span
+          style={{
+            fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif",
+            fontSize: 10.5,
+            color: 'rgba(35,45,70,.55)',
+          }}
+        >
+          {when}
+        </span>
+      </div>
+      <Etched
+        size={12}
+        weight={400}
+        style={{ lineHeight: 1.3, display: 'block', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}
+      >
+        {q}
+      </Etched>
+      <Etched size={11} weight={300} color="rgba(35,45,70,.6)">
+        {detail}
+      </Etched>
+      {error && (
+        <Etched size={10.5} weight={300} color="rgba(160,40,40,.85)" style={{ lineHeight: 1.35 }}>
+          {error}
+        </Etched>
+      )}
+      {onOpen && (
+        <button
+          type="button"
+          onClick={onOpen}
+          style={{
+            appearance: 'none',
+            background: 'none',
+            border: 'none',
+            padding: 0,
+            marginTop: 2,
+            alignSelf: 'flex-start',
+            cursor: 'pointer',
+            fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif",
+            fontSize: 11,
+            color: 'rgba(35,60,120,.85)',
+          }}
+        >
+          Open on Polymarket →
+        </button>
+      )}
+    </div>
+  );
+};
+
 // =============================================================
 export const HistoryTab: React.FC<HistoryTabProps> = ({
   state,
   onSelect,
   onOpenArticle,
   onClear,
+  trades = [],
+  onClearTrades,
 }) => {
+  const tradeSection = trades.length > 0 && (
+    <div style={{ marginBottom: 16 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', padding: '0 4px 8px' }}>
+        <span className="label">Your trades</span>
+        {onClearTrades && (
+          <button
+            type="button"
+            onClick={onClearTrades}
+            style={{
+              appearance: 'none',
+              background: 'none',
+              border: 'none',
+              padding: 0,
+              cursor: 'pointer',
+              fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif",
+              fontSize: 10.5,
+              color: 'rgba(35,45,70,.5)',
+            }}
+          >
+            Clear
+          </button>
+        )}
+      </div>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
+        {trades.map((t, i) => (
+          <TradeRowView key={i} {...t} />
+        ))}
+      </div>
+    </div>
+  );
+
   if (state.kind === 'loading') {
     return (
       <div
@@ -127,40 +256,46 @@ export const HistoryTab: React.FC<HistoryTabProps> = ({
   }
 
   if (state.kind === 'empty') {
+    // Trades outlive matches (the log holds 100, matches 10) — an empty match
+    // list must not hide a trade the user is looking for.
     return (
-      <div
-        style={{
-          padding: '34px 18px 30px',
-          display: 'flex',
-          flexDirection: 'column',
-          gap: 10,
-          alignItems: 'center',
-        }}
-      >
-        <Etched
-          size={14}
-          weight={300}
-          italic
-          family="serif"
-          color="rgba(35,45,70,.65)"
-          style={{ textAlign: 'center', lineHeight: 1.4 }}
+      <div style={{ padding: '12px 14px 20px' }}>
+        {tradeSection}
+        <div
+          style={{
+            padding: '22px 4px 10px',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: 10,
+            alignItems: 'center',
+          }}
         >
-          Nothing here yet.
-        </Etched>
-        <Etched
-          size={12}
-          weight={300}
-          color="rgba(35,45,70,.45)"
-          style={{ textAlign: 'center' }}
-        >
-          Checked stories will appear here.
-        </Etched>
+          <Etched
+            size={14}
+            weight={300}
+            italic
+            family="serif"
+            color="rgba(35,45,70,.65)"
+            style={{ textAlign: 'center', lineHeight: 1.4 }}
+          >
+            {trades.length > 0 ? 'No checked stories yet.' : 'Nothing here yet.'}
+          </Etched>
+          <Etched
+            size={12}
+            weight={300}
+            color="rgba(35,45,70,.45)"
+            style={{ textAlign: 'center' }}
+          >
+            Checked stories will appear here.
+          </Etched>
+        </div>
       </div>
     );
   }
 
   return (
     <div style={{ padding: '12px 14px 20px' }}>
+      {tradeSection}
       <div style={{ padding: '0 4px 8px' }}>
         <span className="label">Recent matches</span>
       </div>

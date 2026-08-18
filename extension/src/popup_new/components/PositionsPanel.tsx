@@ -4,6 +4,8 @@ import { Etched } from './Etched'
 import { LinkAction } from './LinkAction'
 import { SellTicket } from '../SellTicket'
 import { redeemPositionViaOffscreen } from '../ops'
+import { logTrade } from '../../background/tradeLog'
+import { buildMarketUrl } from '../../background/polymarket'
 import type { OpenOrderSummary, Position } from '../../shared/types'
 
 /** Redeem failures the user can actually do something about. */
@@ -19,6 +21,12 @@ export function humanRedeemError(raw: string): string {
   }
   if (/redeem_status_unknown/.test(raw)) {
     return "The redeem was submitted but its final status couldn't be confirmed — wait a minute and refresh your positions before retrying."
+  }
+  // The relayer rejects unauthenticated /submit outright. Nothing the user
+  // can fix from here, so say what actually happened and point at the one
+  // place that CAN redeem this position today.
+  if (/invalid authorization|clob_http_401|"status":401|\b401\b/.test(raw)) {
+    return "Polymarket's relayer refused the request (401) — in-app redeem needs a builder API key this build doesn't have yet. Claim the payout on Polymarket instead; the position and funds are safe."
   }
   if (/relayer_state/.test(raw)) {
     return 'The transaction failed on-chain. Nothing was redeemed — try again shortly.'
@@ -67,7 +75,7 @@ export const PositionsPanel: React.FC<PositionsPanelProps> = ({
   // because the panel outlives the ticket — see SellTicket's onDone. Redeem
   // outcomes land here too, so the notice carries its own tone: a failure
   // painted in the success green reads as a confirmation to anyone skimming.
-  const [sellNotice, setSellNotice] = useState<{ text: string; isError: boolean } | null>(null)
+  const [sellNotice, setSellNotice] = useState<{ text: string; isError: boolean; slug?: string } | null>(null)
   const lagRefreshRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   useEffect(
     () => () => {
@@ -87,13 +95,34 @@ export const PositionsPanel: React.FC<PositionsPanelProps> = ({
     setSellNotice(null)
     try {
       const r = await redeemPositionViaOffscreen(conditionId)
+      const held = positions.find((p) => p.conditionId === conditionId)
+      void logTrade({
+        kind: 'REDEEM',
+        status: r.ok ? 'placed' : /redeem_status_unknown/.test(r.error ?? '') ? 'unknown' : 'failed',
+        question: held?.title ?? 'Resolved market',
+        marketSlug: held?.slug,
+        outcome: held?.outcome,
+        shares: held?.size,
+        ref: r.transactionId,
+        error: r.ok ? undefined : humanRedeemError(r.error ?? 'unknown_error'),
+      })
       setSellNotice(
         r.ok
-          ? { text: `Redeemed${r.transactionId ? ` · ${r.transactionId.slice(0, 10)}…` : ''} — the payout lands in your Polymarket balance.`, isError: false }
-          : { text: `Redeem failed: ${humanRedeemError(r.error ?? 'unknown_error')}`, isError: true },
+          ? { text: `Redeemed${r.transactionId ? ` · ${r.transactionId.slice(0, 10)}…` : ''} — the payout lands in your Polymarket balance. Saved to History.`, isError: false }
+          : { text: humanRedeemError(r.error ?? 'unknown_error'), isError: true, slug: held?.slug },
       )
     } catch (err) {
-      setSellNotice({ text: `Redeem failed: ${String(err)}`, isError: true })
+      setSellNotice({
+        text: String(err),
+        isError: true,
+        slug: positions.find((p) => p.conditionId === conditionId)?.slug,
+      })
+      void logTrade({
+        kind: 'REDEEM',
+        status: 'failed',
+        question: positions.find((p) => p.conditionId === conditionId)?.title ?? 'Resolved market',
+        error: String(err),
+      })
     } finally {
       setRedeemingId(null)
       onRefresh()
@@ -137,16 +166,35 @@ export const PositionsPanel: React.FC<PositionsPanelProps> = ({
       )}
 
       {sellNotice && (
-        <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, alignItems: 'baseline' }}>
-          <Etched
-            size={11.5}
-            weight={300}
-            color={sellNotice.isError ? 'rgba(160,40,40,.9)' : 'rgba(30,110,60,.9)'}
-            style={{ flex: 1, minWidth: 0 }}
-          >
+        <div
+          style={{
+            padding: '10px 12px',
+            borderRadius: 9,
+            background: sellNotice.isError ? 'rgba(160,40,40,.09)' : 'rgba(30,110,60,.10)',
+            border: `1px solid ${sellNotice.isError ? 'rgba(160,40,40,.4)' : 'rgba(30,110,60,.42)'}`,
+            display: 'flex',
+            flexDirection: 'column',
+            gap: 5,
+          }}
+        >
+          <Etched size={13} weight={500} color={sellNotice.isError ? 'rgba(150,32,32,.98)' : 'rgba(22,95,52,.98)'}>
+            {sellNotice.isError ? '✕ Didn’t go through' : '✓ Done'}
+          </Etched>
+          <Etched size={12} weight={300} style={{ lineHeight: 1.45 }}>
             {sellNotice.text}
           </Etched>
-          <LinkAction onClick={() => setSellNotice(null)}>Dismiss</LinkAction>
+          <div style={{ display: 'flex', gap: 10 }}>
+            <LinkAction onClick={() => setSellNotice(null)}>Dismiss</LinkAction>
+            {sellNotice.isError && sellNotice.slug && (
+              <LinkAction
+                onClick={() =>
+                  window.open(buildMarketUrl(sellNotice.slug!), '_blank', 'noopener,noreferrer')
+                }
+              >
+                Open on Polymarket →
+              </LinkAction>
+            )}
+          </div>
         </div>
       )}
 

@@ -139,7 +139,9 @@ describe('SellTicket', () => {
     await userEvent.click(screen.getByRole('button', { name: /Sign in wallet/i }))
     await waitFor(() => expect(onDone).toHaveBeenCalledOnce())
     const msg = onDone.mock.calls[0][0] as string
-    expect(msg).toContain('Sell placed')
+    // A filled MARKET sell says what actually happened, in the numbers the
+    // user just approved — not a bare "Sell placed".
+    expect(msg).toMatch(/^Sold 142\.86 shares of Yes for about \$70\.00/)
     expect(msg).toContain('0xsell1234')
     // …and it warns that the numbers lag, instead of leaving the user to
     // conclude the sale failed.
@@ -155,7 +157,11 @@ describe('SellTicket', () => {
     await userEvent.click(screen.getByRole('button', { name: /Sell at limit/i }))
     await userEvent.click(screen.getByRole('button', { name: /Sign in wallet/i }))
     await waitFor(() => expect(onDone).toHaveBeenCalledOnce())
-    expect(onDone.mock.calls[0][0]).toMatch(/resting on the book/i)
+    const msg = onDone.mock.calls[0][0] as string
+    expect(msg).toMatch(/rests on the book/i)
+    // Nothing has been sold yet — the word must not appear at all, or the
+    // user reads a resting order as a completed exit.
+    expect(msg).not.toMatch(/Sold/)
   })
 })
 

@@ -1,9 +1,10 @@
 import React, { useEffect, useState } from 'react'
 import { Etched } from './components/Etched'
 import { GlassButton } from './components/GlassButton'
-import { minOrderShares } from '@actually/core'
+import { minOrderShares, shortRef } from '@actually/core'
 import type { Position } from '../shared/types'
 import { MAX_ORDER_USD } from '../shared/constants'
+import { logTrade } from '../background/tradeLog'
 import { orderbookSnapshotViaOffscreen, sellOrderViaOffscreen } from './ops'
 
 /** Worst-acceptable slippage below the bid for a market (FOK) sell. Mirrors
@@ -108,18 +109,47 @@ export const SellTicket: React.FC<SellTicketProps> = ({ position, onDone, onCanc
         // exchange contract and got every neg-risk sell rejected.
         orderType,
       })
+      void logTrade({
+        kind: 'SELL',
+        status: r.ok ? 'placed' : 'failed',
+        question: position.title,
+        marketSlug: position.slug,
+        outcome: position.outcome,
+        orderType,
+        shares,
+        price: activePrice,
+        usd: proceeds,
+        ref: r.orderId,
+        error: r.ok ? undefined : humanSellError(r.error ?? 'unknown_error', minShares),
+      })
       if (r.ok) {
+        // A LIMIT sell has NOT sold anything yet — it rests until someone
+        // takes it. Saying "Sold" for both is the same lie commit 8a0e4e5
+        // set out to remove; keep the two outcomes worded apart.
+        const ref = r.orderId ? ` · ${shortRef(r.orderId)}` : ''
         onDone(
-          `Sell placed${r.orderId ? ` · ${r.orderId.slice(0, 10)}…` : ''}` +
-            (orderType === 'LIMIT'
-              ? ' — resting on the book until it fills.'
-              : ' — positions can take a few seconds to catch up.'),
+          orderType === 'LIMIT'
+            ? `Limit sell placed${ref} — ${shares} shares of ${position.outcome} at ${fmtC(activePrice)}. ` +
+              'It rests on the book until it fills; saved to History.'
+            : `Sold ${shares} shares of ${position.outcome} for about $${proceeds.toFixed(2)}${ref} — ` +
+              'saved to History; positions can take a few seconds to catch up.',
         )
       } else {
         setResult(`Failed: ${humanSellError(r.error ?? 'unknown_error', minShares)}`)
       }
     } catch (err) {
       setResult(`Error: ${String(err)}`)
+      void logTrade({
+        kind: 'SELL',
+        status: 'failed',
+        question: position.title,
+        marketSlug: position.slug,
+        outcome: position.outcome,
+        orderType,
+        shares,
+        price: activePrice,
+        error: String(err),
+      })
     } finally {
       setSubmitting(false)
       setConfirming(false)

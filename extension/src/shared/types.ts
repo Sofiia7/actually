@@ -27,6 +27,37 @@ export interface Settings {
   clobApiPassphrase?: string
 }
 
+/**
+ * One entry in the local activity log — what the user actually did, as
+ * opposed to what they looked at (HistoryItem). Written for buys, sells and
+ * redeems alike, on success AND on failure, because "did my sell go through?"
+ * is exactly the question that has no other answer once the position is gone
+ * from Polymarket's positions API.
+ */
+export interface TradeLogItem {
+  id: string
+  timestamp: number
+  kind: 'BUY' | 'SELL' | 'REDEEM'
+  status: 'placed' | 'failed' | 'unknown'
+  /** Market question, as shown at the time of the trade. */
+  question: string
+  /** Market slug for the Polymarket link, when known. */
+  marketSlug?: string
+  /** 'Yes' / 'No' — which outcome token the trade was on. */
+  outcome?: string
+  orderType?: 'LIMIT' | 'MARKET'
+  /** BUY: USD notional. SELL: proceeds estimate. REDEEM: unset. */
+  usd?: number
+  /** SELL/BUY: share count when known. */
+  shares?: number
+  /** Price per share (0..1) the order was signed at. */
+  price?: number
+  /** CLOB order id (BUY/SELL) or relayer transaction id (REDEEM). */
+  ref?: string
+  /** Human-readable failure reason when status !== 'placed'. */
+  error?: string
+}
+
 export interface HistoryItem {
   marketId: string
   marketSlug: string

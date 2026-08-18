@@ -3,7 +3,7 @@ import { GlassSurface } from './components/GlassSurface'
 import { Header } from './components/Header'
 import { Tabs, type TabName } from './components/Tabs'
 import { CheckTab, type CheckState, type Market as DesignMarket } from './tabs/CheckTab'
-import { HistoryTab, type HistoryState, type HistoryRow } from './tabs/HistoryTab'
+import { HistoryTab, type HistoryState, type HistoryRow, type TradeRow } from './tabs/HistoryTab'
 import { SettingsTab, type SettingsValues } from './tabs/SettingsTab'
 import { TradeTabWired } from './TradeTabWired'
 
@@ -11,6 +11,7 @@ import type {
   HistoryItem,
   Settings as SettingsT,
   TestKeysResult,
+  TradeLogItem,
 } from '../shared/types'
 import {
   BUILDER_CODE,
@@ -23,7 +24,8 @@ import type { ResponseMessage } from '../shared/messages'
 import { extractActiveTabArticle } from '../popup/operations'
 import { getCacheStatus } from '../background/cache'
 import { trackEvent } from '../background/telemetry'
-import { buildMarketUrl } from '../background/polymarket'
+import { buildMarketUrl, marketPageUrl } from '../background/polymarket'
+import { clearTradeLog, getTradeLog } from '../background/tradeLog'
 import { findOutcomeIndex, formatRelative } from '@actually/core'
 import {
   disconnectWalletViaOffscreen,
@@ -68,6 +70,34 @@ function formatVolume(v: number): string {
   if (v >= 1_000) return `$${Math.round(v / 1_000)}k`
   return `$${Math.round(v)}`
 }
+/** One activity-log entry → the History tab's row shape. The detail line is
+ * built here (not in the tab) so the tab stays a dumb renderer. */
+function tradeToRow(t: TradeLogItem): TradeRow {
+  const cents = (p?: number) => (p == null ? null : `${(p * 100).toFixed(1)}¢`)
+  const bits: string[] = []
+  if (t.kind === 'REDEEM') {
+    if (t.shares != null) bits.push(`${t.shares} shares`)
+    if (t.outcome) bits.push(t.outcome)
+  } else {
+    if (t.usd != null) bits.push(`$${t.usd.toFixed(2)}`)
+    if (t.shares != null) bits.push(`${t.shares.toFixed(2)} shares`)
+    const at = cents(t.price)
+    bits.push(`${t.outcome ?? '—'}${at ? ` @ ${at}` : ''}`)
+    if (t.orderType) bits.push(t.orderType.toLowerCase())
+  }
+  return {
+    kind: t.kind,
+    status: t.status,
+    q: t.question,
+    detail: bits.join(' · '),
+    when: formatRelative(t.timestamp),
+    error: t.error,
+    onOpen: t.marketSlug
+      ? () => window.open(buildMarketUrl(t.marketSlug!), '_blank', 'noopener,noreferrer')
+      : undefined,
+  }
+}
+
 function historyToRow(h: HistoryItem): HistoryRow {
   return {
     pct: Math.round(h.probability * 100),
@@ -153,6 +183,9 @@ export const IntegratedPopup: React.FC<IntegratedPopupProps> = ({
   // empty or two entries share a question+domain.
   const [historyItems, setHistoryItems] = useState<HistoryItem[]>([])
   const [historyResolveError, setHistoryResolveError] = useState<string | null>(null)
+  // The user's own trades. Separate from historyItems: matches are things you
+  // looked at, these are things you did — and they must survive "Clear history".
+  const [tradeItems, setTradeItems] = useState<TradeLogItem[]>([])
 
   // Settings tab state
   const [cache, setCache] = useState<{ count: number; lastUpdated: number }>({ count: 0, lastUpdated: 0 })
@@ -231,6 +264,7 @@ export const IntegratedPopup: React.FC<IntegratedPopupProps> = ({
           ? { kind: 'empty' }
           : { kind: 'success', items: r.items.map(historyToRow) },
       )
+      setTradeItems(await getTradeLog())
     })()
   }, [tab])
 
@@ -412,7 +446,7 @@ export const IntegratedPopup: React.FC<IntegratedPopupProps> = ({
                 if (!lastMatch) return
                 void trackEvent('match_clicked', settings, { color: lastMatch.color })
                 window.open(
-                  buildMarketUrl(lastMatch.market.slug),
+                  marketPageUrl(lastMatch.market),
                   '_blank',
                   'noopener,noreferrer',
                 )
@@ -434,7 +468,7 @@ export const IntegratedPopup: React.FC<IntegratedPopupProps> = ({
               onOpenSettings={() => setTab('Settings')}
               onMatchOpenedExternally={(market) => {
                 void trackEvent('match_clicked', settings, { color: 'blue' })
-                window.open(buildMarketUrl(market.slug), '_blank', 'noopener,noreferrer')
+                window.open(marketPageUrl(market), '_blank', 'noopener,noreferrer')
               }}
             />
           )}
@@ -498,6 +532,16 @@ export const IntegratedPopup: React.FC<IntegratedPopupProps> = ({
                     await sendToBackground({ type: 'CLEAR_HISTORY' })
                     setHistoryState({ kind: 'empty' })
                     setHistoryResolveError(null)
+                  })()
+                }}
+                trades={tradeItems.map(tradeToRow)}
+                onClearTrades={() => {
+                  // Separate confirm from "Clear history": this is the only
+                  // local record that a trade happened.
+                  if (!confirm('Erase the local record of your trades? Polymarket still has them; this only clears what the extension shows.')) return
+                  void (async () => {
+                    await clearTradeLog()
+                    setTradeItems([])
                   })()
                 }}
               />

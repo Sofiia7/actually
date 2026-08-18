@@ -45,9 +45,19 @@ export const STORAGE_KEYS = {
   marketCacheTs: 'marketCacheTs',
   marketCacheModel: 'marketCacheModel',
   history: 'history',
+  tradeLog: 'tradeLog',
   installId: 'installId',
   telemetryQueue: 'telemetryQueue',
 } as const
+
+/**
+ * How many trades the local activity log keeps. Larger than MAX_HISTORY_ITEMS
+ * on purpose: a match you looked at is disposable, a trade you made is the
+ * only local record that it ever happened. Positions vanish from Polymarket's
+ * API the moment they're sold or redeemed, so without this log a completed
+ * sell leaves no trace anywhere in the UI.
+ */
+export const MAX_TRADE_LOG_ITEMS = 100
 
 export const ALARM_NAMES = {
   refreshCache: 'refresh-cache',

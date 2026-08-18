@@ -12,8 +12,9 @@ import type { OpenOrderSummary, Position, Settings as SettingsT } from '../share
 import type { MatchResult, PolyMarket } from '@actually/core'
 import type { SerializableWalletState } from '../shared/messages'
 import { GEO_FAIL_OPEN, MAX_ORDER_USD } from '../shared/constants'
-import { findOutcomeIndex, isBelowMinOrderSize, minOrderShares, minOrderUsd, shortHash } from '@actually/core'
+import { findOutcomeIndex, isBelowMinOrderSize, minOrderShares, minOrderUsd, shortHash, shortRef } from '@actually/core'
 import { trackEvent } from '../background/telemetry'
+import { logTrade } from '../background/tradeLog'
 import type { GeoErrorReason } from '../background/geo'
 import { MarketAnalytics } from './trade/Analytics'
 import * as om from './trade/orderMath'
@@ -530,6 +531,7 @@ const TradeReady: React.FC<ReadyProps> = ({
   const yesIdx = findOutcomeIndex(match.market.outcomes, 'Yes')
   const pct = Math.round((match.freshPrice ?? match.probability) * 100)
   const yesTokenId = match.market.clobTokenIds[yesIdx]
+  const positionsRef = useRef<HTMLDivElement | null>(null)
 
   // Market context card (question, %, "Open on Polymarket"). Position
   // depends on connect state: it leads while connected (context for the
@@ -588,6 +590,18 @@ const TradeReady: React.FC<ReadyProps> = ({
 
       {wallet ? (
         <>
+          {/* What you hold, before what you might buy. The panel itself sits
+              below the order ticket (the tab is entered from a matched market,
+              so the ticket keeps its place), but a user opening the popup to
+              check on their own money should not have to scroll past a buy
+              form — let alone reconstruct their positions from the Check
+              history — to find it. */}
+          <PortfolioSummary
+            positions={positions}
+            openOrders={openOrders}
+            loading={portfolioLoading}
+            onView={() => positionsRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
+          />
           {marketCard}
           <MarketAnalytics market={match.market} yesTokenId={yesTokenId} />
           <OrderFormWired
@@ -597,16 +611,18 @@ const TradeReady: React.FC<ReadyProps> = ({
             onDisconnect={onDisconnect}
             onPortfolioChanged={onRefreshPortfolio}
           />
-          <PositionsPanel
-            positions={positions}
-            openOrders={openOrders}
-            loading={portfolioLoading}
-            cancellingId={cancellingId}
-            onCancelOrder={onCancelOpenOrder}
-            onRefresh={onRefreshPortfolio}
-            portfolioError={portfolioError}
-            cancelError={cancelError}
-          />
+          <div ref={positionsRef}>
+            <PositionsPanel
+              positions={positions}
+              openOrders={openOrders}
+              loading={portfolioLoading}
+              cancellingId={cancellingId}
+              onCancelOrder={onCancelOpenOrder}
+              onRefresh={onRefreshPortfolio}
+              portfolioError={portfolioError}
+              cancelError={cancelError}
+            />
+          </div>
         </>
       ) : (
         <>
@@ -793,13 +809,39 @@ const OrderFormWired: React.FC<OrderFormProps> = ({
       setResult({
         ok: r.ok,
         msg: r.ok
-          ? `Order placed${r.orderId ? ` · ${r.orderId.slice(0, 10)}…` : ''}`
-          : `Failed: ${humanError(r.error ?? 'unknown_error')}`,
+          ? orderType === 'LIMIT'
+            ? `Limit order placed — ${effShares.toFixed(2)} shares of ${side === 'BUY_YES' ? 'Yes' : 'No'} at ${fmtC(price)}. It rests on the book until it fills.`
+            : `Order filled — ${effShares.toFixed(2)} shares of ${side === 'BUY_YES' ? 'Yes' : 'No'} for about $${sizeUsd.toFixed(2)}.`
+          : `${humanError(r.error ?? 'unknown_error')}`,
         orderId: r.orderId,
+      })
+      void logTrade({
+        kind: 'BUY',
+        status: r.ok ? 'placed' : 'failed',
+        question: match.market.question,
+        marketSlug: match.market.eventSlug || match.market.slug,
+        outcome: side === 'BUY_YES' ? 'Yes' : 'No',
+        orderType,
+        usd: sizeUsd,
+        shares: effShares,
+        price,
+        ref: r.orderId,
+        error: r.ok ? undefined : humanError(r.error ?? 'unknown_error'),
       })
       if (r.ok) onPortfolioChanged?.()
     } catch (err) {
       setResult({ ok: false, msg: `Error: ${String(err)}` })
+      void logTrade({
+        kind: 'BUY',
+        status: 'failed',
+        question: match.market.question,
+        marketSlug: match.market.eventSlug || match.market.slug,
+        outcome: side === 'BUY_YES' ? 'Yes' : 'No',
+        orderType,
+        usd: sizeUsd,
+        price: price ?? undefined,
+        error: String(err),
+      })
     } finally {
       setSubmitting(false)
     }
@@ -1005,20 +1047,47 @@ const OrderFormWired: React.FC<OrderFormProps> = ({
         </div>
       )}
 
+      {/* The outcome of a real-money action, stated at a size you can read
+          without leaning in. This used to be one line of 12px grey-green text
+          reading "Order placed · 0x91a8322…" — indistinguishable from a
+          caption, and the least legible thing on screen at the exact moment
+          the user most needs certainty.
+
+          Cancel deliberately does NOT live here: this is transient local
+          state that resets when the component re-renders (switching tabs and
+          back), so a cancel action tied to it could vanish while the order
+          was still resting. "Your positions & open orders" below re-fetches
+          real CLOB state on every mount and owns cancelling. */}
       {result && (
-        <Etched
-          size={12}
-          weight={300}
-          color={result.ok ? 'rgba(30,110,60,.9)' : 'rgba(160,40,40,.9)'}
+        <div
+          style={{
+            padding: '12px 14px',
+            borderRadius: 10,
+            background: result.ok ? 'rgba(30,110,60,.10)' : 'rgba(160,40,40,.09)',
+            border: `1px solid ${result.ok ? 'rgba(30,110,60,.45)' : 'rgba(160,40,40,.42)'}`,
+            display: 'flex',
+            flexDirection: 'column',
+            gap: 6,
+          }}
         >
-          {result.msg}
-          {/* Cancel lives in "Your positions & open orders" below, not here —
-              this message is transient local state that resets if the popup
-              re-renders this component (e.g. switching tabs and back), so a
-              cancel action tied to it could silently vanish while the order
-              was still resting. The positions panel re-fetches the real
-              state from the CLOB on every mount instead. */}
-        </Etched>
+          <Etched size={14} weight={500} color={result.ok ? 'rgba(22,95,52,.98)' : 'rgba(150,32,32,.98)'}>
+            {result.ok ? '✓ Order placed' : '✕ Order failed'}
+          </Etched>
+          <Etched size={12.5} weight={300} style={{ lineHeight: 1.45 }}>
+            {result.msg}
+          </Etched>
+          {result.orderId && (
+            <Etched size={11} weight={300} color="rgba(35,45,70,.6)">
+              Order {shortRef(result.orderId)} · also saved to History
+            </Etched>
+          )}
+          <div style={{ display: 'flex', gap: 10, marginTop: 2 }}>
+            <LinkAction onClick={() => setResult(null)}>Dismiss</LinkAction>
+            {result.ok && onPortfolioChanged && (
+              <LinkAction onClick={() => onPortfolioChanged()}>Refresh positions</LinkAction>
+            )}
+          </div>
+        </div>
       )}
 
       <div style={{ textAlign: 'center', marginTop: 4 }}>
@@ -1096,6 +1165,66 @@ const MatchContext: React.FC<{
         <div style={{ marginTop: 2 }}>
           <LinkAction onClick={onPickMatch}>Not this market? Choose on Check →</LinkAction>
         </div>
+      )}
+    </div>
+  )
+}
+
+/**
+ * One-line state of the user's own money, pinned to the top of the connected
+ * Trade tab: how many positions, what they're worth, how many resolved
+ * markets are waiting to be claimed, and whether any orders are still resting.
+ * Everything here is already fetched for the panel below — this is purely
+ * about it being visible without scrolling past a buy form.
+ */
+const PortfolioSummary: React.FC<{
+  positions: Position[]
+  openOrders: OpenOrderSummary[]
+  loading: boolean
+  onView: () => void
+}> = ({ positions, openOrders, loading, onView }) => {
+  const value = positions.reduce((sum, p) => sum + (p.currentValue ?? 0), 0)
+  const pnl = positions.reduce((sum, p) => sum + (p.cashPnl ?? 0), 0)
+  const redeemable = positions.filter((p) => p.redeemable).length
+  const empty = positions.length === 0 && openOrders.length === 0
+
+  return (
+    <div
+      style={{
+        padding: '10px 12px',
+        borderRadius: 9,
+        background: 'rgba(255,255,255,.07)',
+        border: '1px solid rgba(255,255,255,.26)',
+        display: 'flex',
+        flexDirection: 'column',
+        gap: 4,
+      }}
+    >
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 8 }}>
+        <Etched size={11} weight={400} color="rgba(35,45,70,.6)" style={{ textTransform: 'uppercase', letterSpacing: '.05em' }}>
+          Your portfolio
+        </Etched>
+        {!empty && <LinkAction onClick={onView}>View ↓</LinkAction>}
+      </div>
+      {loading && positions.length === 0 && openOrders.length === 0 ? (
+        <Etched size={12} weight={300} color="rgba(35,45,70,.6)">Loading…</Etched>
+      ) : empty ? (
+        <Etched size={12} weight={300} color="rgba(35,45,70,.6)">
+          No open positions yet — your trades will show up here.
+        </Etched>
+      ) : (
+        <>
+          <Etched size={13.5} weight={500}>
+            {positions.length} position{positions.length === 1 ? '' : 's'} · ${value.toFixed(2)}
+            <span style={{ color: pnl >= 0 ? 'rgba(30,110,60,.9)' : 'rgba(160,40,40,.9)', fontWeight: 400 }}>
+              {' '}({pnl >= 0 ? '+' : ''}${pnl.toFixed(2)})
+            </span>
+          </Etched>
+          <Etched size={11} weight={300} color="rgba(35,45,70,.6)">
+            {redeemable > 0 ? `${redeemable} resolved & claimable · ` : ''}
+            {openOrders.length} resting order{openOrders.length === 1 ? '' : 's'}
+          </Etched>
+        </>
       )}
     </div>
   )
