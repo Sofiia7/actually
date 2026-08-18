@@ -32,6 +32,10 @@ import { wcRequest } from './wallet'
 
 const RELAYER_URL = 'https://relayer-v2.polymarket.com/'
 const POLYGON_CHAIN_ID = 137
+/** Longest we keep the UI on "Redeeming…" before reporting an unconfirmed
+ * outcome. The SDK's own poll budget is 100 × 2s ≈ 200s, which reads as a
+ * hang. A Polygon redeem that hasn't mined in 45s is worth reporting on. */
+const REDEEM_WAIT_TIMEOUT_MS = 45_000
 
 /** Methods the wallet must serve. Anything else is a read, and reads must not
  * be routed to the wallet — the RelayClient has its own RPC for those, and a
@@ -135,7 +139,16 @@ export async function redeemPosition(args: RedeemArgs): Promise<RedeemResult> {
     // read as success.
     let mined: Awaited<ReturnType<typeof submitted.wait>>
     try {
-      mined = await submitted.wait()
+      // wait() polls up to 100 times at 2s intervals — over three minutes of
+      // a spinner reading "Redeeming…" with no way to tell a slow mine from a
+      // dead flow. Cap it: past this point the honest answer is "submitted,
+      // status unconfirmed", which is what the caller reports.
+      mined = await Promise.race([
+        submitted.wait(),
+        new Promise<never>((_, reject) =>
+          setTimeout(() => reject(new Error('wait_timeout')), REDEEM_WAIT_TIMEOUT_MS),
+        ),
+      ])
     } catch (err) {
       // The redeem was ACCEPTED — a poll hiccup after that does not mean it
       // failed. Report the outcome as unknown and keep the id so the user

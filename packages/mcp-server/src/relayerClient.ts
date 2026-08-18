@@ -21,6 +21,9 @@ import { assertValidPrivateKeyShape } from './validatePrivateKey'
 
 const RELAYER_URL = 'https://relayer-v2.polymarket.com/'
 const POLYGON_CHAIN_ID = 137
+/** Cap on wait(): the SDK's own budget is 100 polls x 2s, which reads as a
+ * hang to any caller. Past this we report an unconfirmed outcome. */
+const REDEEM_WAIT_TIMEOUT_MS = 45_000
 
 export interface RelayerSubmitResult {
   success: boolean
@@ -56,14 +59,62 @@ export function makeRelayerSubmit(privateKey: string): (tx: EncodedRedeemTx) => 
       // STATE_NEW), not once it's mined — wait() polls until a terminal
       // on-chain state so redeem_position reports a definitive outcome
       // instead of "we submitted something, who knows".
-      const mined = await submitted.wait()
-      const terminal = mined ?? { state: submitted.state, transactionID: submitted.transactionID }
-      if (terminal.state === 'STATE_FAILED' || terminal.state === 'STATE_INVALID') {
-        return { success: false, transactionId: terminal.transactionID, error: `relayer_state:${terminal.state}` }
+      //
+      // wait() (pollUntilState) returns the transaction ONLY for
+      // STATE_MINED/STATE_CONFIRMED, and returns UNDEFINED for BOTH an
+      // on-chain failure and a poll timeout. Falling back to
+      // `submitted.state` — the state at submission, always STATE_NEW —
+      // therefore reported every failed redeem as a success. Never read
+      // undefined as success.
+      let mined: Awaited<ReturnType<typeof submitted.wait>>
+      try {
+        mined = await Promise.race([
+          submitted.wait(),
+          new Promise<never>((_, reject) =>
+            setTimeout(() => reject(new Error('wait_timeout')), REDEEM_WAIT_TIMEOUT_MS),
+          ),
+        ])
+      } catch (err) {
+        // Submission succeeded; only the status poll failed. Keep the id.
+        return {
+          success: false,
+          transactionId: submitted.transactionID,
+          error: `redeem_status_unknown:${err instanceof Error ? err.message : String(err)}`,
+        }
       }
-      return { success: true, transactionId: terminal.transactionID }
+      if (!mined) {
+        let lastState: string | undefined
+        try {
+          lastState = (await submitted.getTransaction())[0]?.state
+        } catch {
+          // leave unknown
+        }
+        if (lastState === 'STATE_FAILED' || lastState === 'STATE_INVALID') {
+          return { success: false, transactionId: submitted.transactionID, error: `relayer_state:${lastState}` }
+        }
+        return { success: false, transactionId: submitted.transactionID, error: 'redeem_status_unknown:poll_timeout' }
+      }
+      if (mined.state === 'STATE_FAILED' || mined.state === 'STATE_INVALID') {
+        return { success: false, transactionId: mined.transactionID, error: `relayer_state:${mined.state}` }
+      }
+      return { success: true, transactionId: mined.transactionID ?? submitted.transactionID }
     } catch (err) {
-      return { success: false, error: String(err instanceof Error ? err.message : err) }
+      const raw = String(err instanceof Error ? err.message : err)
+      // The relayer requires builder auth headers on POST /submit and answers
+      // an unauthenticated call with 401 "invalid authorization" (verified
+      // against the live endpoint 2026-08-17). We construct RelayClient with
+      // no builderConfig, so this is the expected outcome until builder API
+      // credentials exist — say so instead of leaking a raw JSON blob.
+      if (/invalid authorization/i.test(raw) || /(^|[^0-9])401([^0-9]|$)/.test(raw)) {
+        return {
+          success: false,
+          error:
+            "relayer_unauthorized: Polymarket's relayer rejected the request (401). " +
+            'In-app redeem needs builder API credentials this server does not have; ' +
+            'claim the payout on polymarket.com instead. Nothing was redeemed.',
+        }
+      }
+      return { success: false, error: raw }
     }
   }
 }
