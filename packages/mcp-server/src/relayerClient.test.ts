@@ -1,6 +1,28 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-const { executeMock } = vi.hoisted(() => ({ executeMock: vi.fn() }))
+const { executeMock, creds } = vi.hoisted(() => ({
+  executeMock: vi.fn(),
+  // Mutable stand-in for the builder credentials. Deliberately NOT
+  // process.env: config.ts reads the environment once at import time, so
+  // driving these tests through env means mutating a process-wide global that
+  // vitest shares between test files in the same worker — which made this
+  // suite pass alone and fail intermittently in a full run.
+  creds: { key: undefined as string | undefined, secret: undefined as string | undefined, passphrase: undefined as string | undefined },
+}))
+
+vi.mock('./config', () => ({
+  get BUILDER_API_KEY() {
+    return creds.key
+  },
+  get BUILDER_API_SECRET() {
+    return creds.secret
+  },
+  get BUILDER_API_PASSPHRASE() {
+    return creds.passphrase
+  },
+  builderCredsConfigured: () => Boolean(creds.key && creds.secret && creds.passphrase),
+}))
+
 vi.mock('@polymarket/builder-relayer-client', () => ({
   RelayClient: class {
     execute = executeMock
@@ -8,30 +30,29 @@ vi.mock('@polymarket/builder-relayer-client', () => ({
   RelayerTxType: { SAFE: 'SAFE' },
 }))
 
+import { makeRelayerSubmit } from './relayerClient'
+
 const KEY = '0x' + '1'.repeat(64)
 const TX = { to: '0xcontract', data: '0xdeadbeef', value: '0' }
 
-const ENV_KEYS = [
-  'POLYMARKET_BUILDER_API_KEY',
-  'POLYMARKET_BUILDER_API_SECRET',
-  'POLYMARKET_BUILDER_API_PASSPHRASE',
-] as const
+function withCreds() {
+  creds.key = 'bk'
+  creds.secret = Buffer.from('secret-bytes').toString('base64')
+  creds.passphrase = 'pp'
+}
 
 beforeEach(() => {
-  vi.resetModules()
   vi.clearAllMocks()
-  for (const k of ENV_KEYS) delete process.env[k]
-})
-afterEach(() => {
-  for (const k of ENV_KEYS) delete process.env[k]
+  creds.key = undefined
+  creds.secret = undefined
+  creds.passphrase = undefined
 })
 
 describe('makeRelayerSubmit — builder credentials gate the whole flow', () => {
   it('refuses BEFORE signing when credentials are missing, and says where to get them', async () => {
     // The SDK signs the Safe transaction before it posts, so without
-    // credentials the operator would pay a wallet signature for a request
-    // the relayer answers with 401.
-    const { makeRelayerSubmit } = await import('./relayerClient')
+    // credentials the operator would pay a wallet signature for a request the
+    // relayer answers with 401.
     const r = await makeRelayerSubmit(KEY)(TX)
     expect(r.success).toBe(false)
     expect(r.error).toMatch(/builder_creds_missing/)
@@ -40,28 +61,22 @@ describe('makeRelayerSubmit — builder credentials gate the whole flow', () => 
   })
 
   it('submits once credentials are present', async () => {
-    process.env.POLYMARKET_BUILDER_API_KEY = 'bk'
-    process.env.POLYMARKET_BUILDER_API_SECRET = Buffer.from('s').toString('base64')
-    process.env.POLYMARKET_BUILDER_API_PASSPHRASE = 'pp'
+    withCreds()
     executeMock.mockResolvedValue({
       state: 'STATE_NEW',
       transactionID: '0xtx',
       wait: vi.fn(async () => ({ state: 'STATE_MINED', transactionID: '0xtx' })),
       getTransaction: vi.fn(async () => [{ state: 'STATE_MINED' }]),
     })
-    const { makeRelayerSubmit } = await import('./relayerClient')
     expect(await makeRelayerSubmit(KEY)(TX)).toEqual({ success: true, transactionId: '0xtx' })
     expect(executeMock).toHaveBeenCalledOnce()
   })
 
   it('reports a relayer 401 as an actionable message, not a raw blob', async () => {
-    process.env.POLYMARKET_BUILDER_API_KEY = 'bk'
-    process.env.POLYMARKET_BUILDER_API_SECRET = Buffer.from('s').toString('base64')
-    process.env.POLYMARKET_BUILDER_API_PASSPHRASE = 'pp'
+    withCreds()
     executeMock.mockRejectedValue(
       new Error('{"error":"request error","status":401,"data":{"error":"invalid authorization"}}'),
     )
-    const { makeRelayerSubmit } = await import('./relayerClient')
     const r = await makeRelayerSubmit(KEY)(TX)
     expect(r.success).toBe(false)
     expect(r.error).toMatch(/relayer_unauthorized/)
@@ -69,9 +84,7 @@ describe('makeRelayerSubmit — builder credentials gate the whole flow', () => 
   })
 
   it('never reports an unmined transaction as success', async () => {
-    process.env.POLYMARKET_BUILDER_API_KEY = 'bk'
-    process.env.POLYMARKET_BUILDER_API_SECRET = Buffer.from('s').toString('base64')
-    process.env.POLYMARKET_BUILDER_API_PASSPHRASE = 'pp'
+    withCreds()
     // wait() resolves undefined for BOTH an on-chain failure and a timeout.
     executeMock.mockResolvedValue({
       state: 'STATE_NEW',
@@ -79,8 +92,23 @@ describe('makeRelayerSubmit — builder credentials gate the whole flow', () => 
       wait: vi.fn(async () => undefined),
       getTransaction: vi.fn(async () => [{ state: 'STATE_FAILED' }]),
     })
-    const { makeRelayerSubmit } = await import('./relayerClient')
+    expect(await makeRelayerSubmit(KEY)(TX)).toEqual({
+      success: false,
+      transactionId: '0xtx',
+      error: 'relayer_state:STATE_FAILED',
+    })
+  })
+
+  it('reports an unconfirmed outcome rather than a failure when polling times out', async () => {
+    withCreds()
+    executeMock.mockResolvedValue({
+      state: 'STATE_NEW',
+      transactionID: '0xtx',
+      wait: vi.fn(async () => undefined),
+      getTransaction: vi.fn(async () => [{ state: 'STATE_EXECUTED' }]),
+    })
     const r = await makeRelayerSubmit(KEY)(TX)
-    expect(r).toEqual({ success: false, transactionId: '0xtx', error: 'relayer_state:STATE_FAILED' })
+    expect(r.error).toBe('redeem_status_unknown:poll_timeout')
+    expect(r.transactionId).toBe('0xtx')
   })
 })

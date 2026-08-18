@@ -36,8 +36,7 @@
     "viem": "^2.55.11"
   },
   "devDependencies": {
-    "@cloudflare/vite-plugin": "^1.52.1",
-    "@cloudflare/workers-types": "^5.20260818.1",
+    "@cloudflare/workers-types": "^4.20260516.1",
     "@crxjs/vite-plugin": "^2.7.1",
     "@testing-library/jest-dom": "^6.9.1",
     "@testing-library/react": "^16.3.2",
