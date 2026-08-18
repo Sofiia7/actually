@@ -23,7 +23,10 @@ import {
   BUILDER_API_KEY,
   BUILDER_API_PASSPHRASE,
   BUILDER_API_SECRET,
+  RELAYER_API_KEY,
+  RELAYER_API_KEY_ADDRESS,
   builderCredsConfigured,
+  relayerAuthMode,
 } from './config'
 
 const RELAYER_URL = 'https://relayer-v2.polymarket.com/'
@@ -57,15 +60,29 @@ export function makeRelayerSubmit(privateKey: string): (tx: EncodedRedeemTx) => 
       // Builder auth: the relayer refuses POST /submit without it (401
       // "invalid authorization"), so a client built without credentials can
       // only ever fail — after the transaction has been signed. See config.ts.
-      const builderConfig = builderCredsConfigured()
-        ? new BuilderConfig({
-            localBuilderCreds: {
-              key: BUILDER_API_KEY!,
-              secret: BUILDER_API_SECRET!,
-              passphrase: BUILDER_API_PASSPHRASE!,
-            },
-          })
-        : undefined
+      const mode = relayerAuthMode()
+      let builderConfig: BuilderConfig | undefined
+      if (mode === 'builder') {
+        builderConfig = new BuilderConfig({
+          localBuilderCreds: {
+            key: BUILDER_API_KEY!,
+            secret: BUILDER_API_SECRET!,
+            passphrase: BUILDER_API_PASSPHRASE!,
+          },
+        })
+      } else if (mode === 'relayer') {
+        // The signing SDK models only the HMAC scheme, but RelayClient just
+        // calls isValid()/generateBuilderHeaders() and attaches whatever
+        // comes back — so a structural stand-in serves the static
+        // relayer-key headers without patching the SDK.
+        builderConfig = {
+          isValid: () => true,
+          generateBuilderHeaders: async () => ({
+            RELAYER_API_KEY: RELAYER_API_KEY!,
+            RELAYER_API_KEY_ADDRESS: RELAYER_API_KEY_ADDRESS!,
+          }),
+        } as unknown as BuilderConfig
+      }
       client = new RelayClient(RELAYER_URL, POLYGON_CHAIN_ID, wallet, builderConfig, RelayerTxType.SAFE)
     }
     return client
@@ -79,9 +96,10 @@ export function makeRelayerSubmit(privateKey: string): (tx: EncodedRedeemTx) => 
       return {
         success: false,
         error:
-          'builder_creds_missing: redeeming needs builder API credentials. Create them at ' +
-          'polymarket.com -> Settings -> Builders -> "+ Create New" and set ' +
-          'POLYMARKET_BUILDER_API_KEY / _SECRET / _PASSPHRASE. Nothing was submitted.',
+          'builder_creds_missing: redeeming needs relayer credentials. Easiest: create a ' +
+          'Relayer API key at polymarket.com -> Settings -> API Keys -> Relayer API Keys and set ' +
+          'POLYMARKET_RELAYER_API_KEY + POLYMARKET_RELAYER_API_KEY_ADDRESS. (Builder API creds ' +
+          'via POLYMARKET_BUILDER_API_KEY / _SECRET / _PASSPHRASE also work.) Nothing was submitted.',
       }
     }
     try {

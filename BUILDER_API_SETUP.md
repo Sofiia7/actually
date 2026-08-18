@@ -1,84 +1,107 @@
-# Enabling in-app redeem (Builder API credentials)
+# Enabling in-app redeem (relayer credentials)
 
 Redeeming a resolved position is the one action that does not go through the
 CLOB. It is an on-chain call made **as the user's Polymarket Safe**, submitted
 through Polymarket's relayer so nobody needs POL for gas. The relayer
-authenticates `POST /submit` with **Builder API credentials**, and without them
-it answers `401 {"error":"invalid authorization"}` — which is exactly what
-in-app redeem did on every attempt until 2026-08-17.
+authenticates `POST /submit`, and without credentials it answers
+`401 {"error":"invalid authorization"}` — which is exactly what in-app redeem
+did on every attempt until 2026-08-17.
 
-**This is not the builder code.** The builder *code* (already baked into both
-clients) attributes CLOB orders to us and is public by design. The builder
-*API credentials* are a `key` / `secret` / `passphrase` triple that
-authenticates requests, and they are a real secret.
+The relayer accepts **two credential schemes**, and this project supports both:
 
-## Step 1 — create the credentials (2 minutes, no approval needed)
+| | Relayer API key | Builder API key |
+|---|---|---|
+| Parts | `key` + owning `address` | `key` + `secret` + `passphrase` |
+| Auth | two static headers | HMAC signature per request |
+| Scope | the account that created it | the builder profile |
+| Where | Settings → **API Keys** → Relayer API Keys | builder program (HMAC triple) |
+| Secret leaves the Worker? | yes (the key IS the header) | no (only a signature does) |
 
-1. Open <https://polymarket.com/settings?tab=builder> with the builder account.
-2. If there is no builder profile yet, create one.
-3. Click **"+ Create New"** to generate API keys.
-4. Copy the **key**, **secret** and **passphrase**. The secret is shown once.
+**Neither is the builder *code*.** The builder code (already baked into both
+clients) attributes CLOB orders and is public by design.
 
-The default *Unverified* tier allows **100 relayer transactions per day**,
-which is also the ceiling this Worker enforces on itself. Raising it means
-emailing builder@polymarket.com for *Verified* (10,000/day) with the builder
-API key, a use-case description and expected volume.
+## Quick path — Relayer API key (what the settings UI hands out)
 
-## Step 2 — give them to the Worker (never to the extension)
-
-The extension cannot hold this secret: every install would carry it in
-plaintext, and anyone extracting it could spend the whole daily quota. So the
-Worker signs each request instead — the "remote signer" mode Polymarket's own
-`@polymarket/builder-signing-sdk` supports.
+1. polymarket.com → Settings → **API Keys** → Relayer API Keys → create.
+2. Copy the **API key** and the **signer address** shown with it.
+3. From the `extension/` directory:
 
 ```bash
-cd extension
+npx wrangler secret put RELAYER_API_KEY --config worker/wrangler.toml
+npx wrangler secret put RELAYER_API_KEY_ADDRESS --config worker/wrangler.toml
+```
+
+Scope caveat: a relayer key authorizes gasless operations **for the account
+that created it**. For the operator redeeming their own positions (and for
+pre-launch testing, where the operator is the only user) that is exactly
+right. Whether it authorizes submits for *other* users' Safes is not
+documented — if it doesn't, arbitrary users of a published extension will
+still get 401s, and launch needs the builder scheme below.
+
+Security caveat: in remote-signer flow the client receives the headers to
+attach, so with this scheme the key itself transits to the extension.
+Holding it cannot move funds — every submit still needs the user's own Safe
+signature — but it can read the owner's relayer transactions and burn rate
+limit. Fine while the only client is your own unpublished build; prefer
+builder credentials for public launch. When both are configured, the Worker
+automatically prefers builder HMAC.
+
+## Launch path — Builder API credentials (HMAC triple)
+
+If/when you hold a `key` / `secret` / `passphrase` triple from the builder
+program (docs: "Settings → Builders → + Create New"; the current UI may only
+show relayer-style keys — ask in the builder Telegram/builder@polymarket.com
+if the triple isn't visible):
+
+```bash
 npx wrangler secret put BUILDER_API_KEY --config worker/wrangler.toml
 npx wrangler secret put BUILDER_API_SECRET --config worker/wrangler.toml
 npx wrangler secret put BUILDER_API_PASSPHRASE --config worker/wrangler.toml
 ```
 
-Each command prompts for the value and stores it encrypted at Cloudflare.
+The default *Unverified* tier allows **100 relayer transactions per day**,
+which is also the ceiling this Worker enforces on itself. *Verified*
+(10,000/day) is a manual upgrade via builder@polymarket.com.
 
 > Run wrangler from `extension/`, not from `extension/worker/`. Wrangler 4.12x
 > resolves config against the nearest workspace package and will otherwise
-> deploy `dist/` as a static site under the wrong name.
+> deploy `dist/` as a static site under the wrong name — and silently edit
+> vite.config.ts/package.json while at it (both happened here).
 
-## Step 3 — confirm
+## Confirm
 
 ```bash
-curl -s -H "X-Actually-Auth: $WORKER_SECRET" \
-  https://actually-api.sofiaseremeteva.workers.dev/builder-status
+curl -s -H "X-Actually-Auth: $WORKER_SECRET"   https://actually-api.sofiaseremeteva.workers.dev/builder-status
 ```
 
-`{"configured":true}` means the extension will start offering **Redeem →** on
-resolved positions instead of "Claim on Polymarket →". No rebuild and no new
-release are needed — the UI asks the Worker at runtime (cached 5 minutes).
+`{"configured":true,"mode":"relayer"}` (or `"builder"`) means the extension
+starts offering **Redeem →** on resolved positions instead of "Claim on
+Polymarket →". No rebuild, no release — the UI asks the Worker at runtime
+(cached for 5 minutes).
 
-For the MCP server, which runs on the operator's own machine and already holds
-a private key, the same credentials go in the environment directly:
+For the MCP server, which runs on the operator's own machine, the same
+credentials go into the environment directly — relayer scheme:
 
 ```
-POLYMARKET_BUILDER_API_KEY=...
-POLYMARKET_BUILDER_API_SECRET=...
-POLYMARKET_BUILDER_API_PASSPHRASE=...
+POLYMARKET_RELAYER_API_KEY=...
+POLYMARKET_RELAYER_API_KEY_ADDRESS=...
 ```
 
-## What the Worker does with them
+or builder scheme: `POLYMARKET_BUILDER_API_KEY` / `_SECRET` / `_PASSPHRASE`.
 
-`POST /builder-sign` takes `{method, path, body}` and returns the four
-`POLY_BUILDER_*` headers. Beyond the shared secret, extension-origin allowlist
-and per-IP limits every route already has, it adds two of its own:
+## What the Worker does
 
-- it will only sign for `/submit` and `/transactions` — the credential can
-  authenticate any relayer route, and an open-ended signer would hand that
-  reach to anyone holding the (deliberately public) client secret;
-- a **100 signatures/day** ceiling, matching the tier's entire allowance, so
-  exhausting the quota cannot happen quietly.
+`POST /builder-sign` takes `{method, path, body}` and returns the auth
+headers for the configured scheme. Beyond the shared secret,
+extension-origin allowlist and per-IP limits every route already has:
 
-The timestamp is stamped by the Worker, never taken from the caller: the
-relayer checks it against its own clock, so a skewed or replayed value is
-just a rejected signature.
+- it only signs for `/submit` and `/transactions` — an open-ended signer
+  would hand the credential's full reach to anyone holding the
+  (deliberately public) client secret;
+- a **100 signatures/day** ceiling, matching the Unverified tier's entire
+  allowance, so exhausting the quota cannot happen quietly;
+- in HMAC mode, the timestamp is stamped by the Worker, never taken from the
+  caller.
 
 ## Verifying a live redeem afterwards
 

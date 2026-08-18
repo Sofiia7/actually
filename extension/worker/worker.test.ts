@@ -563,6 +563,10 @@ describe('market-cache write', () => {
 })
 
 describe('builder signing (remote signer for Polymarket relayer)', () => {
+  const RELAYER_CREDS = {
+    RELAYER_API_KEY: 'rk-456',
+    RELAYER_API_KEY_ADDRESS: '0xC6B48f603C439B4a6b55462AfCae10594D31242A',
+  }
   const CREDS = {
     BUILDER_API_KEY: 'bk-123',
     // Base64, because the SDK base64-DECODES the secret before using it as
@@ -656,9 +660,47 @@ describe('builder signing (remote signer for Polymarket relayer)', () => {
     expect((await res.json()) as unknown).toEqual({ error: 'builder_creds_not_configured' })
   })
 
-  it('tells the client whether in-app redeem can work at all', async () => {
+  it('tells the client whether in-app redeem can work at all, and via which scheme', async () => {
     expect(await (await call('/builder-status', baseEnv())).json()).toEqual({ configured: false })
-    expect(await (await call('/builder-status', baseEnv(CREDS))).json()).toEqual({ configured: true })
+    expect(await (await call('/builder-status', baseEnv(CREDS))).json()).toEqual({ configured: true, mode: 'builder' })
+    expect(await (await call('/builder-status', baseEnv(RELAYER_CREDS))).json()).toEqual({ configured: true, mode: 'relayer' })
+  })
+
+  it('serves the static relayer-key headers when that is the scheme configured', async () => {
+    // Polymarket's settings UI currently hands out relayer API keys (key +
+    // owning address, no HMAC) — the second auth scheme POST /submit accepts.
+    const env = baseEnv(RELAYER_CREDS)
+    const res = await call('/builder-sign', env, {
+      method: 'POST',
+      body: JSON.stringify({ method: 'POST', path: '/submit', body: '{"x":1}' }),
+    })
+    expect(res.status).toBe(200)
+    expect((await res.json()) as unknown).toEqual({
+      RELAYER_API_KEY: 'rk-456',
+      RELAYER_API_KEY_ADDRESS: '0xC6B48f603C439B4a6b55462AfCae10594D31242A',
+    })
+  })
+
+  it('prefers builder HMAC creds when both schemes are configured', async () => {
+    // The HMAC scheme never reveals the secret to the client; the static key
+    // scheme does. When the stronger option exists, use it.
+    const env = baseEnv({ ...CREDS, ...RELAYER_CREDS })
+    const res = await call('/builder-sign', env, {
+      method: 'POST',
+      body: JSON.stringify({ method: 'POST', path: '/submit' }),
+    })
+    const h = (await res.json()) as Record<string, string>
+    expect(h.POLY_BUILDER_API_KEY).toBe('bk-123')
+    expect(h.RELAYER_API_KEY).toBeUndefined()
+  })
+
+  it('still refuses unlisted paths in relayer mode', async () => {
+    const env = baseEnv(RELAYER_CREDS)
+    const res = await call('/builder-sign', env, {
+      method: 'POST',
+      body: JSON.stringify({ method: 'POST', path: '/deploy' }),
+    })
+    expect(res.status).toBe(403)
   })
 
   it('caps daily signatures at the Unverified tier limit', async () => {

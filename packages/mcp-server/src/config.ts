@@ -84,9 +84,26 @@ export const BUILDER_API_KEY: string | undefined = process.env.POLYMARKET_BUILDE
 export const BUILDER_API_SECRET: string | undefined = process.env.POLYMARKET_BUILDER_API_SECRET
 export const BUILDER_API_PASSPHRASE: string | undefined = process.env.POLYMARKET_BUILDER_API_PASSPHRASE
 
-/** All three present, or redeeming cannot authenticate at all. */
+/**
+ * Alternative: a RELAYER API KEY — the scheme Polymarket's settings UI
+ * currently hands out (Settings → API Keys → Relayer API Keys → "Create").
+ * Two static values, no passphrase, scoped to the creating account. For this
+ * server that scoping is exactly right: the operator IS the account whose
+ * positions get redeemed.
+ */
+export const RELAYER_API_KEY: string | undefined = process.env.POLYMARKET_RELAYER_API_KEY
+export const RELAYER_API_KEY_ADDRESS: string | undefined = process.env.POLYMARKET_RELAYER_API_KEY_ADDRESS
+
+/** Which relayer-auth scheme is configured. Builder HMAC wins when both are. */
+export function relayerAuthMode(): 'builder' | 'relayer' | null {
+  if (BUILDER_API_KEY && BUILDER_API_SECRET && BUILDER_API_PASSPHRASE) return 'builder'
+  if (RELAYER_API_KEY && RELAYER_API_KEY_ADDRESS) return 'relayer'
+  return null
+}
+
+/** True when redeeming can authenticate at all. */
 export function builderCredsConfigured(): boolean {
-  return Boolean(BUILDER_API_KEY && BUILDER_API_SECRET && BUILDER_API_PASSPHRASE)
+  return relayerAuthMode() !== null
 }
 
 /**

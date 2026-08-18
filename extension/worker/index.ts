@@ -52,6 +52,25 @@ interface Env {
   BUILDER_API_KEY?: string
   BUILDER_API_SECRET?: string
   BUILDER_API_PASSPHRASE?: string
+  /**
+   * Alternative relayer auth: a RELAYER API KEY, the second scheme
+   * POST /submit accepts. Unlike the builder triple it is just two static
+   * headers (key + owning address) — no HMAC, no passphrase — and it is
+   * ACCOUNT-scoped: it authorizes gasless operations for the address that
+   * created it, which is what Polymarket's settings UI currently hands out
+   * (Settings → API Keys → Relayer API Keys).
+   *
+   * Trade-off vs builder mode: in remote-signer flow the client receives the
+   * headers to attach, so in relayer mode the KEY ITSELF transits to the
+   * client (an HMAC signature doesn't reveal the builder secret; a static
+   * key IS the credential). Holding it doesn't let anyone move funds — every
+   * /submit still needs the user's own Safe signature — but it can read the
+   * owner's relayer transactions and burn rate limit. Acceptable while the
+   * only client is the operator's own unpublished build; switch to builder
+   * creds for public launch. Builder creds take precedence when both exist.
+   */
+  RELAYER_API_KEY?: string
+  RELAYER_API_KEY_ADDRESS?: string
 }
 
 /**
@@ -314,8 +333,11 @@ function corsHeaders(origin: string | null, allowedExtId: string | undefined): H
  * KEEPING its '=' padding. Any deviation yields a signature the relayer
  * rejects with 401, so this is pinned by a test against the SDK itself.
  */
-function builderCredsConfigured(env: Env): boolean {
-  return Boolean(env.BUILDER_API_KEY && env.BUILDER_API_SECRET && env.BUILDER_API_PASSPHRASE)
+/** Which relayer-auth scheme this deployment can sign for, if any. */
+function relayerAuthMode(env: Env): 'builder' | 'relayer' | null {
+  if (env.BUILDER_API_KEY && env.BUILDER_API_SECRET && env.BUILDER_API_PASSPHRASE) return 'builder'
+  if (env.RELAYER_API_KEY && env.RELAYER_API_KEY_ADDRESS) return 'relayer'
+  return null
 }
 
 export async function buildBuilderSignature(
@@ -672,14 +694,16 @@ export default {
         }
         // Lets the UI offer in-app redeem only when it can actually work,
         // instead of asking for a wallet signature that ends in a 401.
-        return json({ configured: builderCredsConfigured(env) }, 200, headers)
+        const mode = relayerAuthMode(env)
+        return json({ configured: mode !== null, ...(mode ? { mode } : {}) }, 200, headers)
       }
 
       if (url.pathname === '/builder-sign' && req.method === 'POST') {
         if (!(await rateLimit(env, 'builder_sign', ip, 10))) {
           return json({ error: 'rate_limited' }, 429, headers)
         }
-        if (!builderCredsConfigured(env)) {
+        const authMode = relayerAuthMode(env)
+        if (!authMode) {
           return json({ error: 'builder_creds_not_configured' }, 503, headers)
         }
         let payload: { method?: unknown; path?: unknown; body?: unknown; timestamp?: unknown }
@@ -703,6 +727,18 @@ export default {
         // Daily quota guard — see BUILDER_SIGN_DAILY_LIMIT.
         if (!(await checkRateLimit(env, 'builder-sign-daily', 86_400_000, BUILDER_SIGN_DAILY_LIMIT))) {
           return json({ error: 'builder_daily_limit_reached' }, 429, headers)
+        }
+        if (authMode === 'relayer') {
+          // Static-header scheme: no HMAC, nothing to compute. See the Env
+          // doc comment for the security trade-off of returning the key.
+          return json(
+            {
+              RELAYER_API_KEY: env.RELAYER_API_KEY!,
+              RELAYER_API_KEY_ADDRESS: env.RELAYER_API_KEY_ADDRESS!,
+            },
+            200,
+            headers,
+          )
         }
         // The SDK lets the caller pass a timestamp; the relayer validates it
         // against its own clock, so trusting a client value invites a skewed
