@@ -6,6 +6,7 @@ import { SellTicket } from '../SellTicket'
 import { redeemPositionViaOffscreen } from '../ops'
 import { logTrade } from '../../background/tradeLog'
 import { buildMarketUrl } from '../../background/polymarket'
+import { IN_APP_REDEEM_ENABLED } from '../../shared/constants'
 import type { OpenOrderSummary, Position } from '../../shared/types'
 
 /** Redeem failures the user can actually do something about. */
@@ -228,14 +229,38 @@ export const PositionsPanel: React.FC<PositionsPanelProps> = ({
           {/* A resolved market no longer trades — offering Sell there would
               only ever produce a CLOB rejection. Those are redeemed instead. */}
           {p.redeemable ? (
-            <div style={{ marginTop: 5, display: 'flex', alignItems: 'baseline', gap: 8 }}>
-              <LinkAction onClick={() => void onRedeem(p.conditionId)}>
-                {redeemingId === p.conditionId ? 'Redeeming…' : 'Redeem →'}
-              </LinkAction>
-              <Etched size={10.5} weight={300} color="rgba(35,45,70,.5)">
-                Market resolved · no gas needed
-              </Etched>
-            </div>
+            IN_APP_REDEEM_ENABLED ? (
+              <div style={{ marginTop: 5, display: 'flex', alignItems: 'baseline', gap: 8 }}>
+                <LinkAction onClick={() => void onRedeem(p.conditionId)}>
+                  {redeemingId === p.conditionId ? 'Redeeming…' : 'Redeem →'}
+                </LinkAction>
+                <Etched size={10.5} weight={300} color="rgba(35,45,70,.5)">
+                  Market resolved · no gas needed
+                </Etched>
+              </div>
+            ) : (
+              /* In-app redeem is blocked on builder API credentials (see
+                 IN_APP_REDEEM_ENABLED). The relayer SDK asks the wallet to
+                 sign BEFORE it posts, so keeping the button here would cost
+                 a wallet prompt per attempt and fail every time. Send the
+                 user where the payout actually works. */
+              <div style={{ marginTop: 5, display: 'flex', alignItems: 'baseline', gap: 8 }}>
+                <LinkAction
+                  onClick={() =>
+                    window.open(
+                      p.slug ? buildMarketUrl(p.slug) : 'https://polymarket.com/portfolio',
+                      '_blank',
+                      'noopener,noreferrer',
+                    )
+                  }
+                >
+                  Claim on Polymarket →
+                </LinkAction>
+                <Etched size={10.5} weight={300} color="rgba(35,45,70,.5)">
+                  Resolved · claiming in-app isn't available yet
+                </Etched>
+              </div>
+            )
           ) : sellingTokenId === p.tokenId ? (
             <SellTicket position={p} onDone={onSold} onCancel={() => setSellingTokenId(null)} />
           ) : (

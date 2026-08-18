@@ -59,6 +59,27 @@ export const STORAGE_KEYS = {
  */
 export const MAX_TRADE_LOG_ITEMS = 100
 
+/**
+ * Whether the extension can redeem a resolved position itself.
+ *
+ * FALSE today, and deliberately so: Polymarket's relayer requires builder
+ * auth headers (POLY_BUILDER_*) on POST /submit, generated from builder API
+ * credentials — a different credential from the builder CODE this build
+ * bakes in. Verified against the live endpoint 2026-08-17: an
+ * unauthenticated submit returns 401 {"error":"invalid authorization"}.
+ *
+ * That matters for more than the error message. The relayer SDK asks the
+ * wallet to SIGN the Safe transaction before it ever posts it, so leaving
+ * the in-app button live means every attempt costs the user a wallet
+ * prompt and then fails anyway. Until the credentials exist, point at
+ * polymarket.com, where the same payout is one click and no signature.
+ *
+ * Flip to true once the Worker signs builder headers on the extension's
+ * behalf (the credential must NOT be baked into the client — it would be
+ * public). background/redeem.ts is already written and tested for that day.
+ */
+export const IN_APP_REDEEM_ENABLED = false
+
 export const ALARM_NAMES = {
   refreshCache: 'refresh-cache',
   flushTelemetry: 'flush-telemetry',
