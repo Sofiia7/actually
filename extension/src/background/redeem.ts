@@ -26,8 +26,10 @@
 import { createWalletClient, custom } from 'viem'
 import { polygon } from 'viem/chains'
 import { RelayClient, RelayerTxType } from '@polymarket/builder-relayer-client'
+import { BuilderConfig } from '@polymarket/builder-signing-sdk'
 import { buildRedeemTransaction, type EncodedRedeemTx } from '@actually/core'
 import type { Position } from '../shared/types'
+import { getSettings } from './settings'
 import { wcRequest } from './wallet'
 
 const RELAYER_URL = 'https://relayer-v2.polymarket.com/'
@@ -118,11 +120,35 @@ export async function redeemPosition(args: RedeemArgs): Promise<RedeemResult> {
       chain: polygon,
       transport: custom(makeWcProvider(args.topic, args.address)),
     })
+    // Builder auth, via the Worker as a REMOTE SIGNER.
+    //
+    // relayer-v2 rejects an unauthenticated POST /submit with 401
+    // "invalid authorization" — it wants HMAC headers derived from the
+    // builder API credentials. Those cannot live in the extension: every
+    // install would carry them in plaintext, and anyone extracting them
+    // could spend the builder account's daily relayer quota.
+    //
+    // The signing SDK's remote mode exists for exactly this: it POSTs
+    // {method, path, body, timestamp} to a URL we control and uses the
+    // headers that come back, so the credential stays on the Worker (see
+    // worker/index.ts's /builder-sign). Without a configured Worker there is
+    // no way to authenticate at all, and the redeem is refused up front
+    // rather than after the wallet has signed for nothing.
+    const settings = await getSettings()
+    if (!settings.workerUrl || !settings.workerSecret) {
+      return { ok: false, error: 'worker_not_configured' }
+    }
+    const builderConfig = new BuilderConfig({
+      remoteBuilderConfig: {
+        url: `${settings.workerUrl.replace(/\/$/, '')}/builder-sign`,
+        token: settings.workerSecret,
+      },
+    })
     const client = new RelayClient(
       RELAYER_URL,
       POLYGON_CHAIN_ID,
       walletClient,
-      undefined,
+      builderConfig,
       RelayerTxType.SAFE,
     )
     const submitted = await client.execute([tx], 'redeem_position')

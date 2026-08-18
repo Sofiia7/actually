@@ -10,7 +10,7 @@
   "scripts": {
     "dev": "vite build --watch --mode development",
     "build": "tsc --noEmit && vite build",
-    "preview": "vite preview",
+    "preview": "npm run build && wrangler dev",
     "test": "vitest run",
     "test:watch": "vitest",
     "worker:dev": "cd worker && wrangler dev",
@@ -20,11 +20,13 @@
     "preflight": "node scripts/preflight.mjs",
     "smoke": "node scripts/smoke.mjs",
     "e2e": "node scripts/e2e-smoke.mjs",
-    "lint": "tsc --noEmit"
+    "lint": "tsc --noEmit",
+    "deploy": "npm run build && wrangler deploy"
   },
   "dependencies": {
     "@actually/core": "*",
     "@polymarket/builder-relayer-client": "^0.0.10",
+    "@polymarket/builder-signing-sdk": "^0.0.8",
     "@polymarket/clob-client-v2": "^1.0.6",
     "@walletconnect/sign-client": "^2.23.9",
     "@xenova/transformers": "^2.17.2",
@@ -34,7 +36,8 @@
     "viem": "^2.55.11"
   },
   "devDependencies": {
-    "@cloudflare/workers-types": "^4.20260516.1",
+    "@cloudflare/vite-plugin": "^1.52.1",
+    "@cloudflare/workers-types": "^5.20260818.1",
     "@crxjs/vite-plugin": "^2.7.1",
     "@testing-library/jest-dom": "^6.9.1",
     "@testing-library/react": "^16.3.2",
@@ -49,6 +52,6 @@
     "typescript": "^5.4.5",
     "vite": "^8.1.5",
     "vitest": "^4.1.10",
-    "wrangler": "^4.114.0"
+    "wrangler": "^4.123.0"
   }
 }

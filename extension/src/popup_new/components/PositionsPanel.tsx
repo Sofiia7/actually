@@ -3,10 +3,9 @@ import { IceCard } from './IceCard'
 import { Etched } from './Etched'
 import { LinkAction } from './LinkAction'
 import { SellTicket } from '../SellTicket'
-import { redeemPositionViaOffscreen } from '../ops'
+import { builderStatusViaOffscreen, redeemPositionViaOffscreen } from '../ops'
 import { logTrade } from '../../background/tradeLog'
 import { buildMarketUrl } from '../../background/polymarket'
-import { IN_APP_REDEEM_ENABLED } from '../../shared/constants'
 import type { OpenOrderSummary, Position } from '../../shared/types'
 
 /** Redeem failures the user can actually do something about. */
@@ -86,6 +85,22 @@ export const PositionsPanel: React.FC<PositionsPanelProps> = ({
   )
 
   const [redeemingId, setRedeemingId] = useState<string | null>(null)
+  // Whether the deployment can redeem in-app at all (Worker holds builder API
+  // credentials). Asked at runtime rather than baked into the build, so the
+  // button appears the moment those credentials are configured — and never
+  // before, since without them the relayer 401s AFTER the wallet has signed.
+  const [canRedeemInApp, setCanRedeemInApp] = useState(false)
+  const hasRedeemable = positions.some((p) => p.redeemable)
+  useEffect(() => {
+    if (!hasRedeemable) return
+    let cancelled = false
+    void builderStatusViaOffscreen().then((ok) => {
+      if (!cancelled) setCanRedeemInApp(ok)
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [hasRedeemable])
 
   async function onRedeem(conditionId: string) {
     // A LinkAction is a plain <a> with no native disabled state, and this one
@@ -229,7 +244,7 @@ export const PositionsPanel: React.FC<PositionsPanelProps> = ({
           {/* A resolved market no longer trades — offering Sell there would
               only ever produce a CLOB rejection. Those are redeemed instead. */}
           {p.redeemable ? (
-            IN_APP_REDEEM_ENABLED ? (
+            canRedeemInApp ? (
               <div style={{ marginTop: 5, display: 'flex', alignItems: 'baseline', gap: 8 }}>
                 <LinkAction onClick={() => void onRedeem(p.conditionId)}>
                   {redeemingId === p.conditionId ? 'Redeeming…' : 'Redeem →'}
@@ -239,11 +254,11 @@ export const PositionsPanel: React.FC<PositionsPanelProps> = ({
                 </Etched>
               </div>
             ) : (
-              /* In-app redeem is blocked on builder API credentials (see
-                 IN_APP_REDEEM_ENABLED). The relayer SDK asks the wallet to
-                 sign BEFORE it posts, so keeping the button here would cost
-                 a wallet prompt per attempt and fail every time. Send the
-                 user where the payout actually works. */
+              /* No builder API credentials on the Worker → the relayer will
+                 401 this, and the SDK asks the wallet to sign BEFORE it
+                 posts, so an in-app button would cost a signature per
+                 attempt and fail every time. Send the user where the payout
+                 actually works today. */
               <div style={{ marginTop: 5, display: 'flex', alignItems: 'baseline', gap: 8 }}>
                 <LinkAction
                   onClick={() =>

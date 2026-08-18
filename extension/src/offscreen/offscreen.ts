@@ -11,6 +11,7 @@
  */
 import type { OffscreenRequest, OffscreenResponse, SerializableWalletState } from '../shared/messages'
 import { getSettings } from '../background/settings'
+import { isInAppRedeemAvailable } from '../background/builderStatus'
 import { findMatch } from '@actually/core'
 import { makeChromeMarketStore, makeSettingsEmbedder } from '../background/adapters'
 import { refreshMarketCache, getMarketCache, getCacheStatus } from '../background/cache'
@@ -253,6 +254,10 @@ async function handle(msg: OffscreenRequest): Promise<OffscreenResponse> {
       }
       const r = await refreshInFlight
       return { type: 'OS_CACHE_REFRESHED', ...r }
+    }
+
+    case 'OS_BUILDER_STATUS': {
+      return { type: 'OS_BUILDER_STATUS_RESULT', available: await isInAppRedeemAvailable() }
     }
 
     case 'OS_GET_GEO': {

@@ -36,6 +36,22 @@ interface Env {
    * only the precompute cron job holds it.
    */
   MARKET_CACHE_WRITE_SECRET?: string
+  /**
+   * Builder API credentials from polymarket.com -> Settings -> Builders ->
+   * "+ Create New". They authenticate POST /submit on Polymarket's relayer
+   * (gasless Safe operations: redeeming resolved positions), via HMAC headers
+   * the SDK calls POLY_BUILDER_*.
+   *
+   * They live HERE and only here. Unlike WORKER_SHARED_SECRET (public by
+   * design — it ships inside every extension build), this credential is the
+   * builder account's own: anything holding it can spend the builder's daily
+   * relayer quota. The extension never sees it; it asks this Worker to sign
+   * each request instead (POST /builder-sign), which is the "remote signer"
+   * mode Polymarket's own @polymarket/builder-signing-sdk supports.
+   */
+  BUILDER_API_KEY?: string
+  BUILDER_API_SECRET?: string
+  BUILDER_API_PASSPHRASE?: string
 }
 
 /**
@@ -290,6 +306,46 @@ function corsHeaders(origin: string | null, allowedExtId: string | undefined): H
   return { ...CORS_BASE, 'Access-Control-Allow-Origin': echo }
 }
 
+/**
+ * HMAC-SHA256 builder signature, byte-for-byte what
+ * @polymarket/builder-signing-sdk's buildHmacSignature produces: the message
+ * is `timestamp + method + path + body`, the secret is base64-DECODED before
+ * use, and the resulting base64 is made URL-safe (+ -> -, / -> _) while
+ * KEEPING its '=' padding. Any deviation yields a signature the relayer
+ * rejects with 401, so this is pinned by a test against the SDK itself.
+ */
+function builderCredsConfigured(env: Env): boolean {
+  return Boolean(env.BUILDER_API_KEY && env.BUILDER_API_SECRET && env.BUILDER_API_PASSPHRASE)
+}
+
+export async function buildBuilderSignature(
+  secretB64: string,
+  timestamp: string,
+  method: string,
+  requestPath: string,
+  body?: string,
+): Promise<string> {
+  const message = `${timestamp}${method}${requestPath}${body ?? ''}`
+  const keyBytes = Uint8Array.from(atob(secretB64), (c) => c.charCodeAt(0))
+  const key = await crypto.subtle.importKey('raw', keyBytes, { name: 'HMAC', hash: 'SHA-256' }, false, ['sign'])
+  const sig = await crypto.subtle.sign('HMAC', key, new TextEncoder().encode(message))
+  const b64 = btoa(String.fromCharCode(...new Uint8Array(sig)))
+  return b64.replaceAll('+', '-').replaceAll('/', '_')
+}
+
+/**
+ * Paths this Worker is willing to sign for. The builder credential can
+ * authenticate ANY relayer endpoint, so an open-ended signer would let anyone
+ * holding the (deliberately public) client secret spend the builder's daily
+ * relayer quota on arbitrary calls. Redeeming needs exactly these two.
+ */
+const SIGNABLE_RELAYER_PATHS = new Set(['/submit', '/transactions'])
+
+/** Daily ceiling on signatures issued, mirroring the Builder Program's
+ * Unverified tier (100 relayer txns/day). Stops quota exhaustion from being
+ * something a stranger can do quietly; raise alongside a tier upgrade. */
+const BUILDER_SIGN_DAILY_LIMIT = 100
+
 function json(body: unknown, status: number, headers: HeadersInit): Response {
   return new Response(JSON.stringify(body), { status, headers })
 }
@@ -365,7 +421,12 @@ function checkAuth(req: Request, env: Env): { ok: boolean; status?: number; reas
     return { ok: false, status: 503, reason: 'worker_misconfigured_no_rate_limiter' }
   }
 
-  const auth = req.headers.get('X-Actually-Auth')
+  // `Authorization: Bearer <secret>` is accepted alongside our own header
+  // because Polymarket's builder-signing-sdk sends the remote-signer token
+  // that way and the header name isn't ours to choose (see /builder-sign).
+  // Same secret, same checks — only the envelope differs.
+  const bearer = req.headers.get('Authorization')?.replace(/^Bearer\s+/i, '')
+  const auth = req.headers.get('X-Actually-Auth') ?? bearer
   if (auth !== env.WORKER_SHARED_SECRET) {
     return { ok: false, status: 401, reason: 'bad_secret' }
   }
@@ -595,6 +656,75 @@ export default {
           status: 200,
           headers: { ...headers, 'Cache-Control': 'public, max-age=300' },
         })
+      }
+
+      // --- Builder signing (remote signer for Polymarket's relayer) --
+      //
+      // The extension can't hold the builder credential (it would be public
+      // in every install), and Polymarket's relayer requires builder auth on
+      // POST /submit. So the client asks us to sign each request: exactly the
+      // "remote signer" contract @polymarket/builder-signing-sdk implements —
+      // POST {method, path, body?, timestamp?}, receive the POLY_BUILDER_*
+      // headers back. The credential never leaves this Worker.
+      if (url.pathname === '/builder-status' && req.method === 'GET') {
+        if (!(await rateLimit(env, 'builder_status', ip, 60))) {
+          return json({ error: 'rate_limited' }, 429, headers)
+        }
+        // Lets the UI offer in-app redeem only when it can actually work,
+        // instead of asking for a wallet signature that ends in a 401.
+        return json({ configured: builderCredsConfigured(env) }, 200, headers)
+      }
+
+      if (url.pathname === '/builder-sign' && req.method === 'POST') {
+        if (!(await rateLimit(env, 'builder_sign', ip, 10))) {
+          return json({ error: 'rate_limited' }, 429, headers)
+        }
+        if (!builderCredsConfigured(env)) {
+          return json({ error: 'builder_creds_not_configured' }, 503, headers)
+        }
+        let payload: { method?: unknown; path?: unknown; body?: unknown; timestamp?: unknown }
+        try {
+          payload = (await req.json()) as typeof payload
+        } catch {
+          return json({ error: 'bad_body' }, 400, headers)
+        }
+        const method = typeof payload.method === 'string' ? payload.method.toUpperCase() : ''
+        const path = typeof payload.path === 'string' ? payload.path : ''
+        if (!method || !path) {
+          return json({ error: 'bad_request' }, 400, headers)
+        }
+        if (!SIGNABLE_RELAYER_PATHS.has(path.split('?')[0])) {
+          return json({ error: 'path_not_signable' }, 403, headers)
+        }
+        const reqBody = typeof payload.body === 'string' ? payload.body : undefined
+        if (reqBody && reqBody.length > 200_000) {
+          return json({ error: 'body_too_large' }, 413, headers)
+        }
+        // Daily quota guard — see BUILDER_SIGN_DAILY_LIMIT.
+        if (!(await checkRateLimit(env, 'builder-sign-daily', 86_400_000, BUILDER_SIGN_DAILY_LIMIT))) {
+          return json({ error: 'builder_daily_limit_reached' }, 429, headers)
+        }
+        // The SDK lets the caller pass a timestamp; the relayer validates it
+        // against its own clock, so trusting a client value invites a skewed
+        // (or replayed) signature. Ours is the only one that can be right.
+        const timestamp = String(Math.floor(Date.now() / 1000))
+        const signature = await buildBuilderSignature(
+          env.BUILDER_API_SECRET!,
+          timestamp,
+          method,
+          path,
+          reqBody,
+        )
+        return json(
+          {
+            POLY_BUILDER_API_KEY: env.BUILDER_API_KEY!,
+            POLY_BUILDER_TIMESTAMP: timestamp,
+            POLY_BUILDER_PASSPHRASE: env.BUILDER_API_PASSPHRASE!,
+            POLY_BUILDER_SIGNATURE: signature,
+          },
+          200,
+          headers,
+        )
       }
 
       // --- Market cache: write (precompute cron job only) -----------

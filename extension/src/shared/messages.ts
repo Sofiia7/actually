@@ -64,6 +64,7 @@ export type OffscreenRequest =
   | { target: 'offscreen'; type: 'OS_RUN_MATCH'; article: ArticleData }
   | { target: 'offscreen'; type: 'OS_REFRESH_CACHE' }
   | { target: 'offscreen'; type: 'OS_GET_GEO' }
+  | { target: 'offscreen'; type: 'OS_BUILDER_STATUS' }
   | { target: 'offscreen'; type: 'OS_RESTORE_WALLET' }
   | { target: 'offscreen'; type: 'OS_DISCONNECT_WALLET' }
   | { target: 'offscreen'; type: 'OS_START_CONNECT' }
@@ -124,6 +125,7 @@ export type OffscreenResponse =
   | { type: 'OS_PONG' }
   | { type: 'OS_MATCH_RESULT'; match: MatchResult | null; reason?: string }
   | { type: 'OS_CACHE_REFRESHED'; added: number; reused: number; removed: number }
+  | { type: 'OS_BUILDER_STATUS_RESULT'; available: boolean }
   | { type: 'OS_GEO_RESULT'; country: string; blocked: boolean; unknown: boolean; errorReason?: string }
   | { type: 'OS_WALLET_RESTORED'; wallet: SerializableWalletState | null }
   | { type: 'OS_REDEEM_RESULT'; ok: boolean; transactionId?: string; error?: string }

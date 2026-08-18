@@ -231,3 +231,20 @@ export async function orderbookSnapshotViaOffscreen(
   }
   return { bestBid: r.bestBid, bestAsk: r.bestAsk, spread: r.spread, bids: r.bids, asks: r.asks, estimate: r.estimate ?? null }
 }
+
+/**
+ * Whether in-app redeem can work in this deployment (Worker has builder API
+ * credentials). Anything other than a clear yes is a no — see
+ * background/builderStatus.ts.
+ */
+export async function builderStatusViaOffscreen(): Promise<boolean> {
+  try {
+    const r = await call<Extract<OffscreenResponse, { type: 'OS_BUILDER_STATUS_RESULT' }> | Extract<OffscreenResponse, { type: 'OS_ERROR' }>>({
+      target: 'offscreen',
+      type: 'OS_BUILDER_STATUS',
+    })
+    return r.type === 'OS_BUILDER_STATUS_RESULT' && r.available
+  } catch {
+    return false
+  }
+}

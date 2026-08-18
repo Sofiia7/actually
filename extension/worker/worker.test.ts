@@ -561,3 +561,136 @@ describe('market-cache write', () => {
     expect(await get.json()).toEqual(blob)
   })
 })
+
+describe('builder signing (remote signer for Polymarket relayer)', () => {
+  const CREDS = {
+    BUILDER_API_KEY: 'bk-123',
+    // Base64, because the SDK base64-DECODES the secret before using it as
+    // the HMAC key.
+    BUILDER_API_SECRET: Buffer.from('super-secret-bytes').toString('base64'),
+    BUILDER_API_PASSPHRASE: 'pass-phrase',
+  }
+
+  it('produces exactly the signature Polymarket\'s own SDK produces', async () => {
+    // The whole point of this endpoint: the relayer answers 401 for any
+    // signature that differs by a byte. Pin ours against the published
+    // implementation rather than against our own understanding of it.
+    // Cast through unknown: the SDK's own .d.ts types `timestamp` as a
+    // number while its JS just concatenates it, and the relayer signs over
+    // the string form either way.
+    const { buildHmacSignature } = (await import(
+      '@polymarket/builder-signing-sdk/dist/signing/hmac.js'
+    )) as unknown as { buildHmacSignature: (s: string, t: string, m: string, p: string, b?: string) => string }
+    const { buildBuilderSignature } = await import('./index')
+
+    const cases: Array<[string, string, string, string | undefined]> = [
+      ['1700000000', 'POST', '/submit', '{"a":1}'],
+      ['1700000001', 'GET', '/transactions', undefined],
+      // A body with characters that push base64 into '+' and '/' territory,
+      // which must come back URL-safe but still '='-padded.
+      ['1755400000', 'POST', '/submit', JSON.stringify({ blob: '???>>>~~~\u00ff' })],
+    ]
+    for (const [ts, method, path, body] of cases) {
+      expect(await buildBuilderSignature(CREDS.BUILDER_API_SECRET, ts, method, path, body)).toBe(
+        buildHmacSignature(CREDS.BUILDER_API_SECRET, ts, method, path, body),
+      )
+    }
+  })
+
+  it('returns the four POLY_BUILDER_* headers, and never the secret itself', async () => {
+    const env = baseEnv(CREDS)
+    const res = await call('/builder-sign', env, {
+      method: 'POST',
+      body: JSON.stringify({ method: 'POST', path: '/submit', body: '{"x":1}' }),
+    })
+    expect(res.status).toBe(200)
+    const h = (await res.json()) as Record<string, string>
+    expect(Object.keys(h).sort()).toEqual([
+      'POLY_BUILDER_API_KEY',
+      'POLY_BUILDER_PASSPHRASE',
+      'POLY_BUILDER_SIGNATURE',
+      'POLY_BUILDER_TIMESTAMP',
+    ])
+    expect(JSON.stringify(h)).not.toContain(CREDS.BUILDER_API_SECRET)
+  })
+
+  it('stamps its own timestamp instead of trusting the caller', async () => {
+    const env = baseEnv(CREDS)
+    const res = await call('/builder-sign', env, {
+      method: 'POST',
+      body: JSON.stringify({ method: 'POST', path: '/submit', timestamp: 1 }),
+    })
+    const h = (await res.json()) as Record<string, string>
+    // A replayed or skewed timestamp is rejected by the relayer, so ours must win.
+    expect(Number(h.POLY_BUILDER_TIMESTAMP)).toBeGreaterThan(1_700_000_000)
+  })
+
+  it('refuses to sign for paths outside the redeem flow', async () => {
+    // The credential can authenticate any relayer endpoint; an open-ended
+    // signer would hand that reach to anyone holding the public client secret.
+    const env = baseEnv(CREDS)
+    const res = await call('/builder-sign', env, {
+      method: 'POST',
+      body: JSON.stringify({ method: 'POST', path: '/deploy' }),
+    })
+    expect(res.status).toBe(403)
+    expect((await res.json()) as unknown).toEqual({ error: 'path_not_signable' })
+  })
+
+  it('still requires the shared secret and a known extension origin', async () => {
+    const env = baseEnv(CREDS)
+    const body = JSON.stringify({ method: 'POST', path: '/submit' })
+    expect((await call('/builder-sign', env, { method: 'POST', body, auth: 'wrong' })).status).toBe(401)
+    // A foreign Origin is rejected as 401 (bad_origin) — same treatment as a
+    // bad secret; see checkAuth's note on why Origin is checked only when
+    // present.
+    expect((await call('/builder-sign', env, { method: 'POST', body, origin: 'https://evil.example' })).status).toBe(401)
+  })
+
+  it('reports 503 — not a broken signature — when no credentials are set', async () => {
+    const res = await call('/builder-sign', baseEnv(), {
+      method: 'POST',
+      body: JSON.stringify({ method: 'POST', path: '/submit' }),
+    })
+    expect(res.status).toBe(503)
+    expect((await res.json()) as unknown).toEqual({ error: 'builder_creds_not_configured' })
+  })
+
+  it('tells the client whether in-app redeem can work at all', async () => {
+    expect(await (await call('/builder-status', baseEnv())).json()).toEqual({ configured: false })
+    expect(await (await call('/builder-status', baseEnv(CREDS))).json()).toEqual({ configured: true })
+  })
+
+  it('caps daily signatures at the Unverified tier limit', async () => {
+    const env = baseEnv(CREDS)
+    const body = JSON.stringify({ method: 'POST', path: '/submit' })
+    // 100/day is the whole relayer allowance; quietly burning it must not be
+    // something a stranger can do. Each call comes from a different IP, both
+    // to model a distributed caller and to get past the per-IP minute limit
+    // (10/min) that would otherwise stop the loop long before the daily cap.
+    const from = (i: number) => ({
+      method: 'POST',
+      body,
+      headers: { 'CF-Connecting-IP': `10.0.${Math.floor(i / 250)}.${i % 250}` },
+    })
+    for (let i = 0; i < 100; i++) {
+      expect((await call('/builder-sign', env, from(i))).status).toBe(200)
+    }
+    const res = await call('/builder-sign', env, from(101))
+    expect(res.status).toBe(429)
+    expect((await res.json()) as unknown).toEqual({ error: 'builder_daily_limit_reached' })
+  })
+})
+
+describe('Authorization: Bearer (the remote-signer envelope)', () => {
+  it('accepts the shared secret as a Bearer token, and still rejects a wrong one', async () => {
+    // Polymarket's builder-signing-sdk decides this header name, not us.
+    const env = baseEnv()
+    const ok = await call('/health', env, { headers: { Authorization: 'Bearer secret' }, auth: null })
+    expect(ok.status).toBe(200)
+    const good = await call('/geo', env, { headers: { Authorization: 'Bearer secret' }, auth: null })
+    expect(good.status).toBe(200)
+    const bad = await call('/geo', env, { headers: { Authorization: 'Bearer nope' }, auth: null })
+    expect(bad.status).toBe(401)
+  })
+})

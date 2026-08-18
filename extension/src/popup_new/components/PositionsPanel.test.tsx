@@ -1,12 +1,20 @@
 // @vitest-environment jsdom
-import { describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { render, screen } from '@testing-library/react'
 import { humanRedeemError, PositionsPanel } from './PositionsPanel'
-import { IN_APP_REDEEM_ENABLED } from '../../shared/constants'
+import * as ops from '../ops'
 import type { Position } from '../../shared/types'
+
+const opsm = ops as unknown as Record<string, ReturnType<typeof vi.fn>>
+
+beforeEach(() => {
+  vi.clearAllMocks()
+  opsm.builderStatusViaOffscreen.mockResolvedValue(false)
+})
 
 vi.mock('../ops', () => ({
   redeemPositionViaOffscreen: vi.fn(),
+  builderStatusViaOffscreen: vi.fn(async () => false),
   orderbookSnapshotViaOffscreen: vi.fn(async () => ({ bestBid: null, bestAsk: null, spread: null, bids: [], asks: [], estimate: null })),
   sellOrderViaOffscreen: vi.fn(),
 }))
@@ -42,27 +50,36 @@ describe('humanRedeemError — say what happened and what to do next', () => {
 })
 
 
-describe('a resolved position, while in-app redeem is unavailable', () => {
-  it('sends the user to Polymarket instead of asking for a doomed wallet signature', () => {
-    // The relayer SDK signs BEFORE it submits, and the submit 401s without
-    // builder credentials — so an in-app "Redeem →" costs a wallet prompt
-    // and fails every time. Guard the flag so this test starts failing (and
-    // gets rewritten) the day credentials land.
-    expect(IN_APP_REDEEM_ENABLED).toBe(false)
+describe('a resolved position', () => {
+  it('sends the user to Polymarket when the Worker has no builder credentials', async () => {
+    // The relayer SDK signs BEFORE it submits, and that submit 401s without
+    // builder credentials — so an in-app "Redeem →" would cost a wallet
+    // prompt and fail every time.
+    opsm.builderStatusViaOffscreen.mockResolvedValue(false)
     render(
-      <PositionsPanel
-        positions={[resolved]}
-        openOrders={[]}
-        loading={false}
-        cancellingId={null}
-        onCancelOrder={() => {}}
-        onRefresh={() => {}}
-      />,
+      <PositionsPanel positions={[resolved]} openOrders={[]} loading={false}
+        cancellingId={null} onCancelOrder={() => {}} onRefresh={() => {}} />,
     )
-    expect(screen.getByText(/Claim on Polymarket/i)).toBeInTheDocument()
+    expect(await screen.findByText(/Claim on Polymarket/i)).toBeInTheDocument()
     expect(screen.queryByText(/^Redeem →$/)).not.toBeInTheDocument()
-    // And a resolved market must never offer Sell — it would only ever be
-    // rejected by the CLOB.
+    // A resolved market must never offer Sell — the CLOB would only reject it.
     expect(screen.queryByText(/Sell →/)).not.toBeInTheDocument()
+  })
+
+  it('offers in-app redeem as soon as the Worker reports credentials, with no rebuild', async () => {
+    opsm.builderStatusViaOffscreen.mockResolvedValue(true)
+    render(
+      <PositionsPanel positions={[resolved]} openOrders={[]} loading={false}
+        cancellingId={null} onCancelOrder={() => {}} onRefresh={() => {}} />,
+    )
+    expect(await screen.findByText(/Redeem →/)).toBeInTheDocument()
+  })
+
+  it('does not ask the Worker anything when nothing is redeemable', () => {
+    render(
+      <PositionsPanel positions={[{ ...resolved, redeemable: false }]} openOrders={[]} loading={false}
+        cancellingId={null} onCancelOrder={() => {}} onRefresh={() => {}} />,
+    )
+    expect(opsm.builderStatusViaOffscreen).not.toHaveBeenCalled()
   })
 })

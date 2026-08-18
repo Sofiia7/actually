@@ -27,3 +27,13 @@ public/onnx/
 # IDE
 .idea/
 .vscode/
+
+# wrangler files
+.wrangler
+.dev.vars*
+!.dev.vars.example
+!.env.example
+
+# Wrangler 4.12x scaffolds this next to package.json when run from the wrong
+# directory; the real Worker config is worker/wrangler.toml.
+wrangler.jsonc

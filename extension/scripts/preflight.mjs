@@ -72,6 +72,24 @@ function* walk(dir) {
   }
 }
 
+// Tooling junk must not ship. Wrangler 4.12x auto-generates a wrangler.jsonc
+// next to package.json and writes a resolved copy INTO the assets directory
+// it thinks it is deploying — which, run from the wrong directory, is this
+// dist/ (hit 2026-08-18). Harmless to the extension, but it would put our
+// Worker's config into the public CWS package.
+const JUNK = ['wrangler.json', 'wrangler.jsonc', 'wrangler.toml', '.env', '.env.local']
+const junkFound = JUNK.filter((f) => {
+  try {
+    readFileSync(join(DIST, f))
+    return true
+  } catch {
+    return false
+  }
+})
+junkFound.length === 0
+  ? ok('no build-tool config leaked into dist')
+  : bad(`dist contains files that must not ship: ${junkFound.join(', ')}`)
+
 let leaked = false
 for (const f of walk(DIST)) {
   if (!/\.(js|mjs|json|html|css|map)$/.test(f)) continue

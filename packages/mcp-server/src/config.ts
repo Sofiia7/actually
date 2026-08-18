@@ -69,6 +69,27 @@ export const PRIVATE_KEY: string | undefined = process.env.POLYMARKET_PRIVATE_KE
 export const REDEEM_ENABLED: boolean = process.env.ACTUALLY_ENABLE_REDEEM === 'true'
 
 /**
+ * Builder API credentials, from polymarket.com -> Settings -> Builders ->
+ * "+ Create New". Polymarket's relayer requires them on POST /submit (HMAC
+ * headers named POLY_BUILDER_*); without them redeem_position gets a bare
+ * 401 "invalid authorization" no matter how correct the transaction is.
+ *
+ * Note this is a DIFFERENT credential from the builder CODE baked into the
+ * package for order attribution — that one is public by design, these are
+ * not. Unlike the extension (which cannot hold a secret and asks its Worker
+ * to sign instead), this server already runs on the operator's own machine
+ * with their private key, so local credentials are the right shape here.
+ */
+export const BUILDER_API_KEY: string | undefined = process.env.POLYMARKET_BUILDER_API_KEY
+export const BUILDER_API_SECRET: string | undefined = process.env.POLYMARKET_BUILDER_API_SECRET
+export const BUILDER_API_PASSPHRASE: string | undefined = process.env.POLYMARKET_BUILDER_API_PASSPHRASE
+
+/** All three present, or redeeming cannot authenticate at all. */
+export function builderCredsConfigured(): boolean {
+  return Boolean(BUILDER_API_KEY && BUILDER_API_SECRET && BUILDER_API_PASSPHRASE)
+}
+
+/**
  * Real-money backstops for place_order/sell_order — a prompt-injected or
  * buggy calling agent must not be able to drain the operator's wallet in one
  * call or over one day. Defaults are deliberately conservative; an operator

@@ -16,8 +16,15 @@
  */
 import { Wallet } from '@ethersproject/wallet'
 import { RelayClient, RelayerTxType } from '@polymarket/builder-relayer-client'
+import { BuilderConfig } from '@polymarket/builder-signing-sdk'
 import type { EncodedRedeemTx } from '@actually/core'
 import { assertValidPrivateKeyShape } from './validatePrivateKey'
+import {
+  BUILDER_API_KEY,
+  BUILDER_API_PASSPHRASE,
+  BUILDER_API_SECRET,
+  builderCredsConfigured,
+} from './config'
 
 const RELAYER_URL = 'https://relayer-v2.polymarket.com/'
 const POLYGON_CHAIN_ID = 137
@@ -47,12 +54,36 @@ export function makeRelayerSubmit(privateKey: string): (tx: EncodedRedeemTx) => 
       // validatePrivateKey.ts for why this must happen here.
       assertValidPrivateKeyShape(privateKey)
       const wallet = new Wallet(privateKey)
-      client = new RelayClient(RELAYER_URL, POLYGON_CHAIN_ID, wallet, undefined, RelayerTxType.SAFE)
+      // Builder auth: the relayer refuses POST /submit without it (401
+      // "invalid authorization"), so a client built without credentials can
+      // only ever fail — after the transaction has been signed. See config.ts.
+      const builderConfig = builderCredsConfigured()
+        ? new BuilderConfig({
+            localBuilderCreds: {
+              key: BUILDER_API_KEY!,
+              secret: BUILDER_API_SECRET!,
+              passphrase: BUILDER_API_PASSPHRASE!,
+            },
+          })
+        : undefined
+      client = new RelayClient(RELAYER_URL, POLYGON_CHAIN_ID, wallet, builderConfig, RelayerTxType.SAFE)
     }
     return client
   }
 
   return async function submit(tx: EncodedRedeemTx): Promise<RelayerSubmitResult> {
+    // Refuse before the wallet signs: the relayer SDK builds and SIGNS the
+    // Safe transaction before it posts, so without credentials the operator
+    // pays a signature for a request that is already guaranteed to 401.
+    if (!builderCredsConfigured()) {
+      return {
+        success: false,
+        error:
+          'builder_creds_missing: redeeming needs builder API credentials. Create them at ' +
+          'polymarket.com -> Settings -> Builders -> "+ Create New" and set ' +
+          'POLYMARKET_BUILDER_API_KEY / _SECRET / _PASSPHRASE. Nothing was submitted.',
+      }
+    }
     try {
       const submitted = await getClient().execute([tx], 'redeem_position')
       // execute() resolves once the relayer ACCEPTS the transaction (state
