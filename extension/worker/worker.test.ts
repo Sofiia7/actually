@@ -599,6 +599,20 @@ describe('builder signing (remote signer for Polymarket relayer)', () => {
         buildHmacSignature(CREDS.BUILDER_API_SECRET, ts, method, path, body),
       )
     }
+
+    // Polymarket issues URL-SAFE base64 secrets ('-' and '_' in the
+    // alphabet). The SDK decodes them with Node's lenient Buffer.from;
+    // plain atob() throws — which is how every live /builder-sign call
+    // 500'd on a perfectly valid secret (2026-08-18). Pin equality on
+    // exactly that alphabet, and on a secret with sloppy-paste whitespace.
+    const urlSafeSecret = 'q-_Zx-9_AbC123-_'
+    expect(await buildBuilderSignature(urlSafeSecret, '1755500000', 'POST', '/submit', '{}')).toBe(
+      buildHmacSignature(urlSafeSecret, '1755500000', 'POST', '/submit', '{}'),
+    )
+    const spacedSecret = ' q-_Zx-9_AbC123-_\n'
+    expect(await buildBuilderSignature(spacedSecret, '1755500000', 'POST', '/submit', '{}')).toBe(
+      buildHmacSignature(spacedSecret, '1755500000', 'POST', '/submit', '{}'),
+    )
   })
 
   it('returns the four POLY_BUILDER_* headers, and never the secret itself', async () => {

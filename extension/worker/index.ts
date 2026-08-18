@@ -340,6 +340,19 @@ function relayerAuthMode(env: Env): 'builder' | 'relayer' | null {
   return null
 }
 
+/**
+ * Base64 → bytes with Node's `Buffer.from(s, 'base64')` semantics, which is
+ * what the signing SDK decodes the secret with: tolerate the URL-SAFE
+ * alphabet, whitespace, and missing padding. Plain atob() throws on all
+ * three — and Polymarket issues url-safe base64 secrets (hit live
+ * 2026-08-18: every /builder-sign call 500'd on a perfectly valid secret).
+ */
+function b64ToBytes(s: string): Uint8Array {
+  const norm = s.replace(/\s+/g, '').replaceAll('-', '+').replaceAll('_', '/')
+  const padded = norm + '='.repeat((4 - (norm.length % 4)) % 4)
+  return Uint8Array.from(atob(padded), (c) => c.charCodeAt(0))
+}
+
 export async function buildBuilderSignature(
   secretB64: string,
   timestamp: string,
@@ -348,8 +361,8 @@ export async function buildBuilderSignature(
   body?: string,
 ): Promise<string> {
   const message = `${timestamp}${method}${requestPath}${body ?? ''}`
-  const keyBytes = Uint8Array.from(atob(secretB64), (c) => c.charCodeAt(0))
-  const key = await crypto.subtle.importKey('raw', keyBytes, { name: 'HMAC', hash: 'SHA-256' }, false, ['sign'])
+  const keyBytes = b64ToBytes(secretB64)
+  const key = await crypto.subtle.importKey('raw', keyBytes as BufferSource, { name: 'HMAC', hash: 'SHA-256' }, false, ['sign'])
   const sig = await crypto.subtle.sign('HMAC', key, new TextEncoder().encode(message))
   const b64 = btoa(String.fromCharCode(...new Uint8Array(sig)))
   return b64.replaceAll('+', '-').replaceAll('/', '_')
@@ -733,8 +746,8 @@ export default {
           // doc comment for the security trade-off of returning the key.
           return json(
             {
-              RELAYER_API_KEY: env.RELAYER_API_KEY!,
-              RELAYER_API_KEY_ADDRESS: env.RELAYER_API_KEY_ADDRESS!,
+              RELAYER_API_KEY: env.RELAYER_API_KEY!.trim(),
+              RELAYER_API_KEY_ADDRESS: env.RELAYER_API_KEY_ADDRESS!.trim(),
             },
             200,
             headers,
@@ -744,18 +757,30 @@ export default {
         // against its own clock, so trusting a client value invites a skewed
         // (or replayed) signature. Ours is the only one that can be right.
         const timestamp = String(Math.floor(Date.now() / 1000))
-        const signature = await buildBuilderSignature(
-          env.BUILDER_API_SECRET!,
-          timestamp,
-          method,
-          path,
-          reqBody,
-        )
+        // trim(): a pasted-in secret can pick up stray whitespace, and a
+        // header value with a trailing space authenticates as garbage.
+        let signature: string
+        try {
+          signature = await buildBuilderSignature(
+            env.BUILDER_API_SECRET!.trim(),
+            timestamp,
+            method,
+            path,
+            reqBody,
+          )
+        } catch (err) {
+          // Never echo the secret; the shape of the failure is enough.
+          return json(
+            { error: `builder_sign_failed:${err instanceof Error ? err.message : 'bad_secret_encoding'}` },
+            500,
+            headers,
+          )
+        }
         return json(
           {
-            POLY_BUILDER_API_KEY: env.BUILDER_API_KEY!,
+            POLY_BUILDER_API_KEY: env.BUILDER_API_KEY!.trim(),
             POLY_BUILDER_TIMESTAMP: timestamp,
-            POLY_BUILDER_PASSPHRASE: env.BUILDER_API_PASSPHRASE!,
+            POLY_BUILDER_PASSPHRASE: env.BUILDER_API_PASSPHRASE!.trim(),
             POLY_BUILDER_SIGNATURE: signature,
           },
           200,
