@@ -3,6 +3,16 @@ import { describe, expect, it, vi, beforeEach } from 'vitest'
 const { wcRequestMock } = vi.hoisted(() => ({ wcRequestMock: vi.fn(async () => '0xsig') }))
 vi.mock('./wallet', () => ({ wcRequest: wcRequestMock }))
 
+// Pin the Worker settings. redeem builds its relayer auth from them (the
+// Worker signs the builder headers — see redeem.ts), and the real getSettings
+// falls back to DEFAULT_WORKER_URL, which Vite bakes from .env.local. That
+// made these tests pass on a maintainer's machine and fail in CI, where no
+// such file exists: a test whose result depends on an untracked local file is
+// not a test (same reasoning as vitest.config.ts's `env` block).
+vi.mock('./settings', () => ({
+  getSettings: async () => ({ workerUrl: 'https://worker.example', workerSecret: 'test-secret' }),
+}))
+
 const { executeMock, waitMock, getTransactionMock } = vi.hoisted(() => ({
   executeMock: vi.fn(),
   waitMock: vi.fn(),
@@ -183,5 +193,24 @@ describe('redeemPosition', () => {
     expect(r.ok).toBe(false)
     expect(r.error).toBe('redeem_status_unknown:poll_timeout')
     expect(r.transactionId).toBe('0xtx1234567890')
+  })
+})
+
+describe('redeemPosition — relayer auth comes from the Worker', () => {
+  it('refuses before signing when no Worker is configured', async () => {
+    // Without a Worker there is nothing to sign the builder headers, so the
+    // relayer would 401 — after the wallet had already signed.
+    vi.resetModules()
+    vi.doMock('./settings', () => ({ getSettings: async () => ({ workerUrl: '', workerSecret: '' }) }))
+    const { redeemPosition: fresh } = await import('./redeem')
+    const r = await fresh({
+      topic: 't',
+      address: '0x00000000000000000000000000000000000000ab',
+      conditionId: '0x1111111111111111111111111111111111111111111111111111111111111111',
+      positions: [resolved],
+    })
+    expect(r).toEqual({ ok: false, error: 'worker_not_configured' })
+    expect(executeMock).not.toHaveBeenCalled()
+    vi.doUnmock('./settings')
   })
 })
