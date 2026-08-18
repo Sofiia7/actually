@@ -12,6 +12,9 @@ function authHeaders(workerSecret: string): HeadersInit {
 const GAMMA_PAGE = 100
 
 type RawGammaMarket = Partial<PolyMarket> & {
+  /** Gamma nests the parent event(s); its slug is what polymarket.com/event/
+   * actually routes on. The market's own slug often differs and 404s. */
+  events?: Array<{ slug?: string }>
   clobTokenIds?: string | string[]
   volumeNum?: number
   endDate?: string
@@ -36,6 +39,7 @@ function parseGammaMarket(m: RawGammaMarket): PolyMarket | null {
   return {
     id: String(m.id),
     slug: m.slug ?? '',
+    eventSlug: m.events?.find((e) => e?.slug)?.slug,
     question: m.question,
     outcomePrices: m.outcomePrices,
     outcomes: m.outcomes,

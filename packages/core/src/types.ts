@@ -1,6 +1,14 @@
 export interface PolyMarket {
   id: string
   slug: string
+  /**
+   * Slug of the parent EVENT, when Gamma reports one. polymarket.com routes
+   * public pages on /event/<event-slug>; the market's own slug is a different
+   * identifier that frequently 404s (observed live 2026-08-16 on
+   * "us-announces-end-of-iranian-blockade-by-august-22-2026"). Prefer this
+   * for links, fall back to `slug`.
+   */
+  eventSlug?: string
   question: string
   outcomePrices: string
   outcomes: string

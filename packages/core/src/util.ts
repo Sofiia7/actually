@@ -134,6 +134,15 @@ export function formatRelative(input: Date | number): string {
  * privacy-safe dimension in telemetry (we count "market X got N matches"
  * without ever sending the raw market id). djb2 in hex, fixed-width.
  */
+/**
+ * djb2 digest of a string, as 8 hex chars. This is a ONE-WAY HASH, not a
+ * shortened copy of the input: shortHash('0xsell123456') is '6adae052', a
+ * value that appears nowhere in Polymarket's UI or the CLOB. It exists to
+ * anonymise identifiers in telemetry.
+ *
+ * Never show it to a user as an order/transaction reference — use
+ * shortRef() for that.
+ */
 export function shortHash(s: string): string {
   let h = 5381
   for (let i = 0; i < s.length; i++) h = ((h << 5) + h + s.charCodeAt(i)) | 0
@@ -147,4 +156,13 @@ export function uuid(): string {
   bytes[8] = (bytes[8] & 0x3f) | 0x80
   const hex = Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('')
   return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`
+}
+
+/**
+ * First 10 characters of an identifier, for display: enough to recognise an
+ * order in Polymarket's own UI, short enough for a popup. Unlike shortHash
+ * this is a PREFIX of the real value, so it can actually be matched up.
+ */
+export function shortRef(id: string): string {
+  return id.length > 10 ? `${id.slice(0, 10)}…` : id
 }
