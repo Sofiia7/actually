@@ -20,7 +20,8 @@ vi.mock('./ops', () => ({
 
 import { TradeTabWired } from './TradeTabWired'
 import * as ops from './ops'
-import type { Settings } from '../shared/types'
+import type { Position, Settings } from '../shared/types'
+import { STORAGE_KEYS } from '../shared/constants'
 import type { MatchResult, PolyMarket } from '@actually/core'
 
 const market: PolyMarket = {
@@ -276,6 +277,52 @@ describe('TradeTabWired — dead session must not look live', () => {
     await screen.findByText('Orderbook')
     expect(await screen.findByText(/rate_limited/i)).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'BUY YES' })).toBeInTheDocument()
+  })
+})
+
+describe('TradeTabWired — positions are ordered by what the user just did', () => {
+  const position = (over: Partial<Position>): Position => ({
+    tokenId: 'tok',
+    conditionId: 'cond',
+    size: 1,
+    avgPrice: 0.5,
+    curPrice: 0.5,
+    currentValue: 0.5,
+    cashPnl: 0,
+    percentPnl: 0,
+    outcome: 'Yes',
+    redeemable: false,
+    title: 'A market',
+    slug: 'a-market',
+    outcomeIndex: 0,
+    negativeRisk: false,
+    ...over,
+  })
+
+  it('puts the most recently traded position on top instead of the biggest one', async () => {
+    // data-api sorts by share count, descending, and nothing here re-sorted
+    // it: a small trade made a minute ago landed at the BOTTOM of the list,
+    // under markets last touched weeks earlier.
+    opsm.restoreWalletViaOffscreen.mockResolvedValue(wallet)
+    await chrome.storage.local.set({
+      [STORAGE_KEYS.tradeLog]: [
+        { id: 'b', timestamp: 2_000, kind: 'BUY', status: 'placed', question: 'Tiny and recent', marketSlug: 'tiny-recent', outcome: 'No' },
+        { id: 'a', timestamp: 1_000, kind: 'BUY', status: 'placed', question: 'Big and old', marketSlug: 'big-old', outcome: 'Yes' },
+      ],
+    })
+    opsm.getPositionsViaOffscreen.mockResolvedValue({
+      ok: true,
+      positions: [
+        position({ tokenId: 'big', slug: 'big-old', title: 'Big and old', size: 129 }),
+        position({ tokenId: 'tiny', slug: 'tiny-recent', title: 'Tiny and recent', size: 6, outcome: 'No' }),
+      ],
+    })
+    opsm.getOpenOrdersViaOffscreen.mockResolvedValue({ ok: true, orders: [] })
+
+    const { container } = render(<TradeTabWired {...props} />)
+    await screen.findByText(/Tiny and recent/)
+    const rendered = container.textContent ?? ''
+    expect(rendered.indexOf('Tiny and recent')).toBeLessThan(rendered.indexOf('Big and old'))
   })
 })
 

@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react'
 import { Etched } from './components/Etched'
 import { GlassButton } from './components/GlassButton'
+import { LinkAction } from './components/LinkAction'
 import { minOrderShares, shortRef } from '@actually/core'
 import type { Position } from '../shared/types'
 import { MAX_ORDER_USD } from '../shared/constants'
@@ -38,6 +39,10 @@ export const SellTicket: React.FC<SellTicketProps> = ({ position, onDone, onCanc
   const [sharesInput, setSharesInput] = useState(String(floorShares(position.size)))
   const [priceInput, setPriceInput] = useState('')
   const [book, setBook] = useState<{ bestBid: number | null; error?: string }>({ bestBid: null })
+  // See TradeTabWired's bookAttempt: a failed book lookup gets a button, not
+  // an instruction. "Close and reopen this ticket" was asking the user to
+  // infer the retry mechanism from a sentence.
+  const [bookAttempt, setBookAttempt] = useState(0)
   const [submitting, setSubmitting] = useState(false)
   const [confirming, setConfirming] = useState(false)
   const [result, setResult] = useState<string | null>(null)
@@ -51,7 +56,7 @@ export const SellTicket: React.FC<SellTicketProps> = ({ position, onDone, onCanc
       if (snap.bestBid != null) setPriceInput(String(snap.bestBid))
     })()
     return () => { cancelled = true }
-  }, [position.tokenId])
+  }, [position.tokenId, bookAttempt])
 
   const shares = parseFloat(sharesInput)
   const limitPrice = parseFloat(priceInput)
@@ -227,8 +232,10 @@ export const SellTicket: React.FC<SellTicketProps> = ({ position, onDone, onCanc
       {bookFailed && (
         <Etched size={11} weight={300} color="rgba(160,40,40,.9)">
           {book.error === 'wallet_not_restored'
-            ? "Couldn't confirm your wallet session for live pricing — reopen the popup or reconnect in Settings."
-            : `Couldn't load the order book (${book.error}) — close and reopen this ticket to retry.`}
+            ? "Your wallet session didn't answer in time for live pricing."
+            : `Couldn't load the order book (${book.error}).`}{' '}
+          <LinkAction size={11} onClick={() => setBookAttempt((n) => n + 1)}>Try again</LinkAction>
+          {bookAttempt > 0 && book.error === 'wallet_not_restored' && ' · still nothing? Reconnect in Settings.'}
         </Etched>
       )}
       {overCap && (

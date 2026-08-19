@@ -67,6 +67,11 @@ which is also the ceiling this Worker enforces on itself. *Verified*
 > resolves config against the nearest workspace package and will otherwise
 > deploy `dist/` as a static site under the wrong name — and silently edit
 > vite.config.ts/package.json while at it (both happened here).
+>
+> `extension/package.json`'s wrangler scripts all pass `--config
+> worker/wrangler.toml` for this reason; `npm run worker:deploy` is the safe
+> way in. Verified with `--dry-run`: the invocation resolves the Worker and
+> leaves the extension's build config alone.
 
 ## Confirm
 

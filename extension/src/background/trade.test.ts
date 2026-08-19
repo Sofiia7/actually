@@ -42,7 +42,7 @@ vi.mock('./clob', async (importOriginal) => ({
   deriveCredentials: deriveCredentialsMock,
 }))
 
-import { connectWallet, disconnectWallet, placeOrder, restoreWallet, sellOrder } from './trade'
+import { connectWallet, disconnectWallet, placeOrder, restoreWallet, sellOrder, SESSION_RETRY_DELAYS_MS } from './trade'
 import { getSettings, saveSettings } from './settings'
 import { MAX_ORDER_USD } from '../shared/constants'
 import type { WalletState } from './trade'
@@ -256,6 +256,31 @@ describe('restoreWallet — session-lookup failures must not destroy stored cred
       safeAddress: '0xsafe',
       creds: { key: 'key', secret: 'secret', passphrase: 'pass' },
     })
+  })
+
+  it('rides out a mid-hydration miss by itself — a session that appears on the second look must never reach the user as "reconnect"', async () => {
+    // The bug this pins is a UX one, not a correctness one. The old code
+    // returned null on the first miss, the popup rendered "Couldn't confirm
+    // your wallet session — reopen the popup or reconnect", and the user was
+    // left to guess that (a) nothing was actually wrong, and (b) the one
+    // action they were offered would have thrown away a working session.
+    restoreSessionMock.mockResolvedValueOnce(null)
+    restoreSessionMock.mockResolvedValueOnce({ topic: 'topic-1', address: '0xabc' })
+    const result = await restoreWallet()
+    expect(result?.topic).toBe('topic-1')
+    expect(restoreSessionMock).toHaveBeenCalledTimes(2)
+  })
+
+  it('still reports "not restorable" once the retries are exhausted — a session that is really gone must not be papered over', async () => {
+    restoreSessionMock.mockResolvedValue(null)
+    expect(await restoreWallet()).toBeNull()
+    expect(restoreSessionMock).toHaveBeenCalledTimes(1 + SESSION_RETRY_DELAYS_MS.length)
+  })
+
+  it('does not retry an account mismatch — that answer came from a hydrated store and asking again only adds latency', async () => {
+    restoreSessionMock.mockResolvedValue({ topic: 'topic-1', address: '0xdef' })
+    expect(await restoreWallet()).toBeNull()
+    expect(restoreSessionMock).toHaveBeenCalledTimes(1)
   })
 
   it('refuses to pair stored credentials with a different account on the same topic', async () => {

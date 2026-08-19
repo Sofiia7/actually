@@ -210,10 +210,29 @@ describe('SellTicket — regressions from the 2026-08-16 audit', () => {
     })
     render(<SellTicket position={position} onDone={noop} onCancel={noop} />)
     await waitFor(() =>
-      expect(screen.getByText(/Couldn't confirm your wallet session/i)).toBeInTheDocument(),
+      expect(screen.getByText(/wallet session didn't answer/i)).toBeInTheDocument(),
     )
     // The old message sent users chasing liquidity that was there all along.
     expect(screen.queryByText(/No bids on the book/i)).not.toBeInTheDocument()
+  })
+
+  it('offers the retry as a link rather than telling the user to close and reopen the ticket', async () => {
+    // The lookup fails when the offscreen document was just recreated and the
+    // WalletConnect store has not finished hydrating — a state that clears
+    // itself. Nothing on screen told the user that, so the instruction they
+    // got ("close and reopen this ticket") was a puzzle with the answer
+    // withheld. One click has to be enough.
+    opsm.orderbookSnapshotViaOffscreen.mockResolvedValue({
+      bestBid: null, bestAsk: null, spread: null, bids: [], asks: [], estimate: null,
+      error: 'wallet_not_restored',
+    })
+    render(<SellTicket position={position} onDone={noop} onCancel={noop} />)
+    const retry = await screen.findByText(/Try again/i)
+    opsm.orderbookSnapshotViaOffscreen.mockResolvedValue({
+      bestBid: 0.42, bestAsk: null, spread: null, bids: [], asks: [], estimate: null,
+    })
+    fireEvent.click(retry)
+    await waitFor(() => expect(screen.queryByText(/wallet session didn't answer/i)).not.toBeInTheDocument())
   })
 
   it('translates the $100-cap rejection as a backstop for the limit path', () => {

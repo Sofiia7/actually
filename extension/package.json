@@ -10,18 +10,18 @@
   "scripts": {
     "dev": "vite build --watch --mode development",
     "build": "tsc --noEmit && vite build",
-    "preview": "npm run build && wrangler dev",
+    "preview": "npm run build && wrangler dev --config worker/wrangler.toml",
     "test": "vitest run",
     "test:watch": "vitest",
-    "worker:dev": "cd worker && wrangler dev",
-    "worker:deploy": "cd worker && wrangler deploy",
+    "worker:dev": "wrangler dev --config worker/wrangler.toml",
+    "worker:deploy": "wrangler deploy --config worker/wrangler.toml",
     "fonts:fetch": "node scripts/fetch-fonts.mjs",
     "models:fetch": "node scripts/fetch-model.mjs",
     "preflight": "node scripts/preflight.mjs",
     "smoke": "node scripts/smoke.mjs",
     "e2e": "node scripts/e2e-smoke.mjs",
     "lint": "tsc --noEmit",
-    "deploy": "npm run build && wrangler deploy"
+    "deploy": "npm run build && wrangler deploy --config worker/wrangler.toml"
   },
   "dependencies": {
     "@actually/core": "*",

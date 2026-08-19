@@ -14,7 +14,8 @@ import type { SerializableWalletState } from '../shared/messages'
 import { GEO_FAIL_OPEN, MAX_ORDER_USD } from '../shared/constants'
 import { findOutcomeIndex, isBelowMinOrderSize, minOrderShares, minOrderUsd, shortHash, shortRef } from '@actually/core'
 import { trackEvent } from '../background/telemetry'
-import { logTrade } from '../background/tradeLog'
+import { getTradeLog, logTrade } from '../background/tradeLog'
+import { orderPositionsByRecentActivity } from './positionOrder'
 import type { GeoErrorReason } from '../background/geo'
 import { MarketAnalytics } from './trade/Analytics'
 import * as om from './trade/orderMath'
@@ -169,7 +170,15 @@ export const TradeTabWired: React.FC<TradeTabWiredProps> = ({
     const gen = ++portfolioGenRef.current
     setPortfolioLoading(true)
     try {
-      const [pRes, oRes] = await Promise.all([getPositionsViaOffscreen(), getOpenOrdersViaOffscreen()])
+      // The log is read alongside the positions purely to order them — see
+      // orderPositionsByRecentActivity. Its failure must not take the
+      // portfolio down with it: an unreadable log means "no recency data",
+      // which is exactly what an empty one already means.
+      const [pRes, oRes, tradeLog] = await Promise.all([
+        getPositionsViaOffscreen(),
+        getOpenOrdersViaOffscreen(),
+        getTradeLog().catch(() => []),
+      ])
       if (portfolioGenRef.current !== gen) return // superseded by a newer refresh — don't clobber its result
       // A fetch failure (rate limit, transient CLOB/data-api error, offscreen
       // hiccup) must not read as "you have no positions" — keep whatever we
@@ -189,7 +198,7 @@ export const TradeTabWired: React.FC<TradeTabWiredProps> = ({
         setPortfolioError(errors.join('; '))
       } else {
         setPortfolioError(null)
-        setPositions(pRes.ok ? pRes.positions ?? [] : [])
+        setPositions(orderPositionsByRecentActivity(pRes.ok ? pRes.positions ?? [] : [], tradeLog))
         setOpenOrders(oRes.ok ? oRes.orders ?? [] : [])
       }
     } finally {
@@ -692,6 +701,12 @@ const OrderFormWired: React.FC<OrderFormProps> = ({
   const [book, setBook] = useState<{ bestBid: number | null; bestAsk: number | null; spread: number | null; error?: string }>(
     { bestBid: null, bestAsk: null, spread: null },
   )
+  // Bumped by the "Try again" link under a failed book lookup. The wallet
+  // session behind that lookup can be missing for a beat and then be fine
+  // (restoreWallet already retries the hydration race on its own), so the one
+  // thing the user must never be asked to do is work out the remedy
+  // themselves — give them the retry as a button.
+  const [bookAttempt, setBookAttempt] = useState(0)
   const [estimate, setEstimate] = useState<{ effectivePrice: number; slippage: number } | null>(null)
   const [submitting, setSubmitting] = useState(false)
   const [result, setResult] = useState<{ ok: boolean; msg: string; orderId?: string } | null>(null)
@@ -719,7 +734,8 @@ const OrderFormWired: React.FC<OrderFormProps> = ({
   const shares = activePrice ? om.sharesFor(sizeUsd, activePrice) : 0
 
   // Top-of-book for the selected side's token; prefill the limit price with the
-  // best ask each time the traded token changes (side flip / new match).
+  // best ask each time the traded token changes (side flip / new match) — or
+  // when the user asks for another go after a failed lookup (bookAttempt).
   useEffect(() => {
     let cancelled = false
     if (!tokenId) {
@@ -734,7 +750,7 @@ const OrderFormWired: React.FC<OrderFormProps> = ({
     })()
     return () => { cancelled = true }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tokenId])
+  }, [tokenId, bookAttempt])
 
   // Depth-walk fill estimate — only meaningful for a MARKET (taker) order.
   useEffect(() => {
@@ -979,7 +995,9 @@ const OrderFormWired: React.FC<OrderFormProps> = ({
       )}
       {noLiquidity && book.error === 'wallet_not_restored' && (
         <Etched size={11} weight={300} color="rgba(180,90,30,.85)">
-          Couldn't confirm your wallet session for live pricing — reopen the popup or reconnect.
+          Your wallet session didn't answer in time for live pricing.{' '}
+          <LinkAction size={11} onClick={() => setBookAttempt((n) => n + 1)}>Try again</LinkAction>
+          {bookAttempt > 0 && ' · still nothing? Reconnect in Settings.'}
         </Etched>
       )}
       {noLiquidity && book.error !== 'wallet_not_restored' && (

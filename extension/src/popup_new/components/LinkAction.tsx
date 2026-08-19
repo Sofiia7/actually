@@ -3,7 +3,10 @@ import React from 'react';
 export const LinkAction: React.FC<{
   children: React.ReactNode;
   onClick?: () => void;
-}> = ({ children, onClick }) => (
+  /** Match the surrounding copy when this sits inline in a hint line rather
+   *  than standing alone as a panel action. */
+  size?: number;
+}> = ({ children, onClick, size = 13 }) => (
   <a
     href="#"
     onClick={(e) => {
@@ -11,7 +14,7 @@ export const LinkAction: React.FC<{
       onClick?.();
     }}
     style={{
-      fontSize: 13,
+      fontSize: size,
       fontWeight: 400,
       color: 'rgba(18,26,48,.78)',
       textDecoration: 'none',

@@ -231,6 +231,27 @@ export async function connectWallet(cb: ConnectCallbacks): Promise<WalletState> 
  * article before returning to trade), when the WalletConnect SignClient's
  * own session store may not have finished hydrating from IndexedDB yet.
  */
+
+/**
+ * Waits between session-lookup attempts inside restoreWallet().
+ *
+ * A miss here usually says nothing about the user's wallet: MV3 evicts the
+ * offscreen document during any idle stretch, and the SignClient rebuilt on
+ * the next call answers `session.getAll() === []` until its own IndexedDB
+ * store finishes hydrating. That answer used to travel all the way to the UI
+ * as "Couldn't confirm your wallet session — reopen the popup or reconnect",
+ * which is homework: nothing on screen tells the user their session was fine
+ * and the lookup was merely early, and the advice they're given (reconnect)
+ * is the one action that makes it worse. So ask again instead of asking THEM.
+ *
+ * Two extra attempts cover hydration (tens of milliseconds in practice) while
+ * capping the added wait at ~0.55s for a session that really is gone — where
+ * "reconnect" is finally the honest answer.
+ */
+export const SESSION_RETRY_DELAYS_MS = [150, 400]
+
+const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms))
+
 export async function restoreWallet(): Promise<WalletState | null> {
   const s = await getSettings()
   if (
@@ -244,10 +265,20 @@ export async function restoreWallet(): Promise<WalletState | null> {
     return null
   }
   // Ask for OUR topic by name rather than "whichever session looks newest".
-  const session = await restoreSession(s.wcSessionTopic)
+  // Retried, because "not there yet" and "not there" look identical from
+  // here and only one of them is worth telling the user about — see
+  // SESSION_RETRY_DELAYS_MS. The address-mismatch check below is deliberately
+  // NOT retried: that answer came from a store that clearly had our session
+  // in it, so asking again just returns the same thing more slowly.
+  let session = await restoreSession(s.wcSessionTopic)
+  for (const delay of SESSION_RETRY_DELAYS_MS) {
+    if (session && session.topic === s.wcSessionTopic) break
+    await sleep(delay)
+    session = await restoreSession(s.wcSessionTopic)
+  }
   if (!session || session.topic !== s.wcSessionTopic) {
     // Either no session came back at all, or ours specifically isn't in the
-    // store right now.
+    // store right now — and it stayed that way across every retry.
     //
     // NEITHER wipes storage. A fresh SignClient (right after the offscreen
     // document was recreated — MV3 evicts it during any idle stretch, e.g.
