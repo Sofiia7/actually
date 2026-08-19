@@ -48,6 +48,17 @@ export interface PositionsPanelProps {
   cancelError?: string | null
 }
 
+/**
+ * Cost basis is printed next to the entry price on purpose.
+ *
+ * Every number on the row comes straight from Polymarket's data-api, and that
+ * API can briefly disagree with itself after a fill: a $2 buy of 153.84 shares
+ * showed up as "@ 6.0¢ … -$7.38 (-80.0%)" for a minute before settling to
+ * "@ 1.3¢ … -$0.15 (-7.7%)". Both readings were internally consistent, so
+ * nothing on screen gave it away — a user who paid $2 had to reverse-engineer
+ * an $9.23 cost basis out of a percentage to see that the row was wrong.
+ * Spelling out size × avgPrice makes that visible at a glance instead.
+ */
 const fmtUsd = (v: number) => `$${v.toFixed(2)}`
 const fmtPct = (v: number) => `${v >= 0 ? '+' : ''}${v.toFixed(1)}%`
 const shortenMarketId = (id: string) => (id.length > 10 ? `${id.slice(0, 10)}…` : id)
@@ -234,7 +245,8 @@ export const PositionsPanel: React.FC<PositionsPanelProps> = ({
           </div>
           <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 3 }}>
             <Etched size={11} weight={300} color="rgba(35,45,70,.6)">
-              {p.size.toFixed(2)} shares @ {(p.avgPrice * 100).toFixed(1)}¢ · now {fmtUsd(p.currentValue)}
+              {p.size.toFixed(2)} shares @ {(p.avgPrice * 100).toFixed(1)}¢ ({fmtUsd(p.size * p.avgPrice)}) · now{' '}
+              {fmtUsd(p.currentValue)}
             </Etched>
             <Etched size={11} weight={400} color={p.cashPnl >= 0 ? 'rgba(30,110,60,.9)' : 'rgba(160,40,40,.9)'}>
               {fmtUsd(p.cashPnl)} ({fmtPct(p.percentPnl)})

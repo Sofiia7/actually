@@ -50,6 +50,47 @@ describe('humanRedeemError — say what happened and what to do next', () => {
 })
 
 
+describe('the position row', () => {
+  it('spells out the cost basis so a wrong entry price is visible without arithmetic', () => {
+    // Sofia's live case: a $2 buy of 153.84 shares briefly reported "@ 6.0¢"
+    // with "-$7.38 (-80.0%)". Every number agreed with every other, so the
+    // only way to notice was to work out that -80% implied a $9.23 basis.
+    const position: Position = {
+      ...resolved,
+      redeemable: false,
+      size: 153.84,
+      avgPrice: 0.06,
+      curPrice: 0.012,
+      currentValue: 1.85,
+      cashPnl: -7.38,
+      percentPnl: -80,
+    }
+    render(
+      <PositionsPanel positions={[position]} openOrders={[]} loading={false}
+        cancellingId={null} onCancelOrder={() => {}} onRefresh={() => {}} />,
+    )
+    expect(screen.getByText(/153\.84 shares @ 6\.0¢ \(\$9\.23\)/)).toBeInTheDocument()
+  })
+
+  it('agrees with itself on a healthy position', () => {
+    const position: Position = {
+      ...resolved,
+      redeemable: false,
+      size: 153.84,
+      avgPrice: 0.013,
+      curPrice: 0.012,
+      currentValue: 1.85,
+      cashPnl: -0.15,
+      percentPnl: -7.7,
+    }
+    render(
+      <PositionsPanel positions={[position]} openOrders={[]} loading={false}
+        cancellingId={null} onCancelOrder={() => {}} onRefresh={() => {}} />,
+    )
+    expect(screen.getByText(/153\.84 shares @ 1\.3¢ \(\$2\.00\)/)).toBeInTheDocument()
+  })
+})
+
 describe('a resolved position', () => {
   it('sends the user to Polymarket when the Worker has no builder credentials', async () => {
     // The relayer SDK signs BEFORE it submits, and that submit 401s without

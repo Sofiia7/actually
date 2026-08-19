@@ -3,6 +3,7 @@ import { Etched } from './components/Etched'
 import { GlassButton } from './components/GlassButton'
 import { LinkAction } from './components/LinkAction'
 import { minOrderShares, shortRef } from '@actually/core'
+import { floorSlippage, marketFloorPrice } from './trade/orderMath'
 import type { Position } from '../shared/types'
 import { MAX_ORDER_USD } from '../shared/constants'
 import { logTrade } from '../background/tradeLog'
@@ -11,6 +12,15 @@ import { orderbookSnapshotViaOffscreen, sellOrderViaOffscreen } from './ops'
 /** Worst-acceptable slippage below the bid for a market (FOK) sell. Mirrors
  * the buy ticket's CAP_PCT, in the opposite direction. */
 const FLOOR_PCT = 0.02
+
+/**
+ * Price grid this ticket assumes. Positions come from the data API with no
+ * Gamma record attached, so the real tick is unknown here (the SDK resolves
+ * it for the order itself — see this component's doc comment). 0.001 is
+ * Polymarket's finest grid and is what the previous inline `* 1000` rounding
+ * already assumed; naming it just makes the assumption visible.
+ */
+const SELL_TICK = '0.001'
 
 export interface SellTicketProps {
   position: Position
@@ -61,10 +71,14 @@ export const SellTicket: React.FC<SellTicketProps> = ({ position, onDone, onCanc
   const shares = parseFloat(sharesInput)
   const limitPrice = parseFloat(priceInput)
   // A market sell can't fill BELOW this floor — the mirror of a buy's cap.
-  const floorPrice =
-    book.bestBid != null
-      ? Math.max(0.001, Math.round(book.bestBid * (1 - FLOOR_PCT) * 1000) / 1000)
-      : null
+  const floorPrice = book.bestBid != null ? marketFloorPrice(book.bestBid, FLOOR_PCT, SELL_TICK) : null
+  // What the floor really costs, which is not FLOOR_PCT whenever the tick is
+  // coarser than the band — see marketFloorPrice. Printing the nominal 2%
+  // there would be a promise the grid cannot keep.
+  const slippage = book.bestBid != null && floorPrice != null ? floorSlippage(book.bestBid, floorPrice) : null
+  // A bid already sitting on the minimum tick leaves nowhere to floor to, so
+  // the fill-or-kill needs the whole size at the top of the book. Say it.
+  const noRoomBelowBid = slippage != null && slippage <= 0
   const activePrice = orderType === 'MARKET' ? floorPrice : Number.isFinite(limitPrice) ? limitPrice : null
 
   const minShares = minOrderShares(undefined)
@@ -200,7 +214,11 @@ export const SellTicket: React.FC<SellTicketProps> = ({ position, onDone, onCanc
         </label>
       ) : (
         <Etched size={11} weight={300} color="rgba(35,45,70,.7)">
-          Market — sells now, floored at {fmtC(floorPrice)} ({Math.round(FLOOR_PCT * 100)}% max slippage). Bid {fmtC(book.bestBid)}.
+          Market — sells now, floored at {fmtC(floorPrice)}
+          {slippage != null && ` (${(slippage * 100).toFixed(slippage < 0.1 ? 1 : 0)}% max slippage)`}. Bid{' '}
+          {fmtC(book.bestBid)}.
+          {noRoomBelowBid &&
+            " This bid is already at the lowest tick, so the sell has to take the whole size at that price — a limit order is the safer route."}
         </Etched>
       )}
 

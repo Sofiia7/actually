@@ -216,6 +216,21 @@ describe('SellTicket — regressions from the 2026-08-16 audit', () => {
     expect(screen.queryByText(/No bids on the book/i)).not.toBeInTheDocument()
   })
 
+  it('regression: a penny position gets a floor BELOW the bid, not one sitting on it', async () => {
+    // Sofia's live case. Bid 1.1¢, 2% of that is 0.022¢ — less than half a
+    // 0.1¢ tick — so the old Math.round put the floor back at 1.1¢ and the
+    // fill-or-kill needed all 153 shares resting on the top price level. It
+    // failed, as every market sell under 2.5¢ did.
+    opsm.orderbookSnapshotViaOffscreen.mockResolvedValue({
+      bestBid: 0.011, bestAsk: null, spread: null, bids: [], asks: [], estimate: null,
+    })
+    render(<SellTicket position={{ ...position, size: 153.84, curPrice: 0.012 }} onDone={noop} onCancel={noop} />)
+    await waitFor(() => expect(screen.getByText(/floored at/i)).toBeInTheDocument())
+    expect(screen.getByText(/floored at\s*1\.0¢/i)).toBeInTheDocument()
+    // …and the ticket admits what that really costs instead of printing 2%.
+    expect(screen.getByText(/9\.1% max slippage/i)).toBeInTheDocument()
+  })
+
   it('offers the retry as a link rather than telling the user to close and reopen the ticket', async () => {
     // The lookup fails when the offscreen document was just recreated and the
     // WalletConnect store has not finished hydrating — a state that clears

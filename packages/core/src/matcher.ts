@@ -145,13 +145,44 @@ export function numberOverlapScore(headlineNums: Set<string>, marketQuestion: st
   return headlineHasStrong && marketHasStrong && sharedStrong === 0 ? -0.05 : 0
 }
 
+/** The best-scoring tradeable market, even when it fell short of the floor. */
+export interface NearestMiss {
+  question: string
+  slug: string
+  /** Raw semantic score, on the same scale as the thresholds. */
+  score: number
+}
+
+export interface MatchAttempt {
+  match: MatchResult | null
+  /**
+   * What the matcher was closest to when it gave up. Null only when nothing
+   * was scoreable at all (empty cache, no embeddings, every market closed).
+   *
+   * Exists so a failed check can say something true about WHY. The UI used to
+   * report "No match (cache=789/embedded=789/floor=0.35)" — three numbers
+   * that mean something to whoever wrote them and nothing to anyone else.
+   */
+  nearest: NearestMiss | null
+  /** Markets that made it into scoring: embedded, open, not past end date. */
+  scored: number
+}
+
 export async function findMatch(
   headline: string,
   bodyText: string,
   deps: FindMatchDeps,
 ): Promise<MatchResult | null> {
+  return (await attemptMatch(headline, bodyText, deps)).match
+}
+
+export async function attemptMatch(
+  headline: string,
+  bodyText: string,
+  deps: FindMatchDeps,
+): Promise<MatchAttempt> {
   const cache = await deps.store.getMarkets()
-  if (cache.length === 0) return null
+  if (cache.length === 0) return { match: null, nearest: null, scored: 0 }
 
   const trimmedBody = bodyText.slice(0, MAX_BODY_TEXT_CHARS)
   const inputText =
@@ -191,25 +222,35 @@ export async function findMatch(
   }
   scored.sort((a, b) => b.score - a.score)
   const top = scored[0]
-  if (!top) return null
+  if (!top) return { match: null, nearest: null, scored: scored.length }
+
+  const nearest: NearestMiss = {
+    question: top.market.question,
+    slug: top.market.slug,
+    score: top.raw,
+  }
 
   // Compare thresholds against the raw semantic score (not the boosted one),
   // so the volume bonus only acts as a tiebreaker, not a confidence inflator.
   const isAboveThreshold = top.raw >= deps.thresholds.confidenceThreshold
   const isAboveFloor = top.raw >= deps.thresholds.lowConfidenceFloor
-  if (!isAboveFloor) return null
+  if (!isAboveFloor) return { match: null, nearest, scored: scored.length }
 
   const probability = priceFromOutcomes(top.market.outcomePrices, top.market.outcomes)
   const alternatives = scored.slice(1, 5).map((s) => s.market)
   const alternativeScores = scored.slice(1, 5).map((s) => s.score)
 
   return {
-    market: top.market,
-    probability,
-    confidence: top.raw,
-    color: getColor(probability),
-    lowConfidence: !isAboveThreshold,
-    alternatives,
-    alternativeScores,
+    match: {
+      market: top.market,
+      probability,
+      confidence: top.raw,
+      color: getColor(probability),
+      lowConfidence: !isAboveThreshold,
+      alternatives,
+      alternativeScores,
+    },
+    nearest,
+    scored: scored.length,
   }
 }

@@ -24,6 +24,11 @@ async function call<T extends OffscreenResponse>(msg: unknown): Promise<T> {
 export async function runMatchViaOffscreen(article: ArticleData): Promise<{
   match: MatchResult | null
   reason?: string
+  /** Closest tradeable market when nothing cleared the floor. */
+  nearest?: { question: string; slug: string; score: number }
+  /** Markets that were scoreable at all — 0 means an empty cache, which is a
+   *  different failure from "checked everything and nothing fit". */
+  scored?: number
 }> {
   const r = await call<Extract<OffscreenResponse, { type: 'OS_MATCH_RESULT' }> | Extract<OffscreenResponse, { type: 'OS_ERROR' }>>({
     target: 'offscreen',
@@ -31,7 +36,7 @@ export async function runMatchViaOffscreen(article: ArticleData): Promise<{
     article,
   })
   if (r.type === 'OS_ERROR') return { match: null, reason: r.error }
-  return { match: r.match, reason: r.reason }
+  return { match: r.match, reason: r.reason, nearest: r.nearest, scored: r.scored }
 }
 
 export async function refreshCacheViaOffscreen(): Promise<{

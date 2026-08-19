@@ -24,7 +24,15 @@ export type CheckState =
   | { kind: 'idle' }
   | { kind: 'loading' }
   | { kind: 'empty' }
-  | { kind: 'error'; message: string }
+  | {
+      kind: 'error';
+      message: string;
+      /** Second line, quieter: the specifics behind `message`. */
+      detail?: string;
+      /** When set, an action that opens this URL — for a dead end the user
+       *  can still follow up on somewhere else. */
+      searchUrl?: string;
+    }
   | { kind: 'success'; featured: Market; related: Market[] };
 
 export interface CheckTabProps {
@@ -315,6 +323,23 @@ export const CheckTab: React.FC<CheckTabProps> = ({
         >
           {state.message}
         </Etched>
+        {state.detail && (
+          <Etched
+            size={11.5}
+            weight={300}
+            color="rgba(35,45,70,.55)"
+            style={{ textAlign: 'center', lineHeight: 1.45 }}
+          >
+            {state.detail}
+          </Etched>
+        )}
+        {state.searchUrl && (
+          <LinkAction
+            onClick={() => window.open(state.searchUrl!, '_blank', 'noopener,noreferrer')}
+          >
+            Search Polymarket →
+          </LinkAction>
+        )}
         <div style={{ display: 'flex', gap: 8 }}>
           {onRetry && (
             <GlassButton size="md" onClick={onRetry}>

@@ -24,7 +24,7 @@ import type { ResponseMessage } from '../shared/messages'
 import { extractActiveTabArticle } from '../popup/operations'
 import { getCacheStatus } from '../background/cache'
 import { trackEvent } from '../background/telemetry'
-import { buildMarketUrl, marketPageUrl } from '../background/polymarket'
+import { buildMarketUrl, marketPageUrl, polymarketSearchUrl } from '../background/polymarket'
 import { clearTradeLog, getTradeLog } from '../background/tradeLog'
 import { findOutcomeIndex, formatRelative } from '@actually/core'
 import {
@@ -69,6 +69,10 @@ function formatVolume(v: number): string {
   if (v >= 1_000_000) return `$${(v / 1_000_000).toFixed(1)}M`
   if (v >= 1_000) return `$${Math.round(v / 1_000)}k`
   return `$${Math.round(v)}`
+}
+/** Cut at a word boundary — a market question mid-word reads as corruption. */
+function truncate(s: string, max: number): string {
+  return s.length <= max ? s : s.slice(0, max).replace(/\s+\S*$/, '') + '…'
 }
 /** One activity-log entry → the History tab's row shape. The detail line is
  * built here (not in the tab) so the tab stays a dumb renderer. */
@@ -316,10 +320,28 @@ export const IntegratedPopup: React.FC<IntegratedPopupProps> = ({
         } else if (res.reason?.startsWith('match_error')) {
           setCheckState({ kind: 'error', message: res.reason.replace('match_error:', 'Match error: ') })
         } else if (res.reason?.startsWith('below_floor')) {
-          // Show diagnostics from offscreen so we know whether it's an
-          // empty cache, a genuine "no match", or a threshold issue.
-          const diag = res.reason.replace('below_floor:', '')
-          setCheckState({ kind: 'error', message: `No match (${diag})` })
+          // This used to read "No match (cache=789/embedded=789/floor=0.35)".
+          // The counters told whoever wrote them whether the cache was empty,
+          // and told the user nothing at all. They now go to the console (see
+          // offscreen.ts) while the popup says what actually happened.
+          if (!res.scored) {
+            setCheckState({
+              kind: 'error',
+              message: 'No markets loaded yet.',
+              detail: "The market list is empty, so there was nothing to compare this story against. Open Settings and refresh it.",
+            })
+          } else {
+            const nearest = res.nearest
+            setCheckState({
+              kind: 'error',
+              message: 'No open market lines up with this story.',
+              detail: nearest
+                ? `Closest of ${res.scored} open markets was “${truncate(nearest.question, 64)}”, and not close. ` +
+                  'If Polymarket ran one on this exact story it has already resolved, and resolved markets are left out because they cannot be traded.'
+                : `Checked ${res.scored} open markets. If Polymarket ran one on this story it has already resolved, and resolved markets are left out because they cannot be traded.`,
+              searchUrl: polymarketSearchUrl(article.headline),
+            })
+          }
         } else if (res.reason) {
           // Catch-all: any other reason (offscreen exception, OS_ERROR
           // bubbled up, etc) — surface verbatim instead of hiding under

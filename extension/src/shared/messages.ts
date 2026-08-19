@@ -123,7 +123,16 @@ export interface OffscreenSellOrderArgs {
 
 export type OffscreenResponse =
   | { type: 'OS_PONG' }
-  | { type: 'OS_MATCH_RESULT'; match: MatchResult | null; reason?: string }
+  | {
+      type: 'OS_MATCH_RESULT'
+      match: MatchResult | null
+      reason?: string
+      /** Closest tradeable market when nothing cleared the floor — lets the
+       *  UI say what it nearly matched instead of printing cache counters. */
+      nearest?: { question: string; slug: string; score: number }
+      /** How many markets were scoreable at all (open, embedded, unexpired). */
+      scored?: number
+    }
   | { type: 'OS_CACHE_REFRESHED'; added: number; reused: number; removed: number }
   | { type: 'OS_BUILDER_STATUS_RESULT'; available: boolean }
   | { type: 'OS_GEO_RESULT'; country: string; blocked: boolean; unknown: boolean; errorReason?: string }

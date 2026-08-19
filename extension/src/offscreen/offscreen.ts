@@ -12,7 +12,7 @@
 import type { OffscreenRequest, OffscreenResponse, SerializableWalletState } from '../shared/messages'
 import { getSettings } from '../background/settings'
 import { isInAppRedeemAvailable } from '../background/builderStatus'
-import { findMatch } from '@actually/core'
+import { attemptMatch } from '@actually/core'
 import { makeChromeMarketStore, makeSettingsEmbedder } from '../background/adapters'
 import { refreshMarketCache, getMarketCache, getCacheStatus } from '../background/cache'
 import { CACHE_TTL_MINUTES } from '../shared/constants'
@@ -191,7 +191,7 @@ async function handle(msg: OffscreenRequest): Promise<OffscreenResponse> {
           cacheNow = await getMarketCache()
         }
         step = 'find_match'
-        const match = await findMatch(msg.article.headline, msg.article.bodyText, {
+        const attempt = await attemptMatch(msg.article.headline, msg.article.bodyText, {
           store: makeChromeMarketStore(),
           embedder: makeSettingsEmbedder(settings),
           thresholds: {
@@ -199,16 +199,25 @@ async function handle(msg: OffscreenRequest): Promise<OffscreenResponse> {
             lowConfidenceFloor: settings.lowConfidenceFloor,
           },
         })
+        const match = attempt.match
         if (!match) {
-          // Surface diagnostics in the reason so the UI can show what
-          // actually happened (cache size, why nothing matched). Without
-          // this it's impossible to debug without devtools.
+          // The counters stay — they are how an empty cache is told apart
+          // from a genuine miss — but they go to the console and telemetry,
+          // NOT into the sentence the user reads. `nearest` is what the UI
+          // needs: naming the market we came closest to explains the failure
+          // in a way "embedded=789" never could.
           const embedded = cacheNow.filter((m) => !!m.embeddingB64).length
+          console.debug(
+            `[actually] no match: cache=${cacheNow.length} embedded=${embedded} scored=${attempt.scored} ` +
+              `floor=${settings.lowConfidenceFloor} nearest=${attempt.nearest?.score.toFixed(3) ?? 'none'}`,
+          )
           void trackEvent('no_match', settings, { reason: 'below_floor' })
           return {
             type: 'OS_MATCH_RESULT',
             match: null,
-            reason: `below_floor:cache=${cacheNow.length}/embedded=${embedded}/floor=${settings.lowConfidenceFloor}`,
+            reason: 'below_floor',
+            nearest: attempt.nearest ?? undefined,
+            scored: attempt.scored,
           }
         }
         // Live price refresh (non-fatal). Use the YES token explicitly —

@@ -70,6 +70,43 @@ export function marketCapPrice(bestAsk: number, capPct: number, tickSize: string
 }
 
 /**
+ * Worst acceptable price for a market SELL: bestBid × (1 − floor), rounded
+ * DOWN to the tick, and never above one tick below the bid.
+ *
+ * The rounding direction is the whole point, and getting it wrong made cheap
+ * positions unsellable. The sell ticket used to round to the NEAREST tick,
+ * which at low prices rounds the cushion straight back into the bid: a 1.1¢
+ * bid gives 1.1¢ × 0.98 = 1.078¢, which rounds to 1.1¢ — the bid itself. The
+ * order then goes out as fill-or-kill at exactly the top of the book, so it
+ * can only fill if the ENTIRE size is resting on that one price level, and
+ * any movement kills it. Below 2.5¢ a 2% cushion is smaller than half a tick,
+ * so every market sell in that range was structurally doomed.
+ *
+ * Rounding down is also what makes this the true mirror of marketCapPrice,
+ * which rounds a BUY's cap up and has therefore always had its cushion.
+ *
+ * Returns at most one tick below the bid and at least one tick outright,
+ * since a price of zero is not a valid order. A bid already sitting on the
+ * minimum tick therefore yields no cushion at all — unavoidable, and the
+ * caller is expected to say so rather than promise slippage it cannot give.
+ */
+export function marketFloorPrice(bestBid: number, floorPct: number, tickSize: string): number {
+  const tick = parseFloat(tickSize)
+  const decimals = tickDecimals(tickSize)
+  const raw = bestBid * (1 - floorPct)
+  const ratio = parseFloat((raw / tick).toFixed(6))
+  const floored = snap(Math.floor(ratio), tick, decimals)
+  const oneTickDown = snap(Math.round(parseFloat((bestBid / tick).toFixed(6))) - 1, tick, decimals)
+  return Math.max(tick, Math.min(floored, oneTickDown))
+}
+
+/** Slippage the caller is actually accepting, as a fraction of the bid. */
+export function floorSlippage(bestBid: number, floorPrice: number): number {
+  if (!(bestBid > 0)) return 0
+  return (bestBid - floorPrice) / bestBid
+}
+
+/**
  * Classify a BUY as maker (rests on the book) or taker (crosses the spread).
  * Market orders always take. A limit at/above best ask crosses; below rests.
  * Unknown ask → treat as maker (we can't cross what we can't see).

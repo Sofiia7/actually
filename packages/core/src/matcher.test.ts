@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { extractKeywords, extractNumericTokens, findMatch, keywordOverlapBonus, numberOverlapScore } from './matcher'
+import { attemptMatch, extractKeywords, extractNumericTokens, findMatch, keywordOverlapBonus, numberOverlapScore } from './matcher'
 import type { CachedMarket } from './types'
 import { floatArrayToB64 } from './util'
 
@@ -259,5 +259,52 @@ describe('findMatch', () => {
     const embedder = { embed: async () => new Float32Array([1, 0, 0]) }
     const result = await findMatch('anything', '', { store, embedder, thresholds })
     expect(result?.market.id).toBe('upcoming')
+  })
+})
+
+describe('attemptMatch — a failed check has to be able to say why', () => {
+  const thresholds = { confidenceThreshold: 0.8, lowConfidenceFloor: 0.5 }
+
+  it('names the market it came closest to when nothing clears the floor', async () => {
+    // Without this the popup could only report counters ("cache=789/
+    // embedded=789/floor=0.35"), which told the user nothing about their
+    // article and read as a malfunction rather than an honest miss.
+    const far = fakeMarket({ id: 'far', question: 'Will the Lakers win?', vec: [0, 1, 0] })
+    const store = { getMarkets: async () => [far] }
+    const embedder = { embed: async () => new Float32Array([1, 0, 0]) }
+    const attempt = await attemptMatch('Iran enriches uranium past 60%', '', { store, embedder, thresholds })
+    expect(attempt.match).toBeNull()
+    expect(attempt.nearest?.question).toBe('Will the Lakers win?')
+    expect(attempt.nearest?.score).toBeLessThan(thresholds.lowConfidenceFloor)
+    expect(attempt.scored).toBe(1)
+  })
+
+  it('reports scored=0 for an empty cache — a different failure from "checked everything and nothing fit"', async () => {
+    const store = { getMarkets: async () => [] }
+    const embedder = { embed: async () => new Float32Array([1, 0, 0]) }
+    const attempt = await attemptMatch('anything', '', { store, embedder, thresholds })
+    expect(attempt).toEqual({ match: null, nearest: null, scored: 0 })
+  })
+
+  it('counts only scoreable markets — closed ones are not something the user could have traded', async () => {
+    const closed = fakeMarket({ id: 'closed', closed: true, vec: [1, 0, 0] })
+    const far = fakeMarket({ id: 'far', question: 'Will the Lakers win?', vec: [0, 1, 0] })
+    const store = { getMarkets: async () => [closed, far] }
+    const embedder = { embed: async () => new Float32Array([1, 0, 0]) }
+    const attempt = await attemptMatch('Iran enriches uranium', '', { store, embedder, thresholds })
+    expect(attempt.scored).toBe(1)
+    expect(attempt.nearest?.question).toBe('Will the Lakers win?')
+  })
+
+  it('carries the match through unchanged when one does clear the floor', async () => {
+    const close = fakeMarket({ id: 'close', question: 'Will Iran enrich uranium?', vec: [1, 0, 0] })
+    const store = { getMarkets: async () => [close] }
+    const embedder = { embed: async () => new Float32Array([1, 0, 0]) }
+    const attempt = await attemptMatch('Iran enriches uranium past 60%', '', { store, embedder, thresholds })
+    expect(attempt.match?.market.id).toBe('close')
+    expect(attempt.nearest?.question).toBe('Will Iran enrich uranium?')
+    // findMatch stays the thin wrapper every existing caller expects.
+    const legacy = await findMatch('Iran enriches uranium past 60%', '', { store, embedder, thresholds })
+    expect(legacy?.market.id).toBe('close')
   })
 })

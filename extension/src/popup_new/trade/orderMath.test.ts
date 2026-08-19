@@ -7,6 +7,8 @@ import {
   isValidTickPrice,
   defaultBuyPrice,
   marketCapPrice,
+  marketFloorPrice,
+  floorSlippage,
   makerOrTaker,
 } from './orderMath'
 
@@ -81,6 +83,45 @@ describe('marketCapPrice', () => {
   })
   it('never returns >= 1', () => {
     expect(marketCapPrice(0.99, 0.05, '0.01')).toBeLessThan(1)
+  })
+})
+
+describe('marketFloorPrice', () => {
+  it('floors a market SELL at bestBid*(1-floor), rounded DOWN to the tick', () => {
+    // 0.50 * 0.98 = 0.49 → already a 0.01 multiple
+    expect(marketFloorPrice(0.5, 0.02, '0.01')).toBeCloseTo(0.49, 6)
+    // 0.25 * 0.98 = 0.245 → floor to 0.01 tick → 0.24
+    expect(marketFloorPrice(0.25, 0.02, '0.01')).toBeCloseTo(0.24, 6)
+  })
+
+  it('regression: keeps a cushion on cheap positions, where a 2% band is thinner than half a tick', () => {
+    // The bug: Math.round put the floor back ON the bid, so a fill-or-kill
+    // sell needed the whole size resting at the top of the book. Every one of
+    // these used to come back equal to the bid.
+    for (const bid of [0.011, 0.013, 0.02, 0.024]) {
+      const floor = marketFloorPrice(bid, 0.02, '0.001')
+      expect(floor).toBeLessThan(bid)
+      expect(floorSlippage(bid, floor)).toBeGreaterThan(0)
+    }
+    expect(marketFloorPrice(0.011, 0.02, '0.001')).toBeCloseTo(0.01, 6)
+  })
+
+  it('never goes below one tick — zero is not a sendable price', () => {
+    expect(marketFloorPrice(0.001, 0.02, '0.001')).toBeCloseTo(0.001, 6)
+    expect(marketFloorPrice(0.002, 0.5, '0.001')).toBeCloseTo(0.001, 6)
+  })
+
+  it('reports the slippage actually being accepted, not the nominal band', () => {
+    // A 2% ask on a 1.1¢ bid cannot be honoured by a 0.1¢ grid; the honest
+    // number is what one tick costs, and the ticket must show that instead.
+    expect(floorSlippage(0.011, marketFloorPrice(0.011, 0.02, '0.001'))).toBeCloseTo(0.0909, 3)
+    // At ordinary prices the 2% band governs and the number stays near 2%.
+    expect(floorSlippage(0.32, marketFloorPrice(0.32, 0.02, '0.001'))).toBeCloseTo(0.0219, 3)
+  })
+
+  it('is the mirror of marketCapPrice — buy cushion up, sell cushion down', () => {
+    expect(marketCapPrice(0.25, 0.02, '0.01')).toBeGreaterThan(0.25)
+    expect(marketFloorPrice(0.25, 0.02, '0.01')).toBeLessThan(0.25)
   })
 })
 
