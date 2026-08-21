@@ -32,6 +32,14 @@ export type CheckState =
       /** When set, an action that opens this URL — for a dead end the user
        *  can still follow up on somewhere else. */
       searchUrl?: string;
+      /**
+       * Offer to switch on the long-tail search right here.
+       *
+       * The setting is off by default and lives in Settings, which is exactly
+       * where nobody looks. The one moment it is worth mentioning is the
+       * moment it would have helped: a check that just came back empty.
+       */
+      offerSearch?: boolean;
     }
   | { kind: 'success'; featured: Market; related: Market[] };
 
@@ -42,6 +50,10 @@ export interface CheckTabProps {
   onRetry?: () => void;
   /** Click "View on Polymarket →" on the featured match. */
   onOpenMarket?: () => void;
+  /** Accept the no-match screen's offer: turn long-tail search on and retry. */
+  onEnableSearch?: () => void;
+  /** Decline it, for good. */
+  onDismissSearchOffer?: () => void;
   /** Click "Trade this market →" on the featured match — switches to Trade tab. */
   onTrade?: () => void;
   /** Click an alternate match — re-runs in CheckTab as the new featured. */
@@ -224,6 +236,8 @@ export const CheckTab: React.FC<CheckTabProps> = ({
   onBack,
   onRetry,
   onOpenMarket,
+  onEnableSearch,
+  onDismissSearchOffer,
   onTrade,
   onPickRelated,
 }) => {
@@ -333,12 +347,48 @@ export const CheckTab: React.FC<CheckTabProps> = ({
             {state.detail}
           </Etched>
         )}
-        {state.searchUrl && (
-          <LinkAction
-            onClick={() => window.open(state.searchUrl!, '_blank', 'noopener,noreferrer')}
+        {state.offerSearch && onEnableSearch ? (
+          // Shown INSTEAD of the plain outbound link: at this exact moment the
+          // useful thing is not a detour to polymarket.com, it is the feature
+          // that would have caught this market. Both at once is clutter.
+          <div
+            style={{
+              padding: '11px 13px',
+              borderRadius: 10,
+              background: 'rgba(255,255,255,.07)',
+              border: '1px solid rgba(255,255,255,.24)',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: 8,
+              alignItems: 'center',
+              textAlign: 'center',
+            }}
           >
-            Search Polymarket →
-          </LinkAction>
+            <Etched size={11.5} weight={300} color="rgba(35,45,70,.7)" style={{ lineHeight: 1.45 }}>
+              Only the biggest markets are matched on your device. Polymarket carries
+              thousands more, including small and brand-new ones.
+            </Etched>
+            <GlassButton size="md" onClick={onEnableSearch}>
+              Search Polymarket too
+            </GlassButton>
+            <Etched size={10.5} weight={300} color="rgba(35,45,70,.5)" style={{ lineHeight: 1.4 }}>
+              Sends up to six words from the headline when nothing matches locally.
+              Switch it off any time in Settings.
+            </Etched>
+            {onDismissSearchOffer && (
+              <LinkAction size={11} onClick={onDismissSearchOffer}>
+                No thanks
+              </LinkAction>
+            )}
+          </div>
+        ) : (
+          state.searchUrl && (
+            <LinkAction
+              onClick={() => window.open(state.searchUrl!, '_blank', 'noopener,noreferrer')}
+            >
+              Search Polymarket →
+            </LinkAction>
+          )
         )}
         <div style={{ display: 'flex', gap: 8 }}>
           {onRetry && (

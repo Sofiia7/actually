@@ -23,6 +23,12 @@ export interface Settings {
    * local-embedding path otherwise never does.
    */
   searchFallbackEnabled: boolean
+  /**
+   * The user turned the search offer down on a no-match screen. Stops the
+   * offer reappearing on every subsequent miss — declining once is an answer,
+   * and re-asking would make it a nag.
+   */
+  searchFallbackOfferDismissed: boolean
   // Wallet state — managed by trade flow, not user-editable directly.
   // All optional until the user connects via WalletConnect v2.
   wcSessionTopic?: string

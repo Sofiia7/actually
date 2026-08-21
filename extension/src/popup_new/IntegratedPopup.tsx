@@ -286,6 +286,22 @@ export const IntegratedPopup: React.FC<IntegratedPopupProps> = ({
   }
 
   // ---- check actions ----
+  /**
+   * Accept the no-match screen's offer. The click IS the consent — the button
+   * says what gets sent — so this turns the setting on and immediately re-runs
+   * the check the user was already waiting on, rather than saving a
+   * preference and leaving them to press Check again themselves.
+   */
+  async function enableSearchAndRetry() {
+    await patchSettings({ searchFallbackEnabled: true })
+    void startCheck()
+  }
+
+  async function dismissSearchOffer() {
+    await patchSettings({ searchFallbackOfferDismissed: true })
+    setCheckState((prev) => (prev.kind === 'error' ? { ...prev, offerSearch: false } : prev))
+  }
+
   async function startCheck() {
     if (!settings) return
     if (!settings.workerUrl || !settings.workerSecret) {
@@ -340,6 +356,10 @@ export const IntegratedPopup: React.FC<IntegratedPopupProps> = ({
                   'If Polymarket ran one on this exact story it has already resolved, and resolved markets are left out because they cannot be traded.'
                 : `Checked ${res.scored} open markets. If Polymarket ran one on this story it has already resolved, and resolved markets are left out because they cannot be traded.`,
               searchUrl: polymarketSearchUrl(article.headline),
+              // The setting lives in Settings, which is where nobody looks.
+              // Mention it at the only moment it is relevant — a check that
+              // just came back empty — and only until the user answers.
+              offerSearch: !settings.searchFallbackEnabled && !settings.searchFallbackOfferDismissed,
             })
           }
         } else if (res.reason) {
@@ -465,6 +485,8 @@ export const IntegratedPopup: React.FC<IntegratedPopupProps> = ({
               onStart={startCheck}
               onBack={() => setCheckState({ kind: 'idle' })}
               onRetry={startCheck}
+              onEnableSearch={() => void enableSearchAndRetry()}
+              onDismissSearchOffer={() => void dismissSearchOffer()}
               onOpenMarket={() => {
                 if (!lastMatch) return
                 void trackEvent('match_clicked', settings, { color: lastMatch.color })

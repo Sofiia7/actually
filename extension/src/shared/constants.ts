@@ -148,6 +148,7 @@ export const DEFAULT_SETTINGS: Settings = {
   // text. Users who want the long tail can trade that away knowingly; nobody
   // gets it traded away for them.
   searchFallbackEnabled: false,
+  searchFallbackOfferDismissed: false,
 }
 
 export const POLYMARKET_BASE_URL = 'https://polymarket.com/event'

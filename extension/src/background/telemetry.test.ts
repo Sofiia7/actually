@@ -34,6 +34,7 @@ const SETTINGS: Settings = {
   workerSecret: 'stub',
   telemetryEnabled: true,
   searchFallbackEnabled: false,
+  searchFallbackOfferDismissed: false,
 }
 
 describe('trackEvent — queue cap', () => {

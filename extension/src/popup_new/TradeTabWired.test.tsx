@@ -60,6 +60,7 @@ const settings: Settings = {
   workerSecret: 's',
   telemetryEnabled: false,
   searchFallbackEnabled: false,
+  searchFallbackOfferDismissed: false,
 }
 
 const wallet = {
