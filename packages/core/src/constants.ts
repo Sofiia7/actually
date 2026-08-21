@@ -40,7 +40,19 @@ export const LOCAL_MODEL_REVISION = 'beeb2e4b69e95f188a15cc2e90d09fd035dac229'
 // Russia market (Putin-leadership). 600 pulls those in; first-load embedding on
 // the local MiniLM model runs in the offscreen document (no MV3 SW lifetime
 // limit) and is diff-cached, so the one-time cost is paid once.
-export const MAX_MARKETS_CACHE = 800
+export const MAX_MARKETS_CACHE = 2000
+
+/**
+ * Ceiling for the ON-DEVICE fallback, used only when the precomputed blob is
+ * unavailable and the extension has to embed markets itself.
+ *
+ * Deliberately far below MAX_MARKETS_CACHE. The served blob arrives with its
+ * embeddings already computed, so its size costs a download; this path costs
+ * one MiniLM inference per market in the offscreen document, and 2000 of them
+ * on a cold cache is a wait, not a refresh. Coverage on the fallback is worse
+ * than the happy path by design — the happy path is what users actually get.
+ */
+export const MAX_MARKETS_ON_DEVICE = 800
 
 // Markets matching these patterns are word-association games rather than
 // actual outcome predictions. They share so much vocabulary with political

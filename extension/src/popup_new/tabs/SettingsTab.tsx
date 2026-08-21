@@ -13,6 +13,7 @@ export interface SettingsValues {
   confidence: number;
   floor: number;
   shareStats: boolean;
+  searchFallback: boolean;
   cacheSize?: number;
   cacheAge?: string;
   version: string;
@@ -202,6 +203,33 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
           <NeutralToggle
             on={values.shareStats}
             onChange={(v) => onChange({ shareStats: v })}
+          />
+        </div>
+
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 10,
+            marginTop: 8,
+            padding: '10px 12px',
+            borderRadius: 10,
+            background: 'rgba(255,255,255,.06)',
+            border: '1px solid rgba(255,255,255,.22)',
+          }}
+        >
+          <div style={{ flex: 1 }}>
+            <Etched size={13} weight={400} style={{ display: 'block' }}>
+              Search Polymarket when nothing matches
+            </Etched>
+            <Etched size={11} weight={300} color="rgba(35,45,70,.5)">
+              Finds markets too small for the local list. Sends up to six words from the
+              headline to Polymarket. Off means article text never leaves your device.
+            </Etched>
+          </div>
+          <NeutralToggle
+            on={values.searchFallback}
+            onChange={(v) => onChange({ searchFallback: v })}
           />
         </div>
       </Field>

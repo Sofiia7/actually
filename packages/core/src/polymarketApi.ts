@@ -30,6 +30,9 @@ type RawGammaMarket = Partial<PolyMarket> & {
   minimumTickSize?: number | string
   orderMinSize?: number | string
   minimum_order_size?: number | string
+  /** Set by Gamma on per-fixture sports rows — see isPerGameSportsMarket. */
+  gameId?: string | number
+  sportsMarketType?: string
 }
 
 /** Normalize one raw Gamma market record into our `PolyMarket` shape. Returns
@@ -66,6 +69,68 @@ function normalizeMinOrderSize(raw: number | string | undefined): number | undef
   return Number.isFinite(n) && n > 0 ? n : undefined
 }
 
+/**
+ * A per-game sports market: one row per fixture, resolving within hours.
+ *
+ * Gamma flags these outright (`gameId`, `sportsMarketType`), which matters
+ * because they overwhelm any ordering that isn't lifetime volume. Measured on
+ * 2026-08-21 across the top 800 of each ordering: 0% of `volumeNum`, 13% of
+ * `volume24hr`, and 83% of `createdAt`. A recency slice without this filter
+ * is not a recency slice, it is a list of Dota fixtures.
+ *
+ * They are dropped from every slice, not just recency. No news article is
+ * usefully answered by "Dota 2: Team Liquid vs Team Falcons - Game 1 Winner",
+ * and the cache budget they would eat is the whole point of this exercise.
+ */
+function isPerGameSportsMarket(m: RawGammaMarket): boolean {
+  return Boolean(m.gameId || m.sportsMarketType)
+}
+
+/**
+ * How the cached market set is chosen.
+ *
+ * This used to be "top N by lifetime volume", full stop, and that is the
+ * wrong shelf for a tool that reads the news. `volumeNum` is volume over a
+ * market's whole life, so it ranks by ACCUMULATED interest: a market opened
+ * this morning under today's headline has near-zero lifetime volume and loses
+ * to a year-old election market every time. Measured on the live cache, the
+ * cheapest market that made the cut had $508,649 of lifetime volume — so a
+ * real, open, actively-traded market like "Who will Trump publicly insult by
+ * August 31?" ($47,851) was invisible to the extension by a factor of ten,
+ * and the user reasonably read that as "the tool is broken".
+ *
+ * Three orderings, blended:
+ *   volume24hr  what is being traded RIGHT NOW, which is what news is about
+ *   volumeNum   the big standing markets, still the backbone of good answers
+ *   startDate   freshly opened markets, which by definition have no history
+ *
+ * Shares are deliberate: recency gets the smallest slice because it is the
+ * noisiest, and lifetime volume keeps a large one because those markets are
+ * the ones most articles genuinely match.
+ */
+export const CACHE_SLICES: ReadonlyArray<{ order: string; share: number }> = [
+  { order: 'volume24hr', share: 0.4 },
+  { order: 'volumeNum', share: 0.4 },
+  { order: 'startDate', share: 0.2 },
+]
+
+/**
+ * Gamma refuses offsets past ~2100 with a 422, so a slice that filters
+ * heavily can run out of pages before it fills its quota. That is expected,
+ * and the top-up pass below covers the shortfall.
+ */
+const GAMMA_MAX_OFFSET = 2000
+
+/**
+ * Pause between pages, so a full build stays under the Worker's /markets
+ * budget (90 requests per minute per IP). Filling 2000 markets takes roughly
+ * forty requests once per-game sports rows are discarded; at ~0.9s each that
+ * is a ~35s fetch phase on the cron and about ten seconds on the extension's
+ * much smaller on-device fallback. Without the spacing the run simply
+ * collects 429s and half-fills the cache.
+ */
+const PAGE_DELAY_MS = 700
+
 export async function fetchActiveMarkets(
   workerUrl: string,
   workerSecret: string,
@@ -73,37 +138,90 @@ export async function fetchActiveMarkets(
 ): Promise<PolyMarket[]> {
   const out: PolyMarket[] = []
   const seenIds = new Set<string>()
-  const pages = Math.ceil(total / GAMMA_PAGE)
-  for (let i = 0; i < pages; i++) {
-    const params = new URLSearchParams({
-      active: 'true',
-      closed: 'false',
-      limit: String(GAMMA_PAGE),
-      offset: String(i * GAMMA_PAGE),
-      order: 'volumeNum',
-      ascending: 'false',
-    })
-    // Gamma occasionally returns a transient 5xx; the Worker proxies it through.
-    // Retry a few times with backoff so one upstream blip doesn't abort the
-    // whole refresh. Non-5xx errors (4xx) are not retried.
-    let res: Response | undefined
-    for (let attempt = 0; attempt < 3; attempt++) {
-      res = await fetch(`${workerUrl}/markets?${params}`, {
-        headers: authHeaders(workerSecret),
+
+  /** Page one ordering until `out` reaches `upTo` or Gamma runs out. */
+  async function fillFrom(order: string, upTo: number): Promise<void> {
+    for (let offset = 0; offset <= GAMMA_MAX_OFFSET; offset += GAMMA_PAGE) {
+      if (out.length >= upTo) return
+      const params = new URLSearchParams({
+        active: 'true',
+        closed: 'false',
+        limit: String(GAMMA_PAGE),
+        offset: String(offset),
+        order,
+        ascending: 'false',
       })
-      if (res.ok || res.status < 500) break
-      await new Promise((r) => setTimeout(r, 400 * (attempt + 1)))
+      // Gamma occasionally returns a transient 5xx; the Worker proxies it through.
+      // Retry a few times with backoff so one upstream blip doesn't abort the
+      // whole refresh. Non-5xx errors (4xx) are not retried.
+      let res: Response | undefined
+      for (let attempt = 0; attempt < 3; attempt++) {
+        res = await fetch(`${workerUrl}/markets?${params}`, {
+          headers: authHeaders(workerSecret),
+        })
+        if (res.ok || res.status < 500) break
+        await new Promise((r) => setTimeout(r, 400 * (attempt + 1)))
+      }
+      if (!res || !res.ok) throw new Error(`fetch_markets_failed:${res?.status ?? 'network'}`)
+      const raw = (await res.json()) as RawGammaMarket[]
+      if (raw.length === 0) return
+      for (const m of raw) {
+        if (isPerGameSportsMarket(m)) continue
+        const parsed = parseGammaMarket(m)
+        if (!parsed || seenIds.has(parsed.id)) continue
+        seenIds.add(parsed.id)
+        out.push(parsed)
+        if (out.length >= upTo) return
+      }
+      // Filtering can push a slice past thirty requests a minute, which is
+      // what the Worker's /markets proxy allows per IP. Spacing the pages
+      // keeps an unattended cron run under it instead of half-filling the
+      // cache with 429s.
+      if (PAGE_DELAY_MS > 0) await new Promise((r) => setTimeout(r, PAGE_DELAY_MS))
     }
-    if (!res || !res.ok) throw new Error(`fetch_markets_failed:${res?.status ?? 'network'}`)
-    const raw = (await res.json()) as RawGammaMarket[]
-    if (raw.length === 0) break
-    for (const m of raw) {
-      const parsed = parseGammaMarket(m)
-      if (!parsed || seenIds.has(parsed.id)) continue
-      seenIds.add(parsed.id)
-      out.push(parsed)
-      if (out.length >= total) return out
-    }
+  }
+
+  for (const slice of CACHE_SLICES) {
+    await fillFrom(slice.order, Math.min(total, out.length + Math.ceil(total * slice.share)))
+  }
+  // A slice can come up short — heavy filtering, Gamma's offset ceiling, an
+  // ordering with fewer rows than expected. Backfill from lifetime volume so
+  // a thin slice costs coverage of ITS kind, not the size of the whole cache.
+  if (out.length < total) await fillFrom('volumeNum', total)
+  return out.slice(0, total)
+}
+
+/**
+ * Free-text market lookup through the Worker's /search proxy.
+ *
+ * The cache is a fixed-size shelf, so however it is chosen, the long tail is
+ * off it — Polymarket carries thousands of open markets and the cache holds
+ * two thousand. This is the escape hatch: when nothing cached matches an
+ * article, ask Polymarket's own search, which indexes everything.
+ *
+ * PRIVACY: this sends words from the user's headline off-device. That is
+ * exactly what the local-embedding path promises never to do, so the caller
+ * must gate it behind an explicit opt-in — see `searchFallbackEnabled`.
+ */
+export async function searchMarkets(
+  workerUrl: string,
+  workerSecret: string,
+  query: string,
+  limit = 25,
+): Promise<PolyMarket[]> {
+  const params = new URLSearchParams({ q: query, limit: String(limit) })
+  const res = await fetch(`${workerUrl}/search?${params}`, { headers: authHeaders(workerSecret) })
+  if (!res.ok) throw new Error(`search_markets_failed:${res.status}`)
+  const raw = (await res.json()) as RawGammaMarket[]
+  if (!Array.isArray(raw)) return []
+  const out: PolyMarket[] = []
+  const seen = new Set<string>()
+  for (const m of raw) {
+    if (isPerGameSportsMarket(m)) continue
+    const parsed = parseGammaMarket(m)
+    if (!parsed || parsed.closed || seen.has(parsed.id)) continue
+    seen.add(parsed.id)
+    out.push(parsed)
   }
   return out
 }

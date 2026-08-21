@@ -231,8 +231,14 @@ export function validateEmbeddingsInput(body: unknown): EmbeddingsValidation {
  * comfortable headroom without allowing an unbounded upload.
  */
 export const MARKET_CACHE_LIMITS = {
-  maxBodyBytes: 5 * 1024 * 1024,
-  maxMarkets: 1000,
+  // A 2000-market blob is ~7.5 MB: 384 float32s per market, base64'd, is
+  // 2 KB of the ~3.8 KB each row costs. The old 5 MB ceiling was sized for
+  // the old 800-market cap and would 413 the cron silently — leaving a stale
+  // blob served indefinitely with nothing in the logs to say why.
+  maxBodyBytes: 12 * 1024 * 1024,
+  // MAX_MARKETS_CACHE (2000) plus headroom, so a builder that overfetches
+  // slightly is not rejected outright.
+  maxMarkets: 2200,
 } as const
 
 export type MarketCacheValidation =
@@ -530,7 +536,12 @@ export default {
     try {
       // --- Polymarket Gamma: market list ----------------------------
       if (url.pathname === '/markets' && req.method === 'GET') {
-        if (!(await rateLimit(env, 'markets', ip, 30))) {
+        // 90/min, not 30: the cache builder now pages three orderings and
+        // discards per-game sports rows as it goes, so filling 2000 markets
+        // takes ~40 requests in one run. At 30 it half-filled the cache with
+        // 429s. Still a read-only Gamma proxy, so the ceiling is about our
+        // upstream budget rather than protecting anything sensitive.
+        if (!(await rateLimit(env, 'markets', ip, 90))) {
           return json({ error: 'rate_limited' }, 429, headers)
         }
         const params = url.searchParams.toString()
@@ -539,6 +550,51 @@ export default {
           { headers: { Accept: 'application/json' }, signal: AbortSignal.timeout(UPSTREAM_TIMEOUT_MS) },
         )
         return new Response(await res.text(), { status: res.status, headers })
+      }
+
+      // --- Polymarket market search (long-tail fallback) ------------
+      //
+      // The precomputed cache is a fixed-size shelf; Polymarket carries far
+      // more open markets than fit on it. When an article matches nothing
+      // cached, the extension can ask here instead of reporting a dead end.
+      //
+      // Gamma's public-search answers with EVENTS wrapping their markets, so
+      // this flattens to plain market records (carrying the event slug, which
+      // is what polymarket.com actually routes on) and drops resolved ones —
+      // a closed market is not something the user could act on.
+      if (url.pathname === '/search' && req.method === 'GET') {
+        if (!(await rateLimit(env, 'search', ip, 20))) {
+          return json({ error: 'rate_limited' }, 429, headers)
+        }
+        const q = (url.searchParams.get('q') ?? '').trim().slice(0, 200)
+        if (!q) return json({ error: 'missing_query' }, 400, headers)
+        const limit = Math.min(50, Math.max(1, Number(url.searchParams.get('limit')) || 25))
+        const upstream = new URLSearchParams({ q, limit_per_type: String(limit) })
+        const res = await fetch(
+          `https://gamma-api.polymarket.com/public-search?${upstream}`,
+          { headers: { Accept: 'application/json' }, signal: AbortSignal.timeout(UPSTREAM_TIMEOUT_MS) },
+        )
+        if (!res.ok) return json({ error: 'upstream_error', status: res.status }, 502, headers)
+        let parsed: unknown
+        try {
+          parsed = await res.json()
+        } catch {
+          return json({ error: 'bad_upstream_json' }, 502, headers)
+        }
+        const events = (parsed as { events?: unknown[] } | null)?.events
+        const out: unknown[] = []
+        for (const ev of Array.isArray(events) ? events : []) {
+          const e = ev as { slug?: string; markets?: unknown[] } | null
+          if (!e) continue
+          for (const mk of Array.isArray(e.markets) ? e.markets : []) {
+            const m = mk as Record<string, unknown> | null
+            if (!m || m.closed === true) continue
+            out.push({ ...m, events: [{ slug: e.slug }] })
+            if (out.length >= limit) break
+          }
+          if (out.length >= limit) break
+        }
+        return json(out, 200, headers)
       }
 
       // --- Polymarket CLOB: live price ------------------------------

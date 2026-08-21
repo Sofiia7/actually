@@ -17,6 +17,12 @@ export interface Settings {
   workerUrl: string
   workerSecret: string
   telemetryEnabled: boolean
+  /**
+   * Allow a live Polymarket search when nothing cached matches the article.
+   * Off by default: it sends headline keywords off-device, which the
+   * local-embedding path otherwise never does.
+   */
+  searchFallbackEnabled: boolean
   // Wallet state — managed by trade flow, not user-editable directly.
   // All optional until the user connects via WalletConnect v2.
   wcSessionTopic?: string

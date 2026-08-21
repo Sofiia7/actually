@@ -1,6 +1,6 @@
-import type { CachedMarket, MatchResult } from './types'
+import type { CachedMarket, MatchResult, PolyMarket } from './types'
 import { COLOR_THRESHOLDS, HEADLINE_WEIGHT, MAX_BODY_TEXT_CHARS } from './constants'
-import { b64ToFloatArray, cosineSimilarity, priceFromOutcomes } from './util'
+import { b64ToFloatArray, cosineSimilarity, floatArrayToB64, priceFromOutcomes } from './util'
 
 export interface MarketStore {
   getMarkets(): Promise<CachedMarket[]>
@@ -19,7 +19,24 @@ export interface FindMatchDeps {
   store: MarketStore
   embedder: Embedder
   thresholds: MatchThresholds
+  /**
+   * Long-tail lookup, consulted ONLY after the cached set has failed to clear
+   * the floor.
+   *
+   * However the cache is chosen it is a fixed-size shelf, and Polymarket
+   * carries several times more open markets than fit on it. Everything below
+   * the cut is invisible — which is how an open, actively-traded market ends
+   * up looking to the user like a market that does not exist.
+   *
+   * Optional because it costs privacy: the query is built from the user's
+   * headline and leaves the device. Callers must gate it on explicit consent
+   * rather than passing it unconditionally.
+   */
+  searchFallback?: (headline: string) => Promise<PolyMarket[]>
 }
+
+/** Most search candidates we will pay an embedding for. */
+const MAX_FALLBACK_CANDIDATES = 25
 
 function getColor(prob: number): MatchResult['color'] {
   if (prob < COLOR_THRESHOLDS.blue) return 'blue'
@@ -168,6 +185,69 @@ export interface MatchAttempt {
   scored: number
 }
 
+type ScoredRow = { market: CachedMarket; score: number; raw: number }
+
+/**
+ * Ask Polymarket's search for markets the cache never had, then score them on
+ * exactly the same scale as the cached ones.
+ *
+ * Each candidate costs one embedding, which is why the list is capped: this
+ * runs on the user's own device while they wait, unlike the cached vectors
+ * that arrive precomputed. A failure here is deliberately swallowed — the
+ * user already has "nothing matched", and turning a fallback's network error
+ * into the headline message would replace a true answer with a confusing one.
+ */
+async function searchAndScore(
+  headline: string,
+  deps: FindMatchDeps,
+  scoreOne: (m: CachedMarket, vec: Float32Array) => ScoredRow | null,
+  thresholds: MatchThresholds,
+): Promise<{ match: MatchResult | null; nearest: NearestMiss | null; scored: number } | null> {
+  if (!deps.searchFallback) return null
+  let candidates: PolyMarket[]
+  try {
+    candidates = await deps.searchFallback(headline)
+  } catch {
+    return null
+  }
+
+  const scored: ScoredRow[] = []
+  for (const m of candidates.slice(0, MAX_FALLBACK_CANDIDATES)) {
+    const vec = await deps.embedder.embed(m.question)
+    const cached: CachedMarket = {
+      ...m,
+      embeddingB64: floatArrayToB64(vec),
+      questionHash: '',
+      cachedAt: Date.now(),
+    }
+    const row = scoreOne(cached, vec)
+    if (row) scored.push(row)
+  }
+  scored.sort((a, b) => b.score - a.score)
+
+  const top = scored[0]
+  if (!top) return { match: null, nearest: null, scored: 0 }
+  const nearest: NearestMiss = { question: top.market.question, slug: top.market.slug, score: top.raw }
+  if (top.raw < thresholds.lowConfidenceFloor) {
+    return { match: null, nearest, scored: scored.length }
+  }
+
+  const probability = priceFromOutcomes(top.market.outcomePrices, top.market.outcomes)
+  return {
+    match: {
+      market: top.market,
+      probability,
+      confidence: top.raw,
+      color: getColor(probability),
+      lowConfidence: top.raw < thresholds.confidenceThreshold,
+      alternatives: scored.slice(1, 5).map((r) => r.market),
+      alternativeScores: scored.slice(1, 5).map((r) => r.score),
+    },
+    nearest,
+    scored: scored.length,
+  }
+}
+
 export async function findMatch(
   headline: string,
   bodyText: string,
@@ -182,7 +262,11 @@ export async function attemptMatch(
   deps: FindMatchDeps,
 ): Promise<MatchAttempt> {
   const cache = await deps.store.getMarkets()
-  if (cache.length === 0) return { match: null, nearest: null, scored: 0 }
+  // An empty cache is still worth a search when one is offered — that is the
+  // one situation where the shelf being empty is not the end of the story.
+  if (cache.length === 0 && !deps.searchFallback) {
+    return { match: null, nearest: null, scored: 0 }
+  }
 
   const trimmedBody = bodyText.slice(0, MAX_BODY_TEXT_CHARS)
   const inputText =
@@ -202,39 +286,62 @@ export async function attemptMatch(
   //   2. lexical-overlap bonus (see keywordOverlapBonus)
   //   3. number-overlap score (see numberOverlapScore — can be negative)
   //   4. small volume bonus (capped +0.015) — tiebreaker for genuine ties
-  const scored: { market: CachedMarket; score: number; raw: number }[] = []
   const now = Date.now()
-  for (const m of cache) {
-    if (!m.embeddingB64) continue
+  /** Score one market against the article. Null when it is not scoreable. */
+  const scoreOne = (
+    m: CachedMarket,
+    vec: Float32Array,
+  ): { market: CachedMarket; score: number; raw: number } | null => {
     // A resolved/closed market must never be offered as a live, tradeable
     // match — the cache can be up to ~2h stale (worker cron) or days stale
     // (extension's lazy refresh), so a market that closed inside that window
     // is otherwise indistinguishable from a live one at scoring time.
-    if (m.closed) continue
-    if (m.endDate && Date.parse(m.endDate) < now) continue
-    const v = b64ToFloatArray(m.embeddingB64)
-    if (v.length !== articleVec.length) continue
-    const raw = cosineSimilarity(articleVec, v)
+    if (m.closed) return null
+    if (m.endDate && Date.parse(m.endDate) < now) return null
+    if (vec.length !== articleVec.length) return null
+    const raw = cosineSimilarity(articleVec, vec)
     const kwBonus = keywordOverlapBonus(headlineKeywords, m.question)
     const numScore = numberOverlapScore(headlineNumbers, m.question)
     const volBonus = m.volume > 0 ? Math.min(0.015, 0.002 * Math.log10(m.volume)) : 0
-    scored.push({ market: m, score: raw + kwBonus + numScore + volBonus, raw })
+    return { market: m, score: raw + kwBonus + numScore + volBonus, raw }
+  }
+
+  const scored: { market: CachedMarket; score: number; raw: number }[] = []
+  for (const m of cache) {
+    if (!m.embeddingB64) continue
+    const s = scoreOne(m, b64ToFloatArray(m.embeddingB64))
+    if (s) scored.push(s)
   }
   scored.sort((a, b) => b.score - a.score)
+
+  const missOf = (
+    row: { market: CachedMarket; raw: number } | undefined,
+  ): NearestMiss | null =>
+    row ? { question: row.market.question, slug: row.market.slug, score: row.raw } : null
+
   const top = scored[0]
-  if (!top) return { match: null, nearest: null, scored: scored.length }
-
-  const nearest: NearestMiss = {
-    question: top.market.question,
-    slug: top.market.slug,
-    score: top.raw,
-  }
-
   // Compare thresholds against the raw semantic score (not the boosted one),
   // so the volume bonus only acts as a tiebreaker, not a confidence inflator.
+  if (!top || top.raw < deps.thresholds.lowConfidenceFloor) {
+    // Nothing on the shelf fits. Ask Polymarket directly, if allowed to.
+    const viaSearch = deps.searchFallback
+      ? await searchAndScore(headline, deps, scoreOne, deps.thresholds)
+      : null
+    if (viaSearch?.match) return { ...viaSearch, scored: scored.length + viaSearch.scored }
+    // Report whichever attempt got closer, so the UI names the better miss.
+    const cachedMiss = missOf(top)
+    const searchMiss = viaSearch?.nearest ?? null
+    const nearestOverall =
+      cachedMiss && searchMiss ? (searchMiss.score > cachedMiss.score ? searchMiss : cachedMiss) : cachedMiss ?? searchMiss
+    return {
+      match: null,
+      nearest: nearestOverall,
+      scored: scored.length + (viaSearch?.scored ?? 0),
+    }
+  }
+
+  const nearest = missOf(top)!
   const isAboveThreshold = top.raw >= deps.thresholds.confidenceThreshold
-  const isAboveFloor = top.raw >= deps.thresholds.lowConfidenceFloor
-  if (!isAboveFloor) return { match: null, nearest, scored: scored.length }
 
   const probability = priceFromOutcomes(top.market.outcomePrices, top.market.outcomes)
   const alternatives = scored.slice(1, 5).map((s) => s.market)

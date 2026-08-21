@@ -412,6 +412,7 @@ export const IntegratedPopup: React.FC<IntegratedPopupProps> = ({
     confidence: settings.confidenceThreshold,
     floor: settings.lowConfidenceFloor,
     shareStats: settings.telemetryEnabled,
+    searchFallback: settings.searchFallbackEnabled,
     cacheSize: cache.count,
     cacheAge: autoRefreshing ? 'loading markets…' : cache.lastUpdated ? formatRelative(cache.lastUpdated) : '—',
     version: chrome.runtime?.getManifest?.().version ?? '1.0.0',
@@ -592,6 +593,7 @@ export const IntegratedPopup: React.FC<IntegratedPopupProps> = ({
                 if (patch.confidence != null) next.confidenceThreshold = patch.confidence
                 if (patch.floor != null) next.lowConfidenceFloor = patch.floor
                 if (patch.shareStats != null) next.telemetryEnabled = patch.shareStats
+                if (patch.searchFallback != null) next.searchFallbackEnabled = patch.searchFallback
                 if (patch.workerUrl != null) next.workerUrl = patch.workerUrl
                 if (patch.workerSecret != null) next.workerSecret = patch.workerSecret
                 void patchSettings(next)

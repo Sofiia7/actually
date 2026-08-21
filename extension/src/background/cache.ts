@@ -7,6 +7,7 @@ import {
   type PolyMarket,
   LOCAL_MODEL_ID,
   MAX_MARKETS_CACHE,
+  MAX_MARKETS_ON_DEVICE,
   fetchActiveMarkets,
   floatArrayToB64,
   isBinaryOutcomes,
@@ -119,17 +120,20 @@ async function refreshByEmbedding(
     await chrome.storage.local.set({ [STORAGE_KEYS.marketCacheModel]: expectedModel })
   }
 
+  // MAX_MARKETS_ON_DEVICE, not MAX_MARKETS_CACHE: every market this path
+  // takes costs a MiniLM inference here rather than arriving pre-embedded in
+  // the worker's blob. See the constant's own note.
   const rawRemote = await fetchActiveMarkets(
     workerUrl,
     workerSecret,
-    MAX_MARKETS_CACHE + 50, // overfetch a bit to compensate for noise/binary filters
+    MAX_MARKETS_ON_DEVICE + 50, // overfetch a bit to compensate for noise/binary filters
   )
   // Drop word-association noise AND non-binary markets — the trade flow assumes
   // a Yes/No pair, so a categorical market must never reach the cache.
   const remote = rawRemote
     .filter((m) => !isNoiseMarket(m.question))
     .filter((m) => isBinaryOutcomes(m.outcomes))
-    .slice(0, MAX_MARKETS_CACHE)
+    .slice(0, MAX_MARKETS_ON_DEVICE)
   const existing = await getMarketCache()
   const existingById = new Map(existing.map((m) => [m.id, m]))
 
@@ -167,14 +171,14 @@ async function refreshByEmbedding(
       })
     }
     // Persist partial progress
-    const partial = [...reused, ...freshlyEmbedded].slice(0, MAX_MARKETS_CACHE)
+    const partial = [...reused, ...freshlyEmbedded].slice(0, MAX_MARKETS_ON_DEVICE)
     await chrome.storage.local.set({
       [STORAGE_KEYS.marketCache]: partial,
       [STORAGE_KEYS.marketCacheTs]: Date.now(),
     })
   }
 
-  const merged = [...reused, ...freshlyEmbedded].slice(0, MAX_MARKETS_CACHE)
+  const merged = [...reused, ...freshlyEmbedded].slice(0, MAX_MARKETS_ON_DEVICE)
   const removed = existing.length - reused.length
 
   // If nothing needed embedding, still bump the timestamp

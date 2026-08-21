@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { attemptMatch, extractKeywords, extractNumericTokens, findMatch, keywordOverlapBonus, numberOverlapScore } from './matcher'
 import type { CachedMarket } from './types'
 import { floatArrayToB64 } from './util'
@@ -306,5 +306,90 @@ describe('attemptMatch — a failed check has to be able to say why', () => {
     // findMatch stays the thin wrapper every existing caller expects.
     const legacy = await findMatch('Iran enriches uranium past 60%', '', { store, embedder, thresholds })
     expect(legacy?.market.id).toBe('close')
+  })
+})
+
+describe('attemptMatch — the long-tail search fallback', () => {
+  const thresholds = { confidenceThreshold: 0.8, lowConfidenceFloor: 0.5 }
+  const embedder = { embed: async () => new Float32Array([1, 0, 0]) }
+
+  /** A search hit, shaped as Gamma returns it: no embedding of its own. */
+  function searchHit(question: string) {
+    const { embeddingB64: _e, questionHash: _h, cachedAt: _c, ...rest } = fakeMarket({ id: 'tail', question, vec: [1, 0, 0] })
+    return rest
+  }
+
+  it('finds a market the cache never held — the whole point of the fallback', async () => {
+    // A real, open, actively-traded market can sit below the cache cut: the
+    // live floor was $508,649 of lifetime volume, and "Who will Trump
+    // publicly insult by August 31?" trades at $47,851. To the user that
+    // looked exactly like the market not existing.
+    const store = { getMarkets: async () => [fakeMarket({ id: 'cached', question: 'Will the Lakers win?', vec: [0, 1, 0] })] }
+    const attempt = await attemptMatch('Iran enriches uranium', '', {
+      store, embedder, thresholds,
+      searchFallback: async () => [searchHit('Will Iran enrich uranium?')],
+    })
+    expect(attempt.match?.market.question).toBe('Will Iran enrich uranium?')
+  })
+
+  it('is not consulted when the cache already has an answer', async () => {
+    const store = { getMarkets: async () => [fakeMarket({ id: 'cached', question: 'Will Iran enrich uranium?', vec: [1, 0, 0] })] }
+    const searchFallback = vi.fn(async () => [searchHit('anything')])
+    const attempt = await attemptMatch('Iran enriches uranium', '', { store, embedder, thresholds, searchFallback })
+    expect(attempt.match?.market.id).toBe('cached')
+    expect(searchFallback).not.toHaveBeenCalled()
+  })
+
+  it('holds the floor — search results are scored, not trusted', async () => {
+    // Polymarket's search is lexical, so it answers almost any query with
+    // something. Returning its top hit unscored would turn "no match" into a
+    // confidently wrong match, which is strictly worse than an honest miss.
+    const store = { getMarkets: async () => [] }
+    const attempt = await attemptMatch('Iran enriches uranium', '', {
+      store,
+      embedder: { embed: async (t: string) => (t.includes('uranium') ? new Float32Array([1, 0, 0]) : new Float32Array([0, 1, 0])) },
+      thresholds,
+      searchFallback: async () => [searchHit('Will the Lakers win?')],
+    })
+    expect(attempt.match).toBeNull()
+    expect(attempt.nearest?.question).toBe('Will the Lakers win?')
+  })
+
+  it('reports whichever miss got closer, cached or searched', async () => {
+    const store = { getMarkets: async () => [fakeMarket({ id: 'cached', question: 'Far cached market', vec: [0, 1, 0] })] }
+    const attempt = await attemptMatch('Iran enriches uranium', '', {
+      store,
+      embedder: { embed: async (t: string) => (t.includes('uranium') ? new Float32Array([1, 0, 0]) : new Float32Array([0.9, 0.436, 0])) },
+      thresholds: { confidenceThreshold: 0.99, lowConfidenceFloor: 0.95 },
+      searchFallback: async () => [searchHit('Closer searched market')],
+    })
+    expect(attempt.match).toBeNull()
+    expect(attempt.nearest?.question).toBe('Closer searched market')
+  })
+
+  it('swallows a search failure — the user already has a true answer', async () => {
+    const store = { getMarkets: async () => [fakeMarket({ id: 'cached', question: 'Will the Lakers win?', vec: [0, 1, 0] })] }
+    const attempt = await attemptMatch('Iran enriches uranium', '', {
+      store, embedder, thresholds,
+      searchFallback: async () => { throw new Error('network') },
+    })
+    expect(attempt.match).toBeNull()
+    expect(attempt.nearest?.question).toBe('Will the Lakers win?')
+  })
+
+  it('still searches when the cache is empty', async () => {
+    const attempt = await attemptMatch('Iran enriches uranium', '', {
+      store: { getMarkets: async () => [] },
+      embedder, thresholds,
+      searchFallback: async () => [searchHit('Will Iran enrich uranium?')],
+    })
+    expect(attempt.match?.market.question).toBe('Will Iran enrich uranium?')
+  })
+
+  it('does not search at all when no fallback is provided', async () => {
+    const attempt = await attemptMatch('anything', '', {
+      store: { getMarkets: async () => [] }, embedder, thresholds,
+    })
+    expect(attempt).toEqual({ match: null, nearest: null, scored: 0 })
   })
 })

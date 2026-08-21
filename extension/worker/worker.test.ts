@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import worker from './index'
+import { MARKET_CACHE_LIMITS } from './index'
 
 // We exercise the Worker by calling its `fetch` handler directly with a fake
 // `env` (a Map-backed KV) and a stubbed global `fetch` for the routes that
@@ -748,5 +749,67 @@ describe('Authorization: Bearer (the remote-signer envelope)', () => {
     expect(good.status).toBe(200)
     const bad = await call('/geo', env, { headers: { Authorization: 'Bearer nope' }, auth: null })
     expect(bad.status).toBe(401)
+  })
+})
+
+describe('/search — the long-tail lookup', () => {
+  afterEach(() => vi.unstubAllGlobals())
+
+  /** Gamma's public-search answers with EVENTS wrapping their markets. */
+  function stubSearch(payload: unknown) {
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify(payload), { status: 200 })))
+  }
+
+  it('flattens events to markets and carries the event slug', async () => {
+    // polymarket.com routes on the EVENT slug; the market's own slug 404s.
+    stubSearch({
+      events: [{ slug: 'trump-dc-guard', markets: [{ id: '1', question: 'Guard in DC?', closed: false }] }],
+    })
+    const res = await call('/search?q=national+guard', baseEnv())
+    expect(res.status).toBe(200)
+    const out = (await res.json()) as Array<Record<string, unknown>>
+    expect(out).toHaveLength(1)
+    expect(out[0].question).toBe('Guard in DC?')
+    expect(out[0].events).toEqual([{ slug: 'trump-dc-guard' }])
+  })
+
+  it('drops resolved markets — search indexes them, the user cannot trade them', async () => {
+    stubSearch({
+      events: [{ slug: 'e', markets: [
+        { id: '1', question: 'Already settled', closed: true },
+        { id: '2', question: 'Still open', closed: false },
+      ] }],
+    })
+    const out = (await (await call('/search?q=x', baseEnv())).json()) as Array<Record<string, unknown>>
+    expect(out.map((m) => m.question)).toEqual(['Still open'])
+  })
+
+  it('rejects an empty query instead of asking Gamma for everything', async () => {
+    const res = await call('/search?q=%20%20', baseEnv())
+    expect(res.status).toBe(400)
+  })
+
+  it('caps how much it will return, whatever the caller asks for', async () => {
+    stubSearch({
+      events: [{ slug: 'e', markets: Array.from({ length: 200 }, (_, i) => ({ id: String(i), question: `q${i}`, closed: false })) }],
+    })
+    const out = (await (await call('/search?q=x&limit=999', baseEnv())).json()) as unknown[]
+    expect(out.length).toBeLessThanOrEqual(50)
+  })
+
+  it('reports an upstream failure as 502 rather than as an empty result set', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => new Response('nope', { status: 500 })))
+    const res = await call('/search?q=x', baseEnv())
+    expect(res.status).toBe(502)
+  })
+})
+
+describe('market-cache limits track MAX_MARKETS_CACHE', () => {
+  it('accepts a blob larger than the old 800-market cap', async () => {
+    // The cap moved to 2000 markets (~7.5 MB). The old 1000/5 MB ceilings
+    // would have 400ed or 413ed the cron silently, leaving a stale blob
+    // served forever with nothing in the logs to explain it.
+    expect(MARKET_CACHE_LIMITS.maxMarkets).toBeGreaterThanOrEqual(2000)
+    expect(MARKET_CACHE_LIMITS.maxBodyBytes).toBeGreaterThanOrEqual(8 * 1024 * 1024)
   })
 })

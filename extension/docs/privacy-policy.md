@@ -59,6 +59,26 @@ Each event carries a **pseudonymous** `installId` (a random UUID generated local
 What is **never** sent:
 - URLs you visit
 - Article headlines or content
+
+### Optional: "Search Polymarket when nothing matches" (default OFF)
+
+The extension matches articles against a locally-stored list of ~2000 markets.
+Polymarket carries several times more open markets than that, so a small or
+newly-created market can be missing from the list even though it exists and is
+actively traded.
+
+If you turn this setting on (Settings → "Search Polymarket when nothing
+matches"), then **only when nothing in the local list matches an article**, the
+extension sends **up to six keywords taken from the headline** to our Worker,
+which forwards them to Polymarket's public market search. Stopwords are
+dropped; the article body is never included, and nothing is sent when a local
+match succeeds.
+
+While this setting is **off — which is the default — article text never leaves
+your device on the local embedding provider**, exactly as described above. This
+is the only reason the feature is opt-in rather than simply on: it buys better
+market coverage with a small amount of what you are reading, and that is your
+call to make, not ours.
 - Wallet addresses (EOA or Safe)
 - Order IDs or transaction hashes, except where unavoidably embedded in a CLOB failure message as described above
 - Polymarket usernames
@@ -72,12 +92,14 @@ Disable telemetry at any time in Settings.
 |---|---|---|
 | Cloudflare Workers | All API calls **except signed order submission** (see below) | Request rate limiting, pseudonymous telemetry events (only if you opted in) |
 | Polymarket (`gamma-api`, `clob`, `data-api`) | All discovery + trading | Public market data requests via our Worker; **signed order payloads go directly from your browser to `clob.polymarket.com`, not through our Worker** (see "When you click Place order" above) |
+| Polymarket market search | Only if you turn on "Search Polymarket when nothing matches" (**default off**), and only when a local match fails | Up to six keywords from the headline |
 | OpenAI | Only if you switch to OpenAI embeddings | Article headline + body excerpt for embedding |
 | WalletConnect / Reown | Only after you click Connect | WC relay handshake; never sees article content |
 
 The local embedding model and its WASM runtime are bundled into the extension
 itself (no HuggingFace/jsdelivr fetch at install or runtime) — article text
-never leaves your device when using local embeddings (the default).
+never leaves your device when using local embeddings (the default) and the
+optional market search above is left off (also the default).
 
 ## Your rights
 

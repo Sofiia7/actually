@@ -12,7 +12,7 @@
 import type { OffscreenRequest, OffscreenResponse, SerializableWalletState } from '../shared/messages'
 import { getSettings } from '../background/settings'
 import { isInAppRedeemAvailable } from '../background/builderStatus'
-import { attemptMatch } from '@actually/core'
+import { attemptMatch, extractKeywords, searchMarkets } from '@actually/core'
 import { makeChromeMarketStore, makeSettingsEmbedder } from '../background/adapters'
 import { refreshMarketCache, getMarketCache, getCacheStatus } from '../background/cache'
 import { CACHE_TTL_MINUTES } from '../shared/constants'
@@ -191,7 +191,18 @@ async function handle(msg: OffscreenRequest): Promise<OffscreenResponse> {
           cacheNow = await getMarketCache()
         }
         step = 'find_match'
+        // Long-tail search, only with explicit consent — the query is built
+        // from the user's headline and leaves the device, which is precisely
+        // what the local-embedding path promises never to do.
+        const searchFallback = settings.searchFallbackEnabled
+          ? async (headline: string) => {
+              const terms = [...extractKeywords(headline)].slice(0, 6).join(' ')
+              if (!terms) return []
+              return searchMarkets(settings.workerUrl, settings.workerSecret, terms)
+            }
+          : undefined
         const attempt = await attemptMatch(msg.article.headline, msg.article.bodyText, {
+          searchFallback,
           store: makeChromeMarketStore(),
           embedder: makeSettingsEmbedder(settings),
           thresholds: {

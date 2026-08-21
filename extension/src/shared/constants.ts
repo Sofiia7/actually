@@ -142,6 +142,12 @@ export const DEFAULT_SETTINGS: Settings = {
   // order_*), which warrants asking first rather than tracking by default
   // and hoping users find Settings → "share anonymous stats" to turn it off.
   telemetryEnabled: false,
+  // Off by default, and for a stronger reason than telemetry: the privacy
+  // policy promises that on local embeddings (the default) article text never
+  // leaves the device, and a search query built from the headline IS article
+  // text. Users who want the long tail can trade that away knowingly; nobody
+  // gets it traded away for them.
+  searchFallbackEnabled: false,
 }
 
 export const POLYMARKET_BASE_URL = 'https://polymarket.com/event'

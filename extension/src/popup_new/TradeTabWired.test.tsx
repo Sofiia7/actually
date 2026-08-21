@@ -59,6 +59,7 @@ const settings: Settings = {
   workerUrl: 'https://w',
   workerSecret: 's',
   telemetryEnabled: false,
+  searchFallbackEnabled: false,
 }
 
 const wallet = {

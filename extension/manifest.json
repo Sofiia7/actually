@@ -6,6 +6,7 @@
   "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAnp25IbsVTzbTvWJq+8uwv9JYkRw/oJcr4SQMDlgXr0bBuhyPPajH9OrTlhpWWGaz/OHhf/3SdKo9jdKYh9PEU0E1qBBH2aJii9IlNmWckEf7xeIbu0f9ceTNw0NjLH1CvcyBVKV+2raZQb/bYoEk+R1Dyntc6Y7lmH+MD3emvUEh9GVZ0h5PuvzMZL5T2iLBGByvJ9wfVfNESc73HUJaTj50BabNgd2y2azImVLQdQJxLBLQBBVGbk+jRUbBfQuPHtWCqGceuPCyLkjYJM5GS15OCTLOx7mIB2szGIIwVOv0jjh9NTUif6UGYP2H4ZDYA/pwaA49wjNjRepkRWV/mwIDAQAB",
   "permissions": [
     "storage",
+    "unlimitedStorage",
     "activeTab",
     "alarms",
     "scripting",
