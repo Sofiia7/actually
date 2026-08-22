@@ -44,6 +44,16 @@ export async function redeemPosition(deps: RedeemPositionDeps, input: RedeemPosi
     if (!matching.some((p) => p.redeemable)) {
       return { ok: false, error: 'not_yet_redeemable' }
     }
+    // `redeemable` from data-api means "this market has resolved", NOT "there
+    // is money here": it comes back true for holders of the LOSING side too,
+    // with curPrice 0.0000 and currentValue 0.00 beside it. Without this
+    // check the tool signs and submits a redeem that the relayer answers with
+    // "PRECHECK_SKIPPED: redeem skipped: zero position balance" — burning a
+    // signature and a slot of the builder's daily relayer quota to be told
+    // there was nothing to collect. An agent, unlike a person, will retry it.
+    if (!matching.some((p) => p.currentValue > 0 || p.curPrice > 0)) {
+      return { ok: false, error: 'nothing_to_redeem' }
+    }
 
     const tx = buildRedeemTransaction(
       input.conditionId,

@@ -139,3 +139,59 @@ describe('redeemPosition', () => {
     expect(submittedTx).toBeDefined()
   })
 })
+
+describe('redeemPosition — a resolved market is not the same as a payout', () => {
+  it('refuses a losing position instead of paying to be told it is worthless', async () => {
+    // data-api reports redeemable=true for the LOSING side as well, alongside
+    // curPrice 0 and currentValue 0. Submitting anyway gets
+    // "PRECHECK_SKIPPED: redeem skipped: zero position balance" from the
+    // relayer, after the signature and against the builder's daily quota —
+    // and an agent, unlike a person, will simply try again.
+    let submitted = false
+    const result = await redeemPosition(
+      {
+        privateKey: '0xkey',
+        getFunderAddress: async () => '0xsafe',
+        fetchPositions: async () => [position({ curPrice: 0, currentValue: 0, cashPnl: -12, percentPnl: -100 })],
+        submit: async () => {
+          submitted = true
+          return { success: true, transactionId: 'tx1' }
+        },
+      },
+      { conditionId: COND },
+    )
+    expect(result.ok).toBe(false)
+    expect(result.error).toBe('nothing_to_redeem')
+    expect(submitted).toBe(false)
+  })
+
+  it('still redeems a winning position', async () => {
+    const result = await redeemPosition(
+      {
+        privateKey: '0xkey',
+        getFunderAddress: async () => '0xsafe',
+        fetchPositions: async () => [position({ curPrice: 1, currentValue: 40 })],
+        submit: async () => ({ success: true, transactionId: 'tx1' }),
+      },
+      { conditionId: COND },
+    )
+    expect(result.ok).toBe(true)
+  })
+
+  it('redeems when only one of several positions on the condition has value', async () => {
+    // Holding both sides of a resolved market: one settles to $1, one to $0.
+    const result = await redeemPosition(
+      {
+        privateKey: '0xkey',
+        getFunderAddress: async () => '0xsafe',
+        fetchPositions: async () => [
+          position({ outcomeIndex: 0, curPrice: 0, currentValue: 0 }),
+          position({ outcomeIndex: 1, curPrice: 1, currentValue: 15 }),
+        ],
+        submit: async () => ({ success: true, transactionId: 'tx1' }),
+      },
+      { conditionId: COND },
+    )
+    expect(result.ok).toBe(true)
+  })
+})

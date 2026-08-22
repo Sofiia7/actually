@@ -50,6 +50,10 @@ and let them optionally trade on those markets in one click.
   read in the background and no other tabs are accessed.
 - **storage** — Save user settings, a local 10-item match history, the cached
   market list, and (if the user connects a wallet) their session locally.
+- **unlimitedStorage** — The cached market list holds ~2000 markets with their
+  precomputed embeddings (~7 MB), which exceeds `storage.local`'s 10 MB default
+  once settings and history sit alongside it. Nothing is uploaded; this only
+  raises the local cache ceiling.
 - **alarms** — Schedule a periodic refresh of the cached market list.
 - **offscreen** — Host the local embedding model (transformers.js / WASM), the
   WalletConnect session, and order signing, which MV3 service workers can't run.
