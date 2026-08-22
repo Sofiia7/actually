@@ -290,7 +290,24 @@ const BLOCKED_COUNTRIES = new Set<string>([
 
 const CORS_BASE = {
   'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-  'Access-Control-Allow-Headers': 'Content-Type, X-Actually-Auth',
+  // `Authorization` is load-bearing and was missing, which broke in-app redeem
+  // completely for weeks.
+  //
+  // checkAuth() has always ACCEPTED `Authorization: Bearer <secret>` — it has
+  // to, because @polymarket/builder-signing-sdk's remote-signer mode sends the
+  // token that way and no other (config.js: `Authorization: Bearer ${token}`).
+  // But accepting a header is worthless if the browser never sends it:
+  // Authorization is not a CORS-safelisted header, so the SDK's fetch from the
+  // offscreen document triggers a preflight, and this list is the preflight's
+  // answer. Omitting it made Chrome block the request outright.
+  //
+  // The failure then arrived wearing someone else's name. With no builder
+  // headers to attach, the SDK submitted to relayer-v2 unauthenticated, the
+  // relayer answered a perfectly correct 401 "invalid authorization", and the
+  // popup reported that Polymarket had refused us and that this build "needs a
+  // builder API key it doesn't have yet" — while the key sat on the Worker,
+  // valid, signing 200s for anything that asked from outside a browser.
+  'Access-Control-Allow-Headers': 'Content-Type, X-Actually-Auth, Authorization',
   'Access-Control-Max-Age': '86400',
   'Content-Type': 'application/json',
 }

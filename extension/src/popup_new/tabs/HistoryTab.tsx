@@ -39,8 +39,17 @@ export interface HistoryTabProps {
   onSelect: (row: HistoryRow, index: number) => void;
   onOpenArticle: (row: HistoryRow, index: number) => void;
   onClear: () => void;
-  /** Your own trades, newest first. Rendered above the match list — a trade
-   * you made outranks a story you glanced at. */
+  /**
+   * Your own trades, newest first. Rendered above the match list — a trade you
+   * made outranks a story you glanced at.
+   *
+   * The two lists on this tab are different KINDS of record and used to be
+   * labelled as though the difference were obvious: "Your trades" above
+   * "Recent matches", with a red "Clear history" underneath that in fact
+   * cleared only the matches. Nothing said which list that button belonged to,
+   * or what a "match" was. Both headers now name their contents and carry a
+   * count, and each clear control names its own scope.
+   */
   trades?: TradeRow[];
   onClearTrades?: () => void;
 }
@@ -208,7 +217,12 @@ export const HistoryTab: React.FC<HistoryTabProps> = ({
   const tradeSection = trades.length > 0 && (
     <div style={{ marginBottom: 16 }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', padding: '0 4px 8px' }}>
-        <span className="label">Your trades</span>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+          <span className="label">Your trades ({trades.length})</span>
+          <Etched size={10.5} weight={300} color="rgba(35,45,70,.45)">
+            Buys, sells and redeems you made here
+          </Etched>
+        </div>
         {onClearTrades && (
           <button
             type="button"
@@ -224,7 +238,7 @@ export const HistoryTab: React.FC<HistoryTabProps> = ({
               color: 'rgba(35,45,70,.5)',
             }}
           >
-            Clear
+            Clear trades
           </button>
         )}
       </div>
@@ -296,8 +310,11 @@ export const HistoryTab: React.FC<HistoryTabProps> = ({
   return (
     <div style={{ padding: '12px 14px 20px' }}>
       {tradeSection}
-      <div style={{ padding: '0 4px 8px' }}>
-        <span className="label">Recent matches</span>
+      <div style={{ padding: '0 4px 8px', display: 'flex', flexDirection: 'column', gap: 2 }}>
+        <span className="label">Stories you checked ({state.items.length})</span>
+        <Etched size={10.5} weight={300} color="rgba(35,45,70,.45)">
+          Pages you ran Check on, and the market each one matched
+        </Etched>
       </div>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
         {state.items.map((m, i) => (
@@ -306,7 +323,7 @@ export const HistoryTab: React.FC<HistoryTabProps> = ({
       </div>
       <div style={{ marginTop: 12 }}>
         <GlassButton size="md" full danger onClick={onClear}>
-          Clear history
+          Clear checked stories
         </GlassButton>
       </div>
     </div>

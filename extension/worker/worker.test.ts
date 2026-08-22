@@ -813,3 +813,32 @@ describe('market-cache limits track MAX_MARKETS_CACHE', () => {
     expect(MARKET_CACHE_LIMITS.maxBodyBytes).toBeGreaterThanOrEqual(8 * 1024 * 1024)
   })
 })
+
+describe('CORS preflight must allow the header the signing SDK actually sends', () => {
+  it('advertises Authorization, without which in-app redeem cannot work at all', async () => {
+    // The bug this pins: checkAuth() accepted `Authorization: Bearer`, but the
+    // preflight never advertised it. @polymarket/builder-signing-sdk's remote
+    // mode sends the token that way and no other, Authorization is not
+    // CORS-safelisted, so Chrome blocked the offscreen document's fetch to
+    // /builder-sign before it left the browser. The SDK then submitted to
+    // relayer-v2 with no builder headers and got a correct 401 — which the
+    // popup reported as Polymarket refusing us over a missing builder key,
+    // while that key sat on the Worker signing 200s for every non-browser
+    // caller. Every layer was individually "fine".
+    const res = await call('/builder-sign', baseEnv(), { method: 'OPTIONS' })
+    const allowed = (res.headers.get('Access-Control-Allow-Headers') ?? '').toLowerCase()
+    expect(allowed).toContain('authorization')
+    expect(allowed).toContain('x-actually-auth')
+  })
+
+  it('still accepts the Bearer form end to end, so the header and the policy agree', async () => {
+    const env = baseEnv({ BUILDER_API_KEY: 'k', BUILDER_API_SECRET: 'c2VjcmV0', BUILDER_API_PASSPHRASE: 'p' })
+    const res = await call('/builder-sign', env, {
+      method: 'POST',
+      headers: { Authorization: 'Bearer secret' },
+      body: JSON.stringify({ method: 'POST', path: '/submit', body: '{}' }),
+      auth: null,
+    })
+    expect(res.status).toBe(200)
+  })
+})

@@ -22,11 +22,20 @@ export function humanRedeemError(raw: string): string {
   if (/redeem_status_unknown/.test(raw)) {
     return "The redeem was submitted but its final status couldn't be confirmed — wait a minute and refresh your positions before retrying."
   }
-  // The relayer rejects unauthenticated /submit outright. Nothing the user
-  // can fix from here, so say what actually happened and point at the one
-  // place that CAN redeem this position today.
+  // The relayer rejects unauthenticated /submit outright.
+  //
+  // The old copy here named a cause it could not possibly know ("in-app
+  // redeem needs a builder API key this build doesn't have yet") and it was
+  // wrong for weeks: the key existed and signed fine, while a missing CORS
+  // header stopped the browser from ever fetching a signature (see CORS_BASE
+  // in worker/index.ts). Users were told the deployment lacked a credential
+  // it had, and steered away from a feature that was one header from working.
+  //
+  // This now reports only what a 401 actually proves - the request reached
+  // Polymarket without valid authorization - and offers the route that always
+  // works, instead of guessing at why.
   if (/invalid authorization|clob_http_401|"status":401|\b401\b/.test(raw)) {
-    return "Polymarket's relayer refused the request (401) — in-app redeem needs a builder API key this build doesn't have yet. Claim the payout on Polymarket instead; the position and funds are safe."
+    return "Polymarket refused the request as unauthorized (401), so the redeem didn't go through. Claim the payout on Polymarket instead; the position and funds are safe."
   }
   if (/relayer_state/.test(raw)) {
     return 'The transaction failed on-chain. Nothing was redeemed — try again shortly.'

@@ -32,11 +32,17 @@ describe('humanRedeemError — say what happened and what to do next', () => {
     // POST /submit — the exact blob a user saw in the popup on 2026-08-16.
     const raw = '{"error":"request error","status":401,"statusText":"","data":{"error":"invalid authorization"}}'
     const msg = humanRedeemError(raw)
-    expect(msg).toMatch(/builder API key/i)
+    expect(msg).toMatch(/unauthorized \(401\)/i)
     expect(msg).toMatch(/on Polymarket/i)
     // And it must say the money is not at risk.
     expect(msg).toMatch(/safe/i)
     expect(msg).not.toContain('statusText')
+    // It must NOT blame a missing builder credential. That claim was wrong
+    // for weeks — the credential was configured and signing 200s, while a
+    // missing CORS header kept the browser from ever fetching a signature.
+    // A message that diagnoses beyond its evidence sends people to fix the
+    // wrong thing.
+    expect(msg).not.toMatch(/builder API key/i)
   })
 
   it('distinguishes an unconfirmed redeem from a failed one', () => {
