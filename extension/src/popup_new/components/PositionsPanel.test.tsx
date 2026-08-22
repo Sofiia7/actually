@@ -130,3 +130,53 @@ describe('a resolved position', () => {
     expect(opsm.builderStatusViaOffscreen).not.toHaveBeenCalled()
   })
 })
+
+describe('a resolved position that lost', () => {
+  // data-api reports redeemable=true for the LOSING side too, with
+  // curPrice 0.0000 and currentValue 0.00 next to it. Verified against the
+  // live API on the market this came from: every holder of the losing Yes
+  // side reads exactly that way.
+  const lost: Position = {
+    ...resolved,
+    size: 129.17,
+    avgPrice: 0.015,
+    curPrice: 0,
+    currentValue: 0,
+    cashPnl: -2,
+    percentPnl: -100,
+  }
+
+  it('does not offer a redeem that can only fail', async () => {
+    // The click cost a wallet signature and then came back with the relayer's
+    // PRECHECK_SKIPPED: zero position balance — the chain agreeing there is
+    // nothing to collect. An action whose only outcome is an error is not an
+    // action.
+    opsm.builderStatusViaOffscreen.mockResolvedValue(true)
+    render(
+      <PositionsPanel positions={[lost]} openOrders={[]} loading={false}
+        cancellingId={null} onCancelOrder={() => {}} onRefresh={() => {}} />,
+    )
+    expect(await screen.findByText(/didn't win, so there's nothing to claim/i)).toBeInTheDocument()
+    expect(screen.queryByText(/^Redeem →$/)).not.toBeInTheDocument()
+    // Nor a Sell — a resolved market does not trade.
+    expect(screen.queryByText(/Sell →/)).not.toBeInTheDocument()
+  })
+
+  it('still offers redeem when the position actually won', async () => {
+    opsm.builderStatusViaOffscreen.mockResolvedValue(true)
+    render(
+      <PositionsPanel positions={[{ ...lost, curPrice: 1, currentValue: 129.17, cashPnl: 127, percentPnl: 6000 }]}
+        openOrders={[]} loading={false}
+        cancellingId={null} onCancelOrder={() => {}} onRefresh={() => {}} />,
+    )
+    expect(await screen.findByText(/Redeem →/)).toBeInTheDocument()
+  })
+
+  it('translates the relayer precheck instead of pasting its JSON at the user', () => {
+    const raw = '{"error":"request error","status":400,"statusText":"","data":{"error":"PRECHECK_SKIPPED: redeem skipped: zero position balance"}}'
+    const msg = humanRedeemError(raw)
+    expect(msg).toMatch(/nothing to claim/i)
+    expect(msg).not.toContain('PRECHECK_SKIPPED')
+    expect(msg).not.toContain('statusText')
+  })
+})

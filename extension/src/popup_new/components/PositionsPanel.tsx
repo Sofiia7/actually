@@ -37,6 +37,12 @@ export function humanRedeemError(raw: string): string {
   if (/invalid authorization|clob_http_401|"status":401|\b401\b/.test(raw)) {
     return "Polymarket refused the request as unauthorized (401), so the redeem didn't go through. Claim the payout on Polymarket instead; the position and funds are safe."
   }
+  // The relayer's own precheck, and the one case where a redeem failing is
+  // the correct outcome: the market resolved against this position, so the
+  // tokens settle to nothing. Shown as raw JSON before this branch existed.
+  if (/PRECHECK_SKIPPED|zero position balance/i.test(raw)) {
+    return "Nothing to claim here — this outcome didn't win, so the position settles to $0. Your other positions are unaffected."
+  }
   if (/relayer_state/.test(raw)) {
     return 'The transaction failed on-chain. Nothing was redeemed — try again shortly.'
   }
@@ -69,8 +75,24 @@ export interface PositionsPanelProps {
  * Spelling out size × avgPrice makes that visible at a glance instead.
  */
 const fmtUsd = (v: number) => `$${v.toFixed(2)}`
+
 const fmtPct = (v: number) => `${v >= 0 ? '+' : ''}${v.toFixed(1)}%`
 const shortenMarketId = (id: string) => (id.length > 10 ? `${id.slice(0, 10)}…` : id)
+
+/**
+ * Whether a resolved position has anything to collect.
+ *
+ * `redeemable` from data-api means "this market has resolved", NOT "there is
+ * money here" — it comes back true for every holder of the losing side, with
+ * curPrice 0.0000 and currentValue 0.00 alongside it. Reading it as the
+ * latter is what put a "Redeem →" link on a position worth exactly nothing:
+ * the click cost a wallet signature and then failed, every time, with the
+ * relayer's own PRECHECK_SKIPPED: zero position balance.
+ */
+function hasPayout(p: Position): boolean {
+  return p.currentValue > 0 || p.curPrice > 0
+}
+
 
 /**
  * Read-only view of the connected wallet's current Polymarket positions and
@@ -265,7 +287,19 @@ export const PositionsPanel: React.FC<PositionsPanelProps> = ({
           {/* A resolved market no longer trades — offering Sell there would
               only ever produce a CLOB rejection. Those are redeemed instead. */}
           {p.redeemable ? (
-            canRedeemInApp ? (
+            !hasPayout(p) ? (
+              /* Resolved AGAINST this position: the tokens still sit in the
+                 wallet, and data-api still calls them redeemable, but they
+                 settle to nothing. Redeeming used to be offered here anyway
+                 and could only ever fail — after a wallet signature — with
+                 the relayer's "PRECHECK_SKIPPED: zero position balance",
+                 which is the chain agreeing there is nothing to collect. */
+              <div style={{ marginTop: 5 }}>
+                <Etched size={10.5} weight={300} color="rgba(35,45,70,.5)">
+                  Resolved · this outcome didn't win, so there's nothing to claim
+                </Etched>
+              </div>
+            ) : canRedeemInApp ? (
               <div style={{ marginTop: 5, display: 'flex', alignItems: 'baseline', gap: 8 }}>
                 <LinkAction onClick={() => void onRedeem(p.conditionId)}>
                   {redeemingId === p.conditionId ? 'Redeeming…' : 'Redeem →'}
