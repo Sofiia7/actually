@@ -62,3 +62,12 @@ EXTRA_BLOCKED_COUNTRIES = ""
 #   MARKET_CACHE_WRITE_SECRET — separate secret gating PUT /market-cache,
 #                             used by the cron precompute job (never baked
 #                             into the extension or MCP server).
+
+# The privacy policy is imported as a text module and served at /privacy, so
+# the published page and the file the repo reviews are the same bytes. The
+# Chrome Web Store needs a live URL; without this the document existed only
+# inside a private repo, where no reviewer or user could reach it.
+[[rules]]
+type = "Text"
+globs = ["**/*.md"]
+fallthrough = true

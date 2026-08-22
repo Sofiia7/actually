@@ -1,6 +1,26 @@
+import { readFileSync } from 'node:fs'
 import { defineConfig } from 'vitest/config'
 
+/**
+ * Load `.md` as a default-export string, matching how Wrangler bundles it for
+ * the Worker (the [[rules]] type = "Text" block in worker/wrangler.toml).
+ *
+ * The Worker imports the privacy policy directly so the published page and
+ * the repo file cannot drift. Without this plugin the whole worker suite
+ * fails to import — vite tries to parse the markdown as JavaScript.
+ */
+function textModules() {
+  return {
+    name: 'text-markdown-modules',
+    load(id: string) {
+      if (!id.endsWith('.md')) return null
+      return `export default ${JSON.stringify(readFileSync(id.split('?')[0], 'utf8'))}`
+    },
+  }
+}
+
 export default defineConfig({
+  plugins: [textModules()],
   test: {
     environment: 'node',
     // Enables RTL auto-cleanup between component tests (unmounts the DOM so

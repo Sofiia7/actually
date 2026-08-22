@@ -6,6 +6,8 @@
  * with auth + rate limiting. Phase 1: read-only proxy. Phase 1.5: signed-order
  * relay via builderCode.
  */
+import PRIVACY_POLICY_MD from '../docs/privacy-policy.md'
+import { renderPrivacyPage } from './privacyPage'
 import type { MarketCacheBlob } from '@actually/core'
 
 interface Env {
@@ -536,6 +538,19 @@ export default {
     // (one extension instance across all its routes) gets near it.
     if (!(await rateLimit(env, 'global', ip, 300))) {
       return json({ error: 'rate_limited' }, 429, headers)
+    }
+
+    // Privacy policy — deliberately BEFORE checkAuth. It is a public document
+    // whose whole purpose is to be readable by people who have no credential:
+    // Chrome Web Store reviewers, and anyone deciding whether to install.
+    if (url.pathname === '/privacy' && (req.method === 'GET' || req.method === 'HEAD')) {
+      return new Response(req.method === 'HEAD' ? null : renderPrivacyPage(PRIVACY_POLICY_MD), {
+        status: 200,
+        headers: {
+          'Content-Type': 'text/html; charset=utf-8',
+          'Cache-Control': 'public, max-age=3600',
+        },
+      })
     }
 
     // Health probe — no auth, no body

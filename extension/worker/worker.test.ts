@@ -842,3 +842,33 @@ describe('CORS preflight must allow the header the signing SDK actually sends', 
     expect(res.status).toBe(200)
   })
 })
+
+describe('/privacy — the one page that must work without a credential', () => {
+  it('serves the policy as HTML with no auth header at all', async () => {
+    // The Chrome Web Store requires a live URL, and reviewers arrive with no
+    // credential. Gating this behind checkAuth would have made the listing
+    // unsubmittable in a way nothing else would have caught.
+    const res = await call('/privacy', baseEnv(), { auth: null, origin: null })
+    expect(res.status).toBe(200)
+    expect(res.headers.get('Content-Type')).toMatch(/text\/html/)
+    const body = await res.text()
+    expect(body.startsWith('<!doctype html>')).toBe(true)
+    expect(body).toMatch(/never leaves your device/)
+  })
+
+  it('works with no shared secret configured, unlike every other route', async () => {
+    const res = await call('/privacy', baseEnv({ WORKER_SHARED_SECRET: undefined }), { auth: null })
+    expect(res.status).toBe(200)
+  })
+
+  it('answers HEAD without a body — link checkers use it', async () => {
+    const res = await call('/privacy', baseEnv(), { method: 'HEAD', auth: null })
+    expect(res.status).toBe(200)
+    expect(await res.text()).toBe('')
+  })
+
+  it('is cacheable, since it changes only on deploy', async () => {
+    const res = await call('/privacy', baseEnv(), { auth: null })
+    expect(res.headers.get('Cache-Control')).toMatch(/max-age=\d+/)
+  })
+})
