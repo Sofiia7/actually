@@ -1,4 +1,4 @@
-import { findMatch, type Embedder, type MarketStore, type MatchThresholds } from '@actually/core'
+import { attemptMatch, type Embedder, type MarketStore, type MatchThresholds, type PolyMarket } from '@actually/core'
 
 export interface CheckNewsInput {
   text: string
@@ -27,12 +27,29 @@ export interface CheckNewsOutput {
   lowConfidence?: boolean
   alternatives?: Array<{ marketId: string; question: string }>
   reason?: 'empty_text' | 'no_market_above_floor'
+  /**
+   * On a miss: the market this came CLOSEST to, and how many were compared.
+   *
+   * A bare `no_market_above_floor` tells an agent nothing it can act on — it
+   * cannot distinguish "Polymarket has nothing on this subject" from "the
+   * cached shelf is a fixed size and the relevant market is below the cut".
+   * Those call for opposite next moves, so the tool now says which it was.
+   */
+  nearest?: { question: string; slug: string; score: number }
+  /** Markets actually compared: open, embedded, not past their end date. */
+  marketsCompared?: number
 }
 
 export interface CheckNewsDeps {
   store: MarketStore
   embedder: Embedder
   thresholds: MatchThresholds
+  /**
+   * Optional long-tail lookup, consulted only when the cached set produces
+   * nothing above the floor. Opt-in for the same reason as in the extension:
+   * the query is built from the caller's text and leaves the machine.
+   */
+  searchFallback?: (headline: string) => Promise<PolyMarket[]>
 }
 
 // Errors from deps.store/deps.embedder (network failures, model load
@@ -49,9 +66,15 @@ export async function checkNews(deps: CheckNewsDeps, input: CheckNewsInput): Pro
   // discriminator (see @actually/core's matcher.ts) alive, and the body-side
   // is where findMatch's own MAX_BODY_TEXT_CHARS truncation already bounds
   // the embedding input length.
-  const match = await findMatch(text, text, deps)
+  const attempt = await attemptMatch(text, text, deps)
+  const match = attempt.match
   if (!match) {
-    return { hasMarket: false, reason: 'no_market_above_floor' }
+    return {
+      hasMarket: false,
+      reason: 'no_market_above_floor',
+      nearest: attempt.nearest ?? undefined,
+      marketsCompared: attempt.scored,
+    }
   }
 
   return {

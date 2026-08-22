@@ -71,7 +71,7 @@ describe('getMarket', () => {
     )
     expect(result.found).toBe(true)
     expect(result.livePrice).toBeNull()
-    expect(result.orderbook).toEqual({ bestBid: null, bestAsk: null, spread: null })
+    expect(result.orderbook).toEqual({ bestBid: null, bestAsk: null, spread: null, marketSellFloor: null })
     expect(fetchLivePriceCalled).toBe(false)
     expect(fetchOrderbookCalled).toBe(false)
   })
@@ -149,5 +149,27 @@ describe('getMarket', () => {
       { marketId: 'm1' },
     )
     expect(fallbackCalled).toBe(false)
+  })
+})
+
+describe('getMarket — the market-sell floor is handed over, not left to the caller', () => {
+  it('quotes a floor strictly below the bid, with the slippage it really costs', async () => {
+    // An agent has no way to know that a fill-or-kill sell at the bid needs
+    // the whole size resting on that level, nor that a 2% band vanishes into
+    // the tick on a cheap book. So the server computes it.
+    const result = await getMarket(
+      {
+        store: { getMarkets: async () => [fakeMarket({ id: 'm1' })] },
+        fetchLivePrice: async () => null,
+        fetchOrderbook: async () => ({ bids: [{ price: '0.011', size: '500' }], asks: [] }),
+        fetchMarketById: async () => null,
+      },
+      { marketId: 'm1' },
+    )
+    const floor = result.orderbook?.marketSellFloor
+    expect(floor?.price).toBeCloseTo(0.01, 6)
+    expect(floor?.price).toBeLessThan(0.011)
+    // 2% was never available at this price; the honest figure is one tick.
+    expect(floor?.maxSlippage).toBeCloseTo(0.0909, 3)
   })
 })

@@ -86,3 +86,46 @@ describe('checkNews', () => {
     expect(result.alternatives).toHaveLength(3)
   })
 })
+
+describe('checkNews — a miss has to be actionable for an agent', () => {
+  const embedder = { embed: async () => new Float32Array([1, 0, 0]) }
+
+  it('names what it came closest to, and how many it compared', async () => {
+    // A bare `no_market_above_floor` cannot tell an agent whether Polymarket
+    // has nothing on the subject or the cached shelf simply does not reach
+    // that far. Those call for opposite next moves.
+    const out = await checkNews(
+      { store: { getMarkets: async () => [fakeMarket({ id: 'far', question: 'Will the Lakers win?', vec: [0, 1, 0] })] }, embedder, thresholds },
+      { text: 'Iran enriches uranium past 60%' },
+    )
+    expect(out.hasMarket).toBe(false)
+    expect(out.reason).toBe('no_market_above_floor')
+    expect(out.nearest?.question).toBe('Will the Lakers win?')
+    expect(out.marketsCompared).toBe(1)
+  })
+
+  it('reaches the long tail when the operator opted in', async () => {
+    const { embeddingB64: _e, questionHash: _h, cachedAt: _c, ...tail } =
+      fakeMarket({ id: 'tail', question: 'Will Iran enrich uranium?', vec: [1, 0, 0] })
+    const out = await checkNews(
+      {
+        store: { getMarkets: async () => [fakeMarket({ id: 'far', question: 'Will the Lakers win?', vec: [0, 1, 0] })] },
+        embedder,
+        thresholds,
+        searchFallback: async () => [tail],
+      },
+      { text: 'Iran enriches uranium past 60%' },
+    )
+    expect(out.hasMarket).toBe(true)
+    expect(out.market?.question).toBe('Will Iran enrich uranium?')
+  })
+
+  it('does not search when no fallback was supplied', async () => {
+    const out = await checkNews(
+      { store: { getMarkets: async () => [] }, embedder, thresholds },
+      { text: 'anything' },
+    )
+    expect(out.hasMarket).toBe(false)
+    expect(out.marketsCompared).toBe(0)
+  })
+})

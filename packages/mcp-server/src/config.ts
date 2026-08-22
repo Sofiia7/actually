@@ -65,8 +65,34 @@ export const PRIVATE_KEY: string | undefined = process.env.POLYMARKET_PRIVATE_KE
  * project's own launch checklist) this path has never been exercised against
  * a real resolved mainnet position. Opt-in only, separate from PRIVATE_KEY,
  * so an operator has to make the same call twice before an agent can reach it.
+ *
+ * Status as of 2026-08-21 — three separate layers have been fixed and
+ * verified against live services, and the last mile is still unproven:
+ *   builder auth on POST /submit   verified (relayer answers on the merits)
+ *   neg-risk contract selection     verified (NegRiskAdapter, flag arrives)
+ *   losing-position guard           added (relayer's own precheck agreed)
+ *   a redeem that actually collects  NOT YET OBSERVED — relayer-v2
+ *                                    /transactions is still empty
+ * Treat this as in testing until a resolved position with currentValue > 0
+ * has been redeemed end to end.
  */
 export const REDEEM_ENABLED: boolean = process.env.ACTUALLY_ENABLE_REDEEM === 'true'
+
+/**
+ * Let check_news fall back to Polymarket's own market search when nothing in
+ * the cached set clears the floor.
+ *
+ * The cache is a fixed shelf (~2000 markets) and Polymarket carries several
+ * times that, so the long tail is unreachable without this — a real, open,
+ * actively-traded market can look to an agent exactly like a market that does
+ * not exist.
+ *
+ * Off by default for the same reason as in the extension: the query is built
+ * from the caller's text and leaves this machine. That the text has usually
+ * already passed through a model does not make the extra egress the
+ * operator's default; it makes it their decision.
+ */
+export const SEARCH_FALLBACK_ENABLED: boolean = process.env.ACTUALLY_SEARCH_FALLBACK === 'true'
 
 /**
  * Builder API credentials, from polymarket.com -> Settings -> Builders ->

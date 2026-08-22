@@ -305,7 +305,7 @@ export const PositionsPanel: React.FC<PositionsPanelProps> = ({
                   {redeemingId === p.conditionId ? 'Redeeming…' : 'Redeem →'}
                 </LinkAction>
                 <Etched size={10.5} weight={300} color="rgba(35,45,70,.5)">
-                  Market resolved · no gas needed
+                  Market resolved · no gas needed · in testing
                 </Etched>
               </div>
             ) : (

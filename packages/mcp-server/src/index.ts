@@ -3,6 +3,7 @@ import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 import { z } from 'zod'
 import {
   defaultThresholds,
+  extractKeywords,
   fetchLivePrice,
   fetchMarketById,
   fetchOrderbookJson,
@@ -10,8 +11,9 @@ import {
   LOCAL_MODEL_ID,
   resolveOrderToken,
   safeJsonArray,
+  searchMarkets,
 } from '@actually/core'
-import { BUILDER_CODE, DAILY_LIMIT_USD, MAX_ORDER_USD, PKG_VERSION, PRIVATE_KEY, REDEEM_ENABLED, SPEND_GUARD_STATE_PATH, requireWorkerConfig } from './config'
+import { BUILDER_CODE, DAILY_LIMIT_USD, MAX_ORDER_USD, PKG_VERSION, PRIVATE_KEY, REDEEM_ENABLED, SEARCH_FALLBACK_ENABLED, SPEND_GUARD_STATE_PATH, requireWorkerConfig } from './config'
 import { WorkerMarketStore } from './marketStore'
 import { LocalEmbedder } from './embedder'
 import { SpendGuard } from './spendGuard'
@@ -71,7 +73,18 @@ server.registerTool(
     inputSchema: { text: z.string().min(1).max(8000) },
   },
   async ({ text }) => {
-    const result = await checkNews({ store: getStore(), embedder, thresholds }, { text })
+    // Long-tail search only when the operator opted in — see
+    // SEARCH_FALLBACK_ENABLED. Built here rather than inside checkNews so the
+    // tool stays a pure function of its deps and testable without network.
+    const searchFallback = SEARCH_FALLBACK_ENABLED
+      ? async (headline: string) => {
+          const { workerUrl, workerSecret } = requireWorkerConfig()
+          const terms = [...extractKeywords(headline)].slice(0, 6).join(' ')
+          if (!terms) return []
+          return searchMarkets(workerUrl, workerSecret, terms)
+        }
+      : undefined
+    const result = await checkNews({ store: getStore(), embedder, thresholds, searchFallback }, { text })
     return { content: [{ type: 'text' as const, text: JSON.stringify(result) }] }
   },
 )
@@ -144,7 +157,17 @@ if (PRIVATE_KEY) {
         marketId: z.string().min(1),
         side: z.enum(['BUY_YES', 'BUY_NO']),
         sizeUsd: z.number().positive(),
-        price: z.number().gt(0).lt(1),
+        price: z
+          .number()
+          .gt(0)
+          .lt(1)
+          .describe(
+            'LIMIT: the resting price. MARKET: the WORST price you accept, and it must be ' +
+              'strictly below the best bid — a market sell is fill-or-kill, so a floor equal ' +
+              'to the bid fills only if the whole size rests on that one level. Call ' +
+              'get_market first and pass orderbook.marketSellFloor.price rather than deriving ' +
+              'it; on cheap books a 2% band is thinner than one tick and rounds back onto the bid.',
+          ),
         orderType: z.enum(['LIMIT', 'MARKET']),
       },
     },
@@ -271,7 +294,11 @@ if (PRIVATE_KEY) {
           'get_positions — only positions with redeemable:true can be redeemed). This ' +
           'is an on-chain transaction submitted through the Polymarket relayer, not a ' +
           'CLOB order — no POL/gas needed in your wallet, Polymarket covers it. ' +
-          'Not gated by the spend guard (this claims money owed to you, it does not risk new capital).',
+          'Not gated by the spend guard (this claims money owed to you, it does not risk new capital). ' +
+          'IN TESTING: no redeem has yet been observed collecting funds end to end, so treat a ' +
+          'success as unconfirmed until the payout shows in the wallet. Note that redeemable:true ' +
+          'only means the market RESOLVED — a losing position also reports it, and is refused here ' +
+          'with nothing_to_redeem rather than being submitted.',
         inputSchema: { conditionId: z.string().min(1) },
       },
       async (input) => {

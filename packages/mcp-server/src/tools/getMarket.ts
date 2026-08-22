@@ -1,5 +1,7 @@
 import {
   findOutcomeIndex,
+  floorSlippage,
+  marketFloorPrice,
   parseOrderbook,
   priceFromOutcomes,
   type MarketStore,
@@ -24,8 +26,32 @@ export interface GetMarketOutput {
     probabilityYes: number
   }
   livePrice?: number | null
-  orderbook?: { bestBid: number | null; bestAsk: number | null; spread: number | null }
+  orderbook?: {
+    bestBid: number | null
+    bestAsk: number | null
+    spread: number | null
+    /**
+     * Price to pass as `price` for a MARKET sell, and the slippage it accepts.
+     *
+     * Handed over rather than left to the caller because getting it wrong is
+     * silent and total: a market sell is fill-or-kill, so a floor equal to
+     * the bid only fills if the entire size happens to rest on that one
+     * price level. On a 1.1¢ book a nominal 2% band is thinner than half a
+     * tick and rounds straight back onto the bid, which made every market
+     * sell under 2.5¢ structurally impossible in the extension until this
+     * math was fixed. An agent picking "the bid" would land in exactly that
+     * hole with nothing to warn it.
+     */
+    marketSellFloor?: { price: number; maxSlippage: number } | null
+  }
 }
+
+/**
+ * Slippage band a market sell asks for. Matches the extension's ticket so
+ * both clients quote the same number; the tick can force a wider real one,
+ * which is why `maxSlippage` is reported alongside rather than assumed.
+ */
+const MARKET_SELL_FLOOR_PCT = 0.02
 
 export interface GetMarketDeps {
   store: MarketStore
@@ -77,6 +103,17 @@ export async function getMarket(deps: GetMarketDeps, input: GetMarketInput): Pro
       probabilityYes,
     },
     livePrice,
-    orderbook: { bestBid: snap.bestBid, bestAsk: snap.bestAsk, spread: snap.spread },
+    orderbook: {
+      bestBid: snap.bestBid,
+      bestAsk: snap.bestAsk,
+      spread: snap.spread,
+      marketSellFloor:
+        snap.bestBid != null
+          ? (() => {
+              const price = marketFloorPrice(snap.bestBid, MARKET_SELL_FLOOR_PCT, market.tickSize ?? '0.001')
+              return { price, maxSlippage: floorSlippage(snap.bestBid, price) }
+            })()
+          : null,
+    },
   }
 }
