@@ -42,7 +42,8 @@ export interface TranslatorHandle {
  *  logic is testable without a browser. */
 export interface TranslatorApi {
   availability(pair: TranslatePair): Promise<TranslatorAvailability>
-  create(pair: TranslatePair): Promise<TranslatorHandle>
+  /** `onProgress` receives 0..1 while the language pack downloads. */
+  create(pair: TranslatePair, onProgress?: (fraction: number) => void): Promise<TranslatorHandle>
 }
 
 /** The slice of Chrome's LanguageDetector API this module needs. */
@@ -65,6 +66,10 @@ export interface TranslateDeps {
   /** Called with the source language when a one-time language-pack download
    *  is about to start, so the UI can say so instead of looking frozen. */
   onDownloadStart?: (language: string) => void
+  /** Download progress, 0..1, while that pack arrives. Chrome shows no UI of
+   *  its own for it, and the pack is tens of megabytes: without a number on
+   *  screen a working download is indistinguishable from a hang. */
+  onDownloadProgress?: (language: string, fraction: number) => void
   /**
    * Deadline for the calls that should be instant (availability, translate).
    *
@@ -74,15 +79,87 @@ export interface TranslateDeps {
    * "could not translate this page".
    */
   timeoutMs?: number
-  /** Deadline for `create()`, which on first use downloads a language pack
-   *  and is legitimately slow. */
-  createTimeoutMs?: number
+  /**
+   * How long `create()` may go WITHOUT progress before it is abandoned.
+   *
+   * Not a total deadline: the first use of a language downloads a pack big
+   * enough to outlast any fixed number on a slow connection, and cutting a
+   * healthy download off at two minutes is indistinguishable, from the user's
+   * side, from the feature not working. What separates a slow download from a
+   * dead one is whether the bytes are still moving.
+   */
+  createIdleMs?: number
 }
 
 const DEFAULT_TIMEOUT_MS = 8_000
-const DEFAULT_CREATE_TIMEOUT_MS = 120_000
+const DEFAULT_CREATE_IDLE_MS = 60_000
 
 class TranslationTimeout extends Error {}
+
+/**
+ * One translator per language for the life of the popup.
+ *
+ * `create()` is not free even once the pack is on disk — it spins up a model
+ * session — and the popup runs a check per click, so rebuilding it every time
+ * charges the user for the same setup repeatedly. A failed build is evicted so
+ * the next check retries rather than inheriting a dead promise.
+ */
+const translators = new Map<string, Promise<TranslatorHandle>>()
+
+/** Test seam: drop cached translators between cases. */
+export function _resetTranslatorCache(): void {
+  translators.clear()
+}
+
+function getTranslator(
+  api: TranslatorApi,
+  pair: TranslatePair,
+  onProgress: (fraction: number) => void,
+): Promise<TranslatorHandle> {
+  const key = `${pair.sourceLanguage}->${pair.targetLanguage}`
+  const existing = translators.get(key)
+  if (existing) return existing
+  const created = api.create(pair, onProgress).catch((err: unknown) => {
+    translators.delete(key)
+    throw err
+  })
+  translators.set(key, created)
+  return created
+}
+
+/**
+ * Like `withTimeout`, but the clock restarts every time `bump()` is called.
+ * `start` receives that bump so it can report "still alive" from a progress
+ * callback.
+ */
+function withIdleTimeout<T>(
+  start: (bump: () => void) => Promise<T>,
+  idleMs: number,
+  label: string,
+): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    let timer: ReturnType<typeof setTimeout>
+    let settled = false
+    const arm = () => {
+      if (settled) return
+      clearTimeout(timer)
+      timer = setTimeout(() => reject(new TranslationTimeout(`timed out ${label}`)), idleMs)
+    }
+    arm()
+    start(arm).then(
+      (value) => {
+        settled = true
+        clearTimeout(timer)
+        resolve(value)
+      },
+      (err: unknown) => {
+        settled = true
+        clearTimeout(timer)
+        reject(err)
+      },
+    )
+  })
+}
 
 function withTimeout<T>(work: Promise<T>, ms: number, label: string): Promise<T> {
   return new Promise<T>((resolve, reject) => {
@@ -147,7 +224,7 @@ export async function translateArticle(
 
   const pair: TranslatePair = { sourceLanguage: language, targetLanguage: 'en' }
   const quick = deps.timeoutMs ?? DEFAULT_TIMEOUT_MS
-  const slow = deps.createTimeoutMs ?? DEFAULT_CREATE_TIMEOUT_MS
+  const idle = deps.createIdleMs ?? DEFAULT_CREATE_IDLE_MS
   try {
     const availability = await withTimeout(
       deps.translator.availability(pair),
@@ -159,7 +236,15 @@ export async function translateArticle(
     // a language pack that arrives once and is reused forever after.
     if (availability !== 'available') deps.onDownloadStart?.(language)
 
-    const translator = await withTimeout(deps.translator.create(pair), slow, 'preparing the translator')
+    const translator = await withIdleTimeout(
+      (bump) =>
+        getTranslator(deps.translator!, pair, (fraction) => {
+          bump()
+          deps.onDownloadProgress?.(language, fraction)
+        }),
+      idle,
+      'preparing the translator',
+    )
     const translate = (text: string) => withTimeout(translator.translate(text), quick, 'translating')
     const headline = await translate(article.headline)
     const bodyText = article.bodyText ? await translate(article.bodyText) : article.bodyText
@@ -219,6 +304,10 @@ export function translationNotice(outcome: TranslationOutcome): TranslationNotic
 // Thin shims over the real globals. Not unit-tested (there is nothing to
 // test but the shape of an API we do not own); every decision above them is.
 
+interface DownloadProgressEvent extends Event {
+  loaded: number
+}
+
 interface ChromeTranslatorGlobal {
   availability(pair: TranslatePair): Promise<TranslatorAvailability>
   create(opts: TranslatePair & { monitor?: (m: EventTarget) => void }): Promise<TranslatorHandle>
@@ -235,7 +324,15 @@ export function browserTranslator(): TranslatorApi | null {
   if (!api?.create || !api.availability) return null
   return {
     availability: (pair) => api.availability(pair),
-    create: (pair) => api.create({ ...pair }),
+    create: (pair, onProgress) =>
+      api.create({
+        ...pair,
+        // Chrome reports the language-pack download here and nowhere else.
+        monitor: (m) =>
+          m.addEventListener('downloadprogress', (e) =>
+            onProgress?.((e as DownloadProgressEvent).loaded),
+          ),
+      }),
   }
 }
 

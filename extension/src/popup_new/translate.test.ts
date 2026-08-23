@@ -1,12 +1,17 @@
-import { describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { ArticleData } from '../shared/types'
 import {
+  _resetTranslatorCache,
   languageName,
   resolveSourceLanguage,
   translateArticle,
   translationNotice,
   type TranslatorApi,
 } from './translate'
+
+beforeEach(() => {
+  _resetTranslatorCache()
+})
 
 function article(over: Partial<ArticleData> = {}): ArticleData {
   return {
@@ -88,7 +93,10 @@ describe('translateArticle', () => {
     await translateArticle(article({ headline: 'Trump droht China mit Zöllen', pageLang: 'de' }), {
       translator: fakeTranslator({ create }),
     })
-    expect(create).toHaveBeenCalledWith(expect.objectContaining({ sourceLanguage: 'de', targetLanguage: 'en' }))
+    expect(create).toHaveBeenCalledWith(
+      expect.objectContaining({ sourceLanguage: 'de', targetLanguage: 'en' }),
+      expect.any(Function),
+    )
   })
 
   it('reports an unsupported browser when there is no Translator API', async () => {
@@ -184,9 +192,90 @@ describe('translateArticle', () => {
           ),
       }),
       timeoutMs: 5,
-      createTimeoutMs: 1000,
+      createIdleMs: 1000,
     })
     expect(out.kind).toBe('translated')
+  })
+
+  // A pack big enough to be worth downloading is big enough to outlast any
+  // fixed deadline on a slow connection. What distinguishes a slow download
+  // from a dead one is whether the bytes are still moving, so that is what
+  // the deadline watches.
+  it('keeps waiting as long as the download keeps moving', async () => {
+    const tick = (ms: number) => new Promise((r) => setTimeout(r, ms))
+    const out = await translateArticle(RU, {
+      translator: fakeTranslator({
+        availability: async () => 'downloadable',
+        create: async (_pair, onProgress) => {
+          for (const fraction of [0.3, 0.6, 0.9]) {
+            await tick(15)
+            onProgress?.(fraction)
+          }
+          await tick(15)
+          return { translate: async (t: string) => `EN(${t})` }
+        },
+      }),
+      createIdleMs: 40,
+    })
+    expect(out.kind).toBe('translated')
+  })
+
+  it('gives up on a download that stops moving', async () => {
+    const out = await translateArticle(RU, {
+      translator: fakeTranslator({
+        availability: async () => 'downloadable',
+        create: (_pair, onProgress) =>
+          new Promise<never>(() => {
+            onProgress?.(0.3)
+          }),
+      }),
+      createIdleMs: 30,
+    })
+    expect(out).toEqual({ kind: 'failed', language: 'ru', error: 'timed out preparing the translator' })
+  })
+
+  // The language pack is tens of megabytes and Chrome gives no UI of its own.
+  // Without a number moving on screen, a legitimate download is indisputable
+  // from a hang, and the user is left staring at a still dot.
+  it('reports download progress as it arrives', async () => {
+    const seen: number[] = []
+    await translateArticle(RU, {
+      translator: fakeTranslator({
+        availability: async () => 'downloadable',
+        create: async (_pair, onProgress) => {
+          onProgress?.(0.25)
+          onProgress?.(1)
+          return { translate: async (t: string) => t }
+        },
+      }),
+      onDownloadProgress: (_lang, fraction) => seen.push(fraction),
+    })
+    expect(seen).toEqual([0.25, 1])
+  })
+
+  it('reuses one translator per language instead of building it per check', async () => {
+    const create = vi.fn(async () => ({ translate: async (t: string) => t }))
+    const deps = { translator: fakeTranslator({ create }) }
+    await translateArticle(RU, deps)
+    await translateArticle(RU, deps)
+    expect(create).toHaveBeenCalledTimes(1)
+  })
+
+  it('does not cache a translator that failed to build', async () => {
+    let attempts = 0
+    const deps = {
+      translator: fakeTranslator({
+        create: async () => {
+          attempts++
+          if (attempts === 1) throw new Error('transient')
+          return { translate: async (t: string) => `EN(${t})` }
+        },
+      }),
+    }
+    const first = await translateArticle(RU, deps)
+    const second = await translateArticle(RU, deps)
+    expect(first.kind).toBe('failed')
+    expect(second.kind).toBe('translated')
   })
 
   it('skips the body call when the page had no body text', async () => {

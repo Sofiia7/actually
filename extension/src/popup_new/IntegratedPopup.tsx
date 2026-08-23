@@ -337,14 +337,27 @@ export const IntegratedPopup: React.FC<IntegratedPopupProps> = ({
       // scores below the floor against the market it is literally about.
       // Chrome's built-in translator does this locally. When it can't, the
       // check still runs on the original text and the notice says why.
+      // The language pack is a one-time, tens-of-megabytes download that
+      // Chrome performs with no UI of its own, so the percentage below is the
+      // only sign the popup is working rather than wedged.
+      let shownPercent = -1
       const translation = await translateArticle(article, {
         translator: browserTranslator(),
         detector: browserDetector(),
         onDownloadStart: (language) =>
           setCheckState({
             kind: 'loading',
-            note: `preparing the ${languageName(language)} translator, one time only…`,
+            note: `downloading the ${languageName(language)} translator, one time only…`,
           }),
+        onDownloadProgress: (language, fraction) => {
+          const percent = Math.round(fraction * 100)
+          if (percent === shownPercent) return
+          shownPercent = percent
+          setCheckState({
+            kind: 'loading',
+            note: `downloading the ${languageName(language)} translator… ${percent}%`,
+          })
+        },
       })
       setTranslationNote(translationNotice(translation))
       const matched = translation.kind === 'translated' ? translation.article : article
