@@ -3,7 +3,7 @@ name: CI
 on:
   # Root package.json / package-lock.json are in the filters because a
   # lockfile-only change can absolutely break the build (the 2026-07-05..14
-  # red streak was a Windows-generated lock missing Linux rollup binaries —
+  # red streak was a Windows-generated lock missing Linux rollup binaries -
   # and its fix commit didn't trigger CI under the old filters).
   pull_request:
     paths:
@@ -43,8 +43,15 @@ jobs:
       - name: Type-check all workspaces
         run: npm run lint --workspaces --if-present
 
-      - name: Unit tests — all workspaces
+      - name: Unit tests - all workspaces
         run: npm test --workspaces --if-present
+
+      # House style, enforced rather than remembered: plain hyphens only, never
+      # a long dash, in UI strings, code, comments or docs. See
+      # extension/scripts/check-dashes.mjs for the one allowed exception.
+      - name: No long dashes
+        working-directory: extension
+        run: npm run lint:dashes
 
       # The production build needs (a) a fake Worker secret so vite.config.ts
       # build-time CSP substitution exercises its happy path and (b) the
@@ -54,8 +61,8 @@ jobs:
         working-directory: extension
         run: npm run fonts:fetch
 
-      # public/models/ + public/onnx/ (~34MB) are gitignored — too large to
-      # commit — and fetched here the same way local devs run
+      # public/models/ + public/onnx/ (~34MB) are gitignored - too large to
+      # commit - and fetched here the same way local devs run
       # `npm run models:fetch` before a release build (see SECURITY.md).
       - name: Cache the local embedding model + WASM runtime
         uses: actions/cache@v4

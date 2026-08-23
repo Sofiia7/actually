@@ -122,7 +122,7 @@ describe('sellOrder', () => {
   })
 })
 
-describe('sellOrder — minimum order size', () => {
+describe('sellOrder - minimum order size', () => {
   it('rejects a sub-minimum share count before signing', async () => {
     let signed = false
     const result = await sellOrder(

@@ -2,11 +2,11 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 describe('LocalEmbedder laziness', () => {
   // Hermetic per test. The old pattern put doUnmock/resetModules at the END
-  // of each test body — cleanup that never runs when an assertion throws, and
+  // of each test body - cleanup that never runs when an assertion throws, and
   // a fresh registry that the NEXT test silently depends on. Under a full-run
   // worker schedule an un-awaited pipeline import from one test could land in
   // the next test's window and trip its spy (seen 2026-08-18: 1 flaky fail in
-  // 3 full runs). Reset BEFORE each test, unmock AFTER — unconditionally.
+  // 3 full runs). Reset BEFORE each test, unmock AFTER - unconditionally.
   beforeEach(() => {
     vi.resetModules()
   })

@@ -25,7 +25,7 @@ export interface FindMatchDeps {
    *
    * However the cache is chosen it is a fixed-size shelf, and Polymarket
    * carries several times more open markets than fit on it. Everything below
-   * the cut is invisible — which is how an open, actively-traded market ends
+   * the cut is invisible - which is how an open, actively-traded market ends
    * up looking to the user like a market that does not exist.
    *
    * Optional because it costs privacy: the query is built from the user's
@@ -44,7 +44,7 @@ function getColor(prob: number): MatchResult['color'] {
   return 'red'
 }
 
-// Words that carry no topical signal — common in both news and market questions.
+// Words that carry no topical signal - common in both news and market questions.
 // Kept short on purpose: this is a tiebreaker, not a stopword analyzer.
 const STOPWORDS = new Set([
   'the', 'and', 'for', 'with', 'that', 'this', 'from', 'will', 'would',
@@ -65,10 +65,10 @@ export function extractKeywords(text: string): Set<string> {
   return out
 }
 
-// Words that are too generic to discriminate — they appear in a huge fraction
+// Words that are too generic to discriminate - they appear in a huge fraction
 // of news headlines and Polymarket questions, so giving them a topical bonus
 // rewards thematic generality rather than specificity. Kept narrow on purpose
-// (this is NOT a general-purpose stopword list — those are STOPWORDS above).
+// (this is NOT a general-purpose stopword list - those are STOPWORDS above).
 const LOW_VALUE_OVERLAP = new Set([
   'iran', 'iraq', 'isra', 'russ', 'ukra', 'chin', 'unit', 'amer', // countries
   'trum', 'bide', 'puti', 'zele', 'netan', // leader-name prefixes (4-char stems)
@@ -81,7 +81,7 @@ const LOW_VALUE_OVERLAP = new Set([
 
 /**
  * Topical-overlap bonus. For each headline content-word that also appears in
- * the market question (via prefix-stem), add 0.04 — but only if the stem is
+ * the market question (via prefix-stem), add 0.04 - but only if the stem is
  * NOT in LOW_VALUE_OVERLAP. Common-noise stems like "iran", "lead", "pres"
  * give a smaller 0.01 bonus so they don't dominate when the specific noun is
  * what should actually flip ranking (e.g. "uranium" over generic "Iran").
@@ -105,8 +105,8 @@ export function keywordOverlapBonus(headlineKw: Set<string>, marketQuestion: str
 /**
  * Cheap stem: take the first 4 chars (lowercase), good enough for English news
  * vocabulary as a tiebreaker. Catches Iran/Iranian, uranium/uranic, elect/elected.
- * Will collide on unrelated words sharing a prefix (e.g. "bank" / "banking" — fine;
- * "bank" / "banner" — false-positive, but rare and bounded by per-overlap cap).
+ * Will collide on unrelated words sharing a prefix (e.g. "bank" / "banking" - fine;
+ * "bank" / "banner" - false-positive, but rare and bounded by per-overlap cap).
  */
 function stem(w: string): string {
   return w.slice(0, 4)
@@ -137,11 +137,11 @@ function isWeakNumber(tok: string): boolean {
 
 /**
  * Number-overlap score. Specific numbers (price levels, bps, thresholds) are
- * the strongest cheap discriminator news text offers — the embedding model is
+ * the strongest cheap discriminator news text offers - the embedding model is
  * nearly blind to them ("dip to $57,500" and "reach $120,000" embed almost
  * identically). Shared specific number: +0.08 each (capped with weak bonuses
  * at 0.15). Shared weak number (bare year, single digit): +0.01. When BOTH
- * sides commit to specific numbers and share none, -0.05 — enough to break a
+ * sides commit to specific numbers and share none, -0.05 - enough to break a
  * near-tie in favor of a level-consistent market, small enough that a clearly
  * better semantic match survives.
  */
@@ -177,7 +177,7 @@ export interface MatchAttempt {
    * was scoreable at all (empty cache, no embeddings, every market closed).
    *
    * Exists so a failed check can say something true about WHY. The UI used to
-   * report "No match (cache=789/embedded=789/floor=0.35)" — three numbers
+   * report "No match (cache=789/embedded=789/floor=0.35)" - three numbers
    * that mean something to whoever wrote them and nothing to anyone else.
    */
   nearest: NearestMiss | null
@@ -193,7 +193,7 @@ type ScoredRow = { market: CachedMarket; score: number; raw: number }
  *
  * Each candidate costs one embedding, which is why the list is capped: this
  * runs on the user's own device while they wait, unlike the cached vectors
- * that arrive precomputed. A failure here is deliberately swallowed — the
+ * that arrive precomputed. A failure here is deliberately swallowed - the
  * user already has "nothing matched", and turning a fallback's network error
  * into the headline message would replace a true answer with a confusing one.
  */
@@ -262,7 +262,7 @@ export async function attemptMatch(
   deps: FindMatchDeps,
 ): Promise<MatchAttempt> {
   const cache = await deps.store.getMarkets()
-  // An empty cache is still worth a search when one is offered — that is the
+  // An empty cache is still worth a search when one is offered - that is the
   // one situation where the shelf being empty is not the end of the story.
   if (cache.length === 0 && !deps.searchFallback) {
     return { match: null, nearest: null, scored: 0 }
@@ -284,8 +284,8 @@ export async function attemptMatch(
   // Score every market. Four additive components:
   //   1. raw cosine similarity (semantic relatedness)
   //   2. lexical-overlap bonus (see keywordOverlapBonus)
-  //   3. number-overlap score (see numberOverlapScore — can be negative)
-  //   4. small volume bonus (capped +0.015) — tiebreaker for genuine ties
+  //   3. number-overlap score (see numberOverlapScore - can be negative)
+  //   4. small volume bonus (capped +0.015) - tiebreaker for genuine ties
   const now = Date.now()
   /** Score one market against the article. Null when it is not scoreable. */
   const scoreOne = (
@@ -293,7 +293,7 @@ export async function attemptMatch(
     vec: Float32Array,
   ): { market: CachedMarket; score: number; raw: number } | null => {
     // A resolved/closed market must never be offered as a live, tradeable
-    // match — the cache can be up to ~2h stale (worker cron) or days stale
+    // match - the cache can be up to ~2h stale (worker cron) or days stale
     // (extension's lazy refresh), so a market that closed inside that window
     // is otherwise indistinguishable from a live one at scoring time.
     if (m.closed) return null

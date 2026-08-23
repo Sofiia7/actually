@@ -34,7 +34,7 @@ const { deriveCredentialsMock } = vi.hoisted(() => ({
   deriveCredentialsMock: vi.fn(async () => ({ key: 'k2', secret: 's2', passphrase: 'p2' })),
 }))
 
-// Only the two pieces connectWallet needs stubbed — everything else keeps its
+// Only the two pieces connectWallet needs stubbed - everything else keeps its
 // real implementation so the order-path tests below are unaffected.
 vi.mock('./clob', async (importOriginal) => ({
   ...(await importOriginal<typeof import('./clob')>()),
@@ -159,14 +159,14 @@ describe('disconnectWallet', () => {
   })
 
   it('does not attempt to delete IndexedDB when indexedDB is undefined (this suite\'s default env)', async () => {
-    // No vi.stubGlobal here — confirms the guard clause path is itself exercised,
+    // No vi.stubGlobal here - confirms the guard clause path is itself exercised,
     // not just assumed, and that disconnectWallet still works without it.
     expect(typeof indexedDB).toBe('undefined')
     await expect(disconnectWallet(fakeState)).resolves.toBeUndefined()
   })
 })
 
-describe('restoreWallet — session-lookup failures must not destroy stored credentials', () => {
+describe('restoreWallet - session-lookup failures must not destroy stored credentials', () => {
   const storedWalletFields = {
     wcSessionTopic: 'topic-1',
     walletAddress: '0xabc',
@@ -196,7 +196,7 @@ describe('restoreWallet — session-lookup failures must not destroy stored cred
     expect(restoreSessionMock).not.toHaveBeenCalled()
   })
 
-  it('regression: restoreSession() finding no session at all does NOT wipe stored credentials — a transient lookup miss (e.g. right after the offscreen document was recreated) must be retryable, not permanently destructive', async () => {
+  it('regression: restoreSession() finding no session at all does NOT wipe stored credentials - a transient lookup miss (e.g. right after the offscreen document was recreated) must be retryable, not permanently destructive', async () => {
     restoreSessionMock.mockResolvedValue(null)
     const result = await restoreWallet()
     expect(result).toBeNull()
@@ -224,7 +224,7 @@ describe('restoreWallet — session-lookup failures must not destroy stored cred
   it('asks restoreSession() for the stored topic by name instead of letting it pick a session', async () => {
     // The lookup used to take "whichever live session expires last". Nothing
     // prunes WC sessions, so a user who connected more than once has several
-    // — and that pick could land on a session that was never ours.
+    // - and that pick could land on a session that was never ours.
     restoreSessionMock.mockResolvedValue({ topic: 'topic-1', address: '0xabc' })
     await restoreWallet()
     expect(restoreSessionMock).toHaveBeenCalledWith('topic-1')
@@ -234,7 +234,7 @@ describe('restoreWallet — session-lookup failures must not destroy stored cred
     // This is the case that cost a reconnect-with-signature every time it
     // hit. It is not proof of staleness: the store can be mid-hydration, and
     // ours may simply not be visible yet. Report "not right now" and stay
-    // recoverable — a real disconnect goes through the Disconnect button,
+    // recoverable - a real disconnect goes through the Disconnect button,
     // and a real reconnect overwrites these fields anyway.
     restoreSessionMock.mockResolvedValue({ topic: 'a-different-topic', address: '0xdef' })
     const result = await restoreWallet()
@@ -258,10 +258,10 @@ describe('restoreWallet — session-lookup failures must not destroy stored cred
     })
   })
 
-  it('rides out a mid-hydration miss by itself — a session that appears on the second look must never reach the user as "reconnect"', async () => {
+  it('rides out a mid-hydration miss by itself - a session that appears on the second look must never reach the user as "reconnect"', async () => {
     // The bug this pins is a UX one, not a correctness one. The old code
     // returned null on the first miss, the popup rendered "Couldn't confirm
-    // your wallet session — reopen the popup or reconnect", and the user was
+    // your wallet session - reopen the popup or reconnect", and the user was
     // left to guess that (a) nothing was actually wrong, and (b) the one
     // action they were offered would have thrown away a working session.
     restoreSessionMock.mockResolvedValueOnce(null)
@@ -271,13 +271,13 @@ describe('restoreWallet — session-lookup failures must not destroy stored cred
     expect(restoreSessionMock).toHaveBeenCalledTimes(2)
   })
 
-  it('still reports "not restorable" once the retries are exhausted — a session that is really gone must not be papered over', async () => {
+  it('still reports "not restorable" once the retries are exhausted - a session that is really gone must not be papered over', async () => {
     restoreSessionMock.mockResolvedValue(null)
     expect(await restoreWallet()).toBeNull()
     expect(restoreSessionMock).toHaveBeenCalledTimes(1 + SESSION_RETRY_DELAYS_MS.length)
   })
 
-  it('does not retry an account mismatch — that answer came from a hydrated store and asking again only adds latency', async () => {
+  it('does not retry an account mismatch - that answer came from a hydrated store and asking again only adds latency', async () => {
     restoreSessionMock.mockResolvedValue({ topic: 'topic-1', address: '0xdef' })
     expect(await restoreWallet()).toBeNull()
     expect(restoreSessionMock).toHaveBeenCalledTimes(1)
@@ -285,7 +285,7 @@ describe('restoreWallet — session-lookup failures must not destroy stored cred
 
   it('refuses to pair stored credentials with a different account on the same topic', async () => {
     // Same session, user switched accounts in the wallet. The stored CLOB
-    // credentials belong to 0xabc and must not sign for 0xdef — but they are
+    // credentials belong to 0xabc and must not sign for 0xdef - but they are
     // still valid for 0xabc, so they are kept, not destroyed.
     restoreSessionMock.mockResolvedValue({ topic: 'topic-1', address: '0xdef' })
     expect(await restoreWallet()).toBeNull()
@@ -294,7 +294,7 @@ describe('restoreWallet — session-lookup failures must not destroy stored cred
   })
 })
 
-describe('connectWallet — housekeeping must never gate the connect', () => {
+describe('connectWallet - housekeeping must never gate the connect', () => {
   beforeEach(async () => {
     vi.clearAllMocks()
     startConnectMock.mockResolvedValue({
@@ -315,7 +315,7 @@ describe('connectWallet — housekeeping must never gate the connect', () => {
     })
   })
 
-  // Settings are a single shared store across this file — hand the worker
+  // Settings are a single shared store across this file - hand the worker
   // config back the way the later order-path tests expect to find it.
   afterEach(async () => {
     await saveSettings({ workerUrl: undefined, workerSecret: undefined })
@@ -341,7 +341,7 @@ describe('connectWallet — housekeeping must never gate the connect', () => {
     expect(pruneOtherSessionsMock).toHaveBeenCalledWith('topic-new')
   })
 
-  it('reuses stored credentials for the same address — a reconnect costs no signature', async () => {
+  it('reuses stored credentials for the same address - a reconnect costs no signature', async () => {
     await saveSettings({
       walletAddress: '0xABCABCABCABCABCABCABCABCABCABCABCABCABCA', // casing must not matter
       clobApiKey: 'k',
@@ -366,7 +366,7 @@ describe('connectWallet — housekeeping must never gate the connect', () => {
   })
 })
 
-describe('placeOrder — MAX_ORDER_USD cap', () => {
+describe('placeOrder - MAX_ORDER_USD cap', () => {
   // The cap is checked before any settings/geo/wallet work, so these need no
   // extra mocking beyond what's already stubbed above for the module.
   const baseArgs = {
@@ -385,14 +385,14 @@ describe('placeOrder — MAX_ORDER_USD cap', () => {
   })
 
   it('does not reject an order exactly at MAX_ORDER_USD on the cap check itself', async () => {
-    // Worker isn't configured in this test env, so it still fails — but on
+    // Worker isn't configured in this test env, so it still fails - but on
     // worker_not_configured, proving the cap check itself let it through.
     const result = await placeOrder({ ...baseArgs, sizeUsd: MAX_ORDER_USD })
     expect(result.error).not.toContain('order_exceeds_max_usd')
   })
 
   it("rejects an order under the market's minimum share count, before signing", async () => {
-    // $1 at 31¢ buys 3.22 shares — under CLOB's 5-share floor. Previously
+    // $1 at 31¢ buys 3.22 shares - under CLOB's 5-share floor. Previously
     // this reached the CLOB and came back as a bare `clob_rejected`, after
     // the user had already signed it.
     const result = await placeOrder({ ...baseArgs, price: 0.31, sizeUsd: 1 })
@@ -411,7 +411,7 @@ describe('placeOrder — MAX_ORDER_USD cap', () => {
   })
 })
 
-describe('sellOrder — guards before any signature', () => {
+describe('sellOrder - guards before any signature', () => {
   const base = {
     state: fakeState,
     tokenId: 'tok-yes',
@@ -420,7 +420,7 @@ describe('sellOrder — guards before any signature', () => {
     orderType: 'LIMIT' as const,
   }
 
-  it('rejects a size under the CLOB minimum — measured in SHARES, not dollars', async () => {
+  it('rejects a size under the CLOB minimum - measured in SHARES, not dollars', async () => {
     // The buy path converts USD → shares; a sell is already denominated in
     // shares, so the floor applies directly. 3 shares is under it at any price.
     const r = await sellOrder({ ...base, sizeShares: 3 })
@@ -443,7 +443,7 @@ describe('sellOrder — guards before any signature', () => {
     expect(r.error).toBe(`order_exceeds_max_usd:${MAX_ORDER_USD}`)
   })
 
-  it('does not geo-gate — closing a position must never be blocked by a region lookup', async () => {
+  it('does not geo-gate - closing a position must never be blocked by a region lookup', async () => {
     // Worker is unconfigured in this suite, which is what makes placeOrder
     // bail with worker_not_configured. A sell must get past that: refusing to
     // let someone OUT of a trade is the wrong failure direction.

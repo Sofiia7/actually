@@ -2,7 +2,7 @@ import type { ArticleData } from '../shared/types'
 
 /**
  * Runs in the page context via chrome.scripting.executeScript({ func }).
- * No imports allowed — everything must be inlined.
+ * No imports allowed - everything must be inlined.
  */
 export function extractFromPage(): ArticleData | null {
   const headlineSelectors = [
@@ -31,7 +31,7 @@ export function extractFromPage(): ArticleData | null {
   for (const sel of headlineSelectors) {
     const el = document.querySelector(sel)
     const text = el?.textContent?.trim() ?? ''
-    // 4 char floor — long-form articles have long headlines, but hub/topic
+    // 4 char floor - long-form articles have long headlines, but hub/topic
     // pages on Reuters/AP often have short ones ("Iran War", "AI", "Tariffs")
     // which are perfectly valid match queries.
     if (text.length >= 4) {
@@ -91,7 +91,7 @@ export function extractFromPage(): ArticleData | null {
     url: location.href,
     domain: location.hostname,
     // What the page says it is written in. News sites are reliable about this
-    // ('ru' on rbc.ru, 'de' on spiegel.de), and it costs nothing to read —
+    // ('ru' on rbc.ru, 'de' on spiegel.de), and it costs nothing to read -
     // the popup uses it to decide whether the text needs translating before
     // it can be matched against English market questions.
     pageLang: document.documentElement.getAttribute('lang') ?? '',

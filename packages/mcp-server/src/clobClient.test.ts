@@ -22,7 +22,7 @@ describe('cancelOrder', () => {
 
   it('reports failure on an HTTP/axios error response (no success field at all)', async () => {
     // This is the shape clob-client-v2's errorHandling() returns for a non-2xx
-    // response when throwOnError is off — no `success` field, which the old
+    // response when throwOnError is off - no `success` field, which the old
     // `res.success === false` check could never match.
     const client = fakeClient(async () => ({ error: 'expired credentials', status: 401 }))
     const result = await cancelOrder(client, 'o1')

@@ -5,7 +5,7 @@
  * popup closes on focus loss (taking its console with it), the offscreen
  * document's console needs chrome://extensions → Inspect views to reach, and
  * Chrome forbids any external tool from attaching to another extension's
- * pages. So the only way anyone — user or maintainer — has been able to
+ * pages. So the only way anyone - user or maintainer - has been able to
  * describe a failure is by its symptom, which is how the same bug got "fixed"
  * repeatedly without being found.
  *
@@ -14,7 +14,7 @@
  * them with a copy button.
  *
  * Nothing secret is recorded: no API key, secret, passphrase, or signature.
- * Addresses are truncated. The WC pairing URI is never stored — it is a
+ * Addresses are truncated. The WC pairing URI is never stored - it is a
  * live connection credential.
  */
 const KEY = 'connectLog'
@@ -30,7 +30,7 @@ export interface ConnectLogEntry {
 /** Redact anything that could be a secret or a full address. */
 export function redact(value: unknown): string {
   let s = typeof value === 'string' ? value : String(value)
-  // Pairing URIs carry the symmetric key — never record one.
+  // Pairing URIs carry the symmetric key - never record one.
   s = s.replace(/wc:[^\s"']+/gi, 'wc:<uri redacted>')
   // 0x-addresses / hashes → first 6 + last 4.
   s = s.replace(/0x[a-fA-F0-9]{8,}/g, (m) => `${m.slice(0, 6)}…${m.slice(-4)}`)
@@ -79,7 +79,7 @@ export function formatConnectLog(entries: ConnectLogEntry[]): string {
   return entries
     .map((e) => {
       const rel = `+${((e.t - t0) / 1000).toFixed(1)}s`.padStart(8)
-      return `${rel}  ${e.step}${e.detail ? ` — ${e.detail}` : ''}`
+      return `${rel}  ${e.step}${e.detail ? ` - ${e.detail}` : ''}`
     })
     .join('\n')
 }

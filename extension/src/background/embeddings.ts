@@ -1,16 +1,16 @@
 /**
- * Pluggable embedding provider — local (transformers.js, free) or OpenAI fallback.
+ * Pluggable embedding provider - local (transformers.js, free) or OpenAI fallback.
  *
- * - `local`:  Xenova/all-MiniLM-L12-v2 — 384 dims, runs in the offscreen document via WASM.
+ * - `local`:  Xenova/all-MiniLM-L12-v2 - 384 dims, runs in the offscreen document via WASM.
  *             Model weights + the onnxruntime-web WASM runtime are bundled into the .crx
- *             (see scripts/fetch-model.mjs, `npm run models:fetch`) — no huggingface.co or
+ *             (see scripts/fetch-model.mjs, `npm run models:fetch`) - no huggingface.co or
  *             cdn.jsdelivr.net fetch at runtime, fully offline-installable. First call still
  *             takes longer than subsequent ones (ONNX session init), but there's no network
  *             round-trip.
- * - `openai`: text-embedding-3-small — 1536 dims, ~$0.02 per 1M tokens, via Worker.
+ * - `openai`: text-embedding-3-small - 1536 dims, ~$0.02 per 1M tokens, via Worker.
  *
  * The matcher only requires that *the same provider* be used for both the article
- * and the market embeddings — dimensions don't have to match across providers,
+ * and the market embeddings - dimensions don't have to match across providers,
  * just within a single cache generation.
  */
 import type { EmbeddingProvider } from '../shared/types'
@@ -39,7 +39,7 @@ async function getLocalPipeline() {
       // public/models/ (see scripts/fetch-model.mjs) instead of fetched from
       // huggingface.co at runtime. allowRemoteModels=false means a missing
       // bundled file fails loudly instead of silently falling back to a
-      // network fetch — CSP no longer allows huggingface.co/*.hf.co anyway.
+      // network fetch - CSP no longer allows huggingface.co/*.hf.co anyway.
       env.allowLocalModels = true
       env.allowRemoteModels = false
       env.localModelPath = chrome.runtime.getURL('models/')

@@ -1,15 +1,15 @@
 /*
- * No custom font is currently loaded — the UI uses the system font stack
+ * No custom font is currently loaded - the UI uses the system font stack
  * (-apple-system, Segoe UI, Roboto, ...) declared inline in Etched.tsx /
  * styles.css / popup/index.html, which is always legible and needs no
  * fetching, bundling, or SHA-pinning.
  *
  * This file previously bundled "Marck Script", a single-style cursive
  * script applied to the entire UI (numbers, prices, form labels included)
- * — replaced 2026-08-06 after it turned out illegible for actual trading
+ * - replaced 2026-08-06 after it turned out illegible for actual trading
  * content. Kept as an empty stylesheet (rather than deleted) so the
  * `import './fonts.css'` in popup/main.tsx doesn't need touching if a
  * real webfont (README.md once described Inter / Instrument Serif /
- * JetBrains Mono) gets set up here later — see extension/scripts/
+ * JetBrains Mono) gets set up here later - see extension/scripts/
  * fetch-fonts.mjs for the fetch+SHA-pin pattern already built for that.
  */

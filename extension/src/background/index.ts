@@ -1,10 +1,10 @@
 /**
- * Actually — Service Worker entry.
+ * Actually - Service Worker entry.
  *
  * MV3 service workers cannot use dynamic imports and have aggressive lifetime
  * limits, so all heavy work (transformers.js model loading, embedding, cache
  * refresh, matching, WalletConnect, CLOB signing) happens in the offscreen
- * document — see src/offscreen/offscreen.ts and src/background/offscreen-host.ts.
+ * document - see src/offscreen/offscreen.ts and src/background/offscreen-host.ts.
  *
  * The SW only handles:
  *   - install/onInstalled hook (installId, alarms)
@@ -13,7 +13,7 @@
  *   - lightweight connection test
  *   - forwarding "heavy" messages to the offscreen document
  *
- * v1 architecture is popup-only — no content script. The toolbar icon opens
+ * v1 architecture is popup-only - no content script. The toolbar icon opens
  * the popup via `default_popup` in manifest.json, and Ctrl/Cmd+Shift+P does
  * the same via the `_execute_action` command (no listener needed when
  * default_popup is set).
@@ -144,7 +144,7 @@ async function handle(msg: RequestMessage): Promise<ResponseMessage> {
     case 'PLACE_ORDER': {
       // Order placement runs in the offscreen document (it needs the WC v2
       // session and clob client, which can't live in a service worker). The
-      // SW just refuses cleanly here — clients should send the OS_PLACE_ORDER
+      // SW just refuses cleanly here - clients should send the OS_PLACE_ORDER
       // offscreen message instead.
       return { type: 'ORDER_RESULT', ok: false, error: 'handled_in_offscreen' }
     }

@@ -4,12 +4,12 @@
  * Polymarket is unavailable in several jurisdictions; placing an order from
  * one of them is the user's problem at Polymarket, but as the builder we
  * have an obligation to not actively facilitate it. Discovery is unrestricted
- * — only trading is gated.
+ * - only trading is gated.
  *
  * We resolve the country via the Worker `/geo` endpoint which reads
  * `CF-IPCountry` and returns it alongside a "blocked" flag computed from
  * the canonical blocklist. Result is cached in memory for the lifetime of
- * the popup (not persisted — countries can change between sessions).
+ * the popup (not persisted - countries can change between sessions).
  */
 
 export const BLOCKED_COUNTRIES = new Set<string>([
@@ -24,7 +24,7 @@ export const BLOCKED_COUNTRIES = new Set<string>([
   'PL', // Poland
   // Ontario (Canada) is restricted but country-level data is too coarse to
   // express. Worker handles ON sub-region when CF returns the region header.
-  // Comprehensively OFAC-sanctioned jurisdictions — a stricter, separate
+  // Comprehensively OFAC-sanctioned jurisdictions - a stricter, separate
   // obligation from Polymarket's own market-access list above.
   'IR', // Iran
   'KP', // North Korea
@@ -35,8 +35,8 @@ export const BLOCKED_COUNTRIES = new Set<string>([
 /** Why a geo check failed, when it failed. */
 export type GeoErrorReason =
   | 'no_worker'      // Worker URL or secret not configured
-  | 'unauthorized'   // Worker returned 401 — secret mismatch or extension origin not allow-listed
-  | 'misconfigured'  // Worker returned 503 — missing env on the Cloudflare side
+  | 'unauthorized'   // Worker returned 401 - secret mismatch or extension origin not allow-listed
+  | 'misconfigured'  // Worker returned 503 - missing env on the Cloudflare side
   | 'rate_limited'   // Worker returned 429
   | 'http_error'     // Other non-2xx response
   | 'network'        // Fetch threw
@@ -101,7 +101,7 @@ export async function getGeoStatus(
     cached = {
       country,
       // OR the worker's verdict with our own bundled list rather than
-      // trusting the worker alone — otherwise BLOCKED_COUNTRIES above is
+      // trusting the worker alone - otherwise BLOCKED_COUNTRIES above is
       // documented as a defense-in-depth floor but doesn't actually enforce
       // anything (its only consumer was its own test file). This makes it a
       // real floor: even a worker bug or a stale/misconfigured deploy can't

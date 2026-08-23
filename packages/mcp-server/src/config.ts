@@ -1,6 +1,6 @@
 /**
  * Server config, read once at startup. `BUILDER_CODE` is baked at publish
- * time by tsup's `define` (see tsup.config.ts, wired in a later task) — until
+ * time by tsup's `define` (see tsup.config.ts, wired in a later task) - until
  * then it falls back to the empty string, which disables order-signing
  * tools entirely (see place_order / prepare_order, implemented later).
  */
@@ -18,7 +18,7 @@ export const BUILDER_CODE: string =
 
 /**
  * Server version reported to MCP clients. Baked in by tsup's `define` the
- * same way BUILDER_CODE is (see tsup.config.ts) — reads package.json
+ * same way BUILDER_CODE is (see tsup.config.ts) - reads package.json
  * directly at publish time, so it can never drift from the published
  * version again (0.1.0 and 0.1.1 both shipped with a hand-edited literal
  * in index.ts that fell out of sync with package.json). In dev/test, where
@@ -44,7 +44,7 @@ function readPkgVersionFallback(): string {
  * get_market with zero setup, mirroring the browser extension's baked
  * VITE_WORKER_URL/VITE_WORKER_SECRET (see extension/src/shared/constants.ts).
  * This shared secret is public-by-design (see SECURITY.md / worker-secret
- * threat model) — it provides no confidentiality, only an anti-accidental-
+ * threat model) - it provides no confidentiality, only an anti-accidental-
  * load defense; the real backstop is the Worker's per-IP rate limit and
  * OpenAI daily cap. Operators running their own Worker override both via
  * ACTUALLY_WORKER_URL / ACTUALLY_WORKER_SECRET.
@@ -60,18 +60,18 @@ export const PRIVATE_KEY: string | undefined = process.env.POLYMARKET_PRIVATE_KE
 
 /**
  * redeem_position submits a real on-chain transaction through the Polymarket
- * relayer — unlike place_order/sell_order, a bug here has no CLOB-rejection
+ * relayer - unlike place_order/sell_order, a bug here has no CLOB-rejection
  * safety net; it can mean a genuinely lost or stuck payout, and (per the
  * project's own launch checklist) this path has never been exercised against
  * a real resolved mainnet position. Opt-in only, separate from PRIVATE_KEY,
  * so an operator has to make the same call twice before an agent can reach it.
  *
- * Status as of 2026-08-21 — three separate layers have been fixed and
+ * Status as of 2026-08-21 - three separate layers have been fixed and
  * verified against live services, and the last mile is still unproven:
  *   builder auth on POST /submit   verified (relayer answers on the merits)
  *   neg-risk contract selection     verified (NegRiskAdapter, flag arrives)
  *   losing-position guard           added (relayer's own precheck agreed)
- *   a redeem that actually collects  NOT YET OBSERVED — relayer-v2
+ *   a redeem that actually collects  NOT YET OBSERVED - relayer-v2
  *                                    /transactions is still empty
  * Treat this as in testing until a resolved position with currentValue > 0
  * has been redeemed end to end.
@@ -83,7 +83,7 @@ export const REDEEM_ENABLED: boolean = process.env.ACTUALLY_ENABLE_REDEEM === 't
  * the cached set clears the floor.
  *
  * The cache is a fixed shelf (~2000 markets) and Polymarket carries several
- * times that, so the long tail is unreachable without this — a real, open,
+ * times that, so the long tail is unreachable without this - a real, open,
  * actively-traded market can look to an agent exactly like a market that does
  * not exist.
  *
@@ -101,7 +101,7 @@ export const SEARCH_FALLBACK_ENABLED: boolean = process.env.ACTUALLY_SEARCH_FALL
  * 401 "invalid authorization" no matter how correct the transaction is.
  *
  * Note this is a DIFFERENT credential from the builder CODE baked into the
- * package for order attribution — that one is public by design, these are
+ * package for order attribution - that one is public by design, these are
  * not. Unlike the extension (which cannot hold a secret and asks its Worker
  * to sign instead), this server already runs on the operator's own machine
  * with their private key, so local credentials are the right shape here.
@@ -111,7 +111,7 @@ export const BUILDER_API_SECRET: string | undefined = process.env.POLYMARKET_BUI
 export const BUILDER_API_PASSPHRASE: string | undefined = process.env.POLYMARKET_BUILDER_API_PASSPHRASE
 
 /**
- * Alternative: a RELAYER API KEY — the scheme Polymarket's settings UI
+ * Alternative: a RELAYER API KEY - the scheme Polymarket's settings UI
  * currently hands out (Settings → API Keys → Relayer API Keys → "Create").
  * Two static values, no passphrase, scoped to the creating account. For this
  * server that scoping is exactly right: the operator IS the account whose
@@ -133,7 +133,7 @@ export function builderCredsConfigured(): boolean {
 }
 
 /**
- * Real-money backstops for place_order/sell_order — a prompt-injected or
+ * Real-money backstops for place_order/sell_order - a prompt-injected or
  * buggy calling agent must not be able to drain the operator's wallet in one
  * call or over one day. Defaults are deliberately conservative; an operator
  * running unattended must opt into a higher ceiling explicitly.
@@ -151,10 +151,10 @@ export const SPEND_GUARD_STATE_PATH: string =
   process.env.ACTUALLY_SPEND_STATE_PATH || join(homedir(), '.actually-mcp-server', 'spend-guard.json')
 
 /**
- * An unset env var uses `fallback` — that's the normal, safe path. But once
+ * An unset env var uses `fallback` - that's the normal, safe path. But once
  * an operator has explicitly SET one of these real-money limits, a typo or
  * malformed value (`"5O"`, `"50 USD"`, `"0"`, `"-5"`) must not silently
- * relax it back to the (looser) built-in default — that's the dangerous
+ * relax it back to the (looser) built-in default - that's the dangerous
  * direction for a control whose entire purpose is capping worst-case loss.
  * Fail loudly at startup instead, naming the bad variable, the same way
  * `requireWorkerConfig` already does for the Worker URL/secret.

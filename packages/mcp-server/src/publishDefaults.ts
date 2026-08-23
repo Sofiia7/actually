@@ -3,7 +3,7 @@
  *
  * Why this exists: `prepublishOnly` re-runs `npm run build` at `npm publish`
  * time. Before this helper, a publish from a shell without ACTUALLY_WORKER_URL
- * / ACTUALLY_WORKER_SECRET silently baked empty strings — shipping a package
+ * / ACTUALLY_WORKER_SECRET silently baked empty strings - shipping a package
  * whose zero-setup tools (check_news / get_market) throw "not configured" for
  * every npx user. Now:
  *
@@ -12,8 +12,8 @@
  *    are the SAME values the extension bakes, public by design) → empty.
  *    Builder code used to be env-var-only, deliberately never inherited from
  *    .env.local, while whether to ship it in a public package was still an
- *    open Polymarket ToS question (R1). That question is resolved — publish
- *    always bakes it in — so withholding it from the .env.local fallback now
+ *    open Polymarket ToS question (R1). That question is resolved - publish
+ *    always bakes it in - so withholding it from the .env.local fallback now
  *    only recreates the exact bug this file exists to prevent: a publish
  *    that silently ships without it (place_order/sell_order then fail
  *    `builder_code_not_configured` for every user with a configured wallet).

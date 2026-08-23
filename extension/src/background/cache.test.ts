@@ -25,7 +25,7 @@ function blob(markets: PolyMarket[], model = LOCAL_MODEL_ID): MarketCacheBlob {
   }
 }
 
-describe('refreshMarketCache — local provider (precomputed Worker cache)', () => {
+describe('refreshMarketCache - local provider (precomputed Worker cache)', () => {
   beforeEach(async () => {
     await clearMarketCache()
   })
@@ -125,7 +125,7 @@ describe('refreshMarketCache — local provider (precomputed Worker cache)', () 
     expect(calledUrls.some((u) => u.includes('/markets'))).toBe(false)
   })
 
-  it('does not retry a rejected secret — a wrong key stays wrong', async () => {
+  it('does not retry a rejected secret - a wrong key stays wrong', async () => {
     let attempts = 0
     const fetchSpy = vi.fn(async (url: string) => {
       if (String(url).endsWith('/market-cache')) {
@@ -141,7 +141,7 @@ describe('refreshMarketCache — local provider (precomputed Worker cache)', () 
     expect(attempts).toBe(1)
   })
 
-  it('does not retry a model mismatch — a second identical request cannot answer differently', async () => {
+  it('does not retry a model mismatch - a second identical request cannot answer differently', async () => {
     let attempts = 0
     const fetchSpy = vi.fn(async (url: string) => {
       if (String(url).endsWith('/market-cache')) {

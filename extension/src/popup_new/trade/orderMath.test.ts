@@ -106,7 +106,7 @@ describe('marketFloorPrice', () => {
     expect(marketFloorPrice(0.011, 0.02, '0.001')).toBeCloseTo(0.01, 6)
   })
 
-  it('never goes below one tick — zero is not a sendable price', () => {
+  it('never goes below one tick - zero is not a sendable price', () => {
     expect(marketFloorPrice(0.001, 0.02, '0.001')).toBeCloseTo(0.001, 6)
     expect(marketFloorPrice(0.002, 0.5, '0.001')).toBeCloseTo(0.001, 6)
   })
@@ -119,7 +119,7 @@ describe('marketFloorPrice', () => {
     expect(floorSlippage(0.32, marketFloorPrice(0.32, 0.02, '0.001'))).toBeCloseTo(0.0219, 3)
   })
 
-  it('is the mirror of marketCapPrice — buy cushion up, sell cushion down', () => {
+  it('is the mirror of marketCapPrice - buy cushion up, sell cushion down', () => {
     expect(marketCapPrice(0.25, 0.02, '0.01')).toBeGreaterThan(0.25)
     expect(marketFloorPrice(0.25, 0.02, '0.01')).toBeLessThan(0.25)
   })

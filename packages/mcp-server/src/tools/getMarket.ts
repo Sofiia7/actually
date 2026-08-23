@@ -59,7 +59,7 @@ export interface GetMarketDeps {
   fetchOrderbook: (tokenId: string) => Promise<RawOrderbook>
   /**
    * Fallback lookup against Gamma directly when `marketId` isn't in the
-   * precomputed cache — the cache only holds the top MAX_MARKETS_CACHE
+   * precomputed cache - the cache only holds the top MAX_MARKETS_CACHE
    * markets by volume, so a valid id outside that cut would otherwise
    * always report found:false. Optional so cache-only callers/tests are
    * unaffected.
@@ -68,7 +68,7 @@ export interface GetMarketDeps {
 }
 
 // Errors from deps.store/deps.fetchLivePrice/deps.fetchOrderbook (network
-// failures, worker errors, etc.) propagate uncaught — the MCP tool-registration
+// failures, worker errors, etc.) propagate uncaught - the MCP tool-registration
 // layer is responsible for catching and converting to a tool-error response.
 export async function getMarket(deps: GetMarketDeps, input: GetMarketInput): Promise<GetMarketOutput> {
   const markets = await deps.store.getMarkets()

@@ -6,7 +6,7 @@ import { GlassButton } from '../components/GlassButton';
 import { NeutralScanner } from '../components/NeutralScanner';
 
 // =============================================================
-// HistoryTab — public state contract
+// HistoryTab - public state contract
 // =============================================================
 export interface HistoryRow {
   pct: number;
@@ -20,7 +20,7 @@ export type HistoryState =
   | { kind: 'empty' }
   | { kind: 'success'; items: HistoryRow[] };
 
-/** One row of the activity log — see TradeLogItem for where it comes from. */
+/** One row of the activity log - see TradeLogItem for where it comes from. */
 export interface TradeRow {
   kind: 'BUY' | 'SELL' | 'REDEEM';
   status: 'placed' | 'failed' | 'unknown';
@@ -34,13 +34,13 @@ export interface TradeRow {
 
 export interface HistoryTabProps {
   state: HistoryState;
-  /** `index` is this row's position in `state.items` — use it to address the
+  /** `index` is this row's position in `state.items` - use it to address the
    * backing item directly rather than re-matching by displayed text. */
   onSelect: (row: HistoryRow, index: number) => void;
   onOpenArticle: (row: HistoryRow, index: number) => void;
   onClear: () => void;
   /**
-   * Your own trades, newest first. Rendered above the match list — a trade you
+   * Your own trades, newest first. Rendered above the match list - a trade you
    * made outranks a story you glanced at.
    *
    * The two lists on this tab are different KINDS of record and used to be
@@ -270,7 +270,7 @@ export const HistoryTab: React.FC<HistoryTabProps> = ({
   }
 
   if (state.kind === 'empty') {
-    // Trades outlive matches (the log holds 100, matches 10) — an empty match
+    // Trades outlive matches (the log holds 100, matches 10) - an empty match
     // list must not hide a trade the user is looking for.
     return (
       <div style={{ padding: '12px 14px 20px' }}>

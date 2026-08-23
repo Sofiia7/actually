@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { Wallet, verifyTypedData } from 'ethers'
 import { EthersKeySigner } from './ethersKeySigner'
 
-// Well-known test private key (Hardhat's default account #0) — never used on
+// Well-known test private key (Hardhat's default account #0) - never used on
 // any network that holds real funds; safe to hardcode in a test.
 const TEST_PRIVATE_KEY = '0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80'
 
@@ -26,7 +26,7 @@ describe('EthersKeySigner', () => {
     }
     const value = { value: 42 }
     const sig = await signer._signTypedData(domain, types, value)
-    // ethers' verifyTypedData expects types WITHOUT the EIP712Domain entry —
+    // ethers' verifyTypedData expects types WITHOUT the EIP712Domain entry -
     // the same shape EthersKeySigner itself must strip before calling
     // wallet.signTypedData (ethers infers the domain type internally).
     const { EIP712Domain: _domain, ...rest } = types

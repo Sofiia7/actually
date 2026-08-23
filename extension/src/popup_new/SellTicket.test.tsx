@@ -45,7 +45,7 @@ describe('SellTicket', () => {
   it('defaults to selling the whole position, truncated to what is really held', async () => {
     render(<SellTicket position={position} onDone={noop} onCancel={noop} />)
     const shares = (await screen.findByLabelText(/Shares to sell/i)) as HTMLInputElement
-    // 142.86 exactly — never rounded UP past the held balance.
+    // 142.86 exactly - never rounded UP past the held balance.
     expect(shares.value).toBe('142.86')
   })
 
@@ -55,7 +55,7 @@ describe('SellTicket', () => {
     await waitFor(() => expect(screen.getByRole('button', { name: /Sell now/i })).toBeEnabled())
 
     await userEvent.click(screen.getByRole('button', { name: /Sell now/i }))
-    // Nothing submitted yet — the confirm line is the gate.
+    // Nothing submitted yet - the confirm line is the gate.
     expect(opsm.sellOrderViaOffscreen).not.toHaveBeenCalled()
     expect(screen.getByText(/Sell 142\.86 shares/i)).toBeInTheDocument()
 
@@ -130,7 +130,7 @@ describe('SellTicket', () => {
   })
 
   it('hands the confirmation UP rather than showing it and unmounting', async () => {
-    // The ticket closes on success, so a message it owns dies with it — which
+    // The ticket closes on success, so a message it owns dies with it - which
     // read as "the sell did nothing". The panel outlives the ticket.
     const onDone = vi.fn()
     render(<SellTicket position={position} onDone={onDone} onCancel={noop} />)
@@ -140,7 +140,7 @@ describe('SellTicket', () => {
     await waitFor(() => expect(onDone).toHaveBeenCalledOnce())
     const msg = onDone.mock.calls[0][0] as string
     // A filled MARKET sell says what actually happened, in the numbers the
-    // user just approved — not a bare "Sell placed".
+    // user just approved - not a bare "Sell placed".
     expect(msg).toMatch(/^Sold 142\.86 shares of Yes for about \$70\.00/)
     expect(msg).toContain('0xsell1234')
     // …and it warns that the numbers lag, instead of leaving the user to
@@ -159,7 +159,7 @@ describe('SellTicket', () => {
     await waitFor(() => expect(onDone).toHaveBeenCalledOnce())
     const msg = onDone.mock.calls[0][0] as string
     expect(msg).toMatch(/rests on the book/i)
-    // Nothing has been sold yet — the word must not appear at all, or the
+    // Nothing has been sold yet - the word must not appear at all, or the
     // user reads a resting order as a completed exit.
     expect(msg).not.toMatch(/Sold/)
   })
@@ -179,14 +179,14 @@ describe('humanSellError', () => {
   })
 })
 
-describe('SellTicket — regressions from the 2026-08-16 audit', () => {
+describe('SellTicket - regressions from the 2026-08-16 audit', () => {
   it('omits negRisk entirely so the SDK resolves the real flag (an explicit false broke every neg-risk sell)', async () => {
     render(<SellTicket position={{ ...position, negativeRisk: true }} onDone={noop} onCancel={noop} />)
     await waitFor(() => expect(screen.getByRole('button', { name: /Sell now/i })).toBeEnabled())
     await userEvent.click(screen.getByRole('button', { name: /Sell now/i }))
     await userEvent.click(screen.getByRole('button', { name: /Sign in wallet/i }))
     await waitFor(() => expect(opsm.sellOrderViaOffscreen).toHaveBeenCalledOnce())
-    // Not negRisk:false and not negRisk:true — the key must be ABSENT, since
+    // Not negRisk:false and not negRisk:true - the key must be ABSENT, since
     // the SDK only auto-resolves when the option is missing.
     expect('negRisk' in opsm.sellOrderViaOffscreen.mock.calls[0][0]).toBe(false)
   })
@@ -217,8 +217,8 @@ describe('SellTicket — regressions from the 2026-08-16 audit', () => {
   })
 
   it('regression: a penny position gets a floor BELOW the bid, not one sitting on it', async () => {
-    // Sofia's live case. Bid 1.1¢, 2% of that is 0.022¢ — less than half a
-    // 0.1¢ tick — so the old Math.round put the floor back at 1.1¢ and the
+    // Sofia's live case. Bid 1.1¢, 2% of that is 0.022¢ - less than half a
+    // 0.1¢ tick - so the old Math.round put the floor back at 1.1¢ and the
     // fill-or-kill needed all 153 shares resting on the top price level. It
     // failed, as every market sell under 2.5¢ did.
     opsm.orderbookSnapshotViaOffscreen.mockResolvedValue({
@@ -233,7 +233,7 @@ describe('SellTicket — regressions from the 2026-08-16 audit', () => {
 
   it('offers the retry as a link rather than telling the user to close and reopen the ticket', async () => {
     // The lookup fails when the offscreen document was just recreated and the
-    // WalletConnect store has not finished hydrating — a state that clears
+    // WalletConnect store has not finished hydrating - a state that clears
     // itself. Nothing on screen told the user that, so the instruction they
     // got ("close and reopen this ticket") was a puzzle with the answer
     // withheld. One click has to be enough.

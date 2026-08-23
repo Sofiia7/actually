@@ -45,7 +45,7 @@ describe('extractKeywords', () => {
   })
 })
 
-describe('keywordOverlapBonus — uranium vs Pahlavi case', () => {
+describe('keywordOverlapBonus - uranium vs Pahlavi case', () => {
   it('uranium market clearly outranks Pahlavi market on a uranium article', () => {
     const headline = extractKeywords('Supreme Leader says enriched uranium must stay in Iran')
     const uraniumMkt = 'US obtains Iranian enriched uranium by May 31?'
@@ -86,7 +86,7 @@ describe('keywordOverlapBonus — uranium vs Pahlavi case', () => {
 
   it('treats month names as low-value overlap (shared "July" is time noise, not topic)', () => {
     const headline = extractKeywords('Bitcoin rally expected in July')
-    // Only 'july' overlaps — a month name must score like 'year'/'week' (0.01),
+    // Only 'july' overlaps - a month name must score like 'year'/'week' (0.01),
     // not like a topical noun (0.04), or every same-month market gets boosted.
     expect(keywordOverlapBonus(headline, 'Will Ethereum ETF launch in July?')).toBeCloseTo(0.01, 6)
   })
@@ -142,7 +142,7 @@ describe('numberOverlapScore', () => {
   })
 })
 
-describe('findMatch — number-aware ranking', () => {
+describe('findMatch - number-aware ranking', () => {
   const thresholds = { confidenceThreshold: 0.8, lowConfidenceFloor: 0.3 }
 
   it('ranks the market sharing the headline price above a closer-by-cosine market with a conflicting price', async () => {
@@ -209,7 +209,7 @@ describe('findMatch', () => {
   })
 
   it('sets lowConfidence=true when raw score is between floor and threshold', async () => {
-    // [0.6, 0.8, 0] is a unit vector; cosine against [1,0,0] is exactly 0.6 —
+    // [0.6, 0.8, 0] is a unit vector; cosine against [1,0,0] is exactly 0.6 -
     // above the 0.5 floor but below the 0.8 threshold.
     const mkt = fakeMarket({ vec: [0.6, 0.8, 0] })
     const store = { getMarkets: async () => [mkt] }
@@ -262,7 +262,7 @@ describe('findMatch', () => {
   })
 })
 
-describe('attemptMatch — a failed check has to be able to say why', () => {
+describe('attemptMatch - a failed check has to be able to say why', () => {
   const thresholds = { confidenceThreshold: 0.8, lowConfidenceFloor: 0.5 }
 
   it('names the market it came closest to when nothing clears the floor', async () => {
@@ -279,14 +279,14 @@ describe('attemptMatch — a failed check has to be able to say why', () => {
     expect(attempt.scored).toBe(1)
   })
 
-  it('reports scored=0 for an empty cache — a different failure from "checked everything and nothing fit"', async () => {
+  it('reports scored=0 for an empty cache - a different failure from "checked everything and nothing fit"', async () => {
     const store = { getMarkets: async () => [] }
     const embedder = { embed: async () => new Float32Array([1, 0, 0]) }
     const attempt = await attemptMatch('anything', '', { store, embedder, thresholds })
     expect(attempt).toEqual({ match: null, nearest: null, scored: 0 })
   })
 
-  it('counts only scoreable markets — closed ones are not something the user could have traded', async () => {
+  it('counts only scoreable markets - closed ones are not something the user could have traded', async () => {
     const closed = fakeMarket({ id: 'closed', closed: true, vec: [1, 0, 0] })
     const far = fakeMarket({ id: 'far', question: 'Will the Lakers win?', vec: [0, 1, 0] })
     const store = { getMarkets: async () => [closed, far] }
@@ -309,7 +309,7 @@ describe('attemptMatch — a failed check has to be able to say why', () => {
   })
 })
 
-describe('attemptMatch — the long-tail search fallback', () => {
+describe('attemptMatch - the long-tail search fallback', () => {
   const thresholds = { confidenceThreshold: 0.8, lowConfidenceFloor: 0.5 }
   const embedder = { embed: async () => new Float32Array([1, 0, 0]) }
 
@@ -319,7 +319,7 @@ describe('attemptMatch — the long-tail search fallback', () => {
     return rest
   }
 
-  it('finds a market the cache never held — the whole point of the fallback', async () => {
+  it('finds a market the cache never held - the whole point of the fallback', async () => {
     // A real, open, actively-traded market can sit below the cache cut: the
     // live floor was $508,649 of lifetime volume, and "Who will Trump
     // publicly insult by August 31?" trades at $47,851. To the user that
@@ -340,7 +340,7 @@ describe('attemptMatch — the long-tail search fallback', () => {
     expect(searchFallback).not.toHaveBeenCalled()
   })
 
-  it('holds the floor — search results are scored, not trusted', async () => {
+  it('holds the floor - search results are scored, not trusted', async () => {
     // Polymarket's search is lexical, so it answers almost any query with
     // something. Returning its top hit unscored would turn "no match" into a
     // confidently wrong match, which is strictly worse than an honest miss.
@@ -367,7 +367,7 @@ describe('attemptMatch — the long-tail search fallback', () => {
     expect(attempt.nearest?.question).toBe('Closer searched market')
   })
 
-  it('swallows a search failure — the user already has a true answer', async () => {
+  it('swallows a search failure - the user already has a true answer', async () => {
     const store = { getMarkets: async () => [fakeMarket({ id: 'cached', question: 'Will the Lakers win?', vec: [0, 1, 0] })] }
     const attempt = await attemptMatch('Iran enriches uranium', '', {
       store, embedder, thresholds,

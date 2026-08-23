@@ -3,7 +3,7 @@ import { rgbAt, rgba, frostRgb } from '../colors';
 import { IcePlate } from './IcePlate';
 
 export interface IceCardProps {
-  /** 0–100 market probability; null/undefined for neutral cards. */
+  /** 0-100 market probability; null/undefined for neutral cards. */
   pct?: number | null;
   /** Multiplier on the rim color intensity. Tiny rows use ~0.6. */
   intensity?: number;
@@ -12,7 +12,7 @@ export interface IceCardProps {
   borderRadius?: number;
   padding?: string;
   onClick?: () => void;
-  /** Skip the IcePlate texture — useful for neutral utility cards. */
+  /** Skip the IcePlate texture - useful for neutral utility cards. */
   plain?: boolean;
 }
 
@@ -28,7 +28,7 @@ const LAYOUT_KEYS = new Set([
 ]);
 
 /**
- * IceCard — a market panel with rim color, crystalline texture,
+ * IceCard - a market panel with rim color, crystalline texture,
  * and a cursor-following crumpled-glass trail (via .frost-needles).
  *
  * The component splits the consumer's `style` into:

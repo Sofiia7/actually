@@ -20,7 +20,7 @@ interface RawPosition {
 /**
  * Positions for the connected wallet's Safe address, read via our Worker's
  * /clob/positions/<address> proxy rather than data-api.polymarket.com
- * directly — a direct browser fetch would send the user's real IP and Safe
+ * directly - a direct browser fetch would send the user's real IP and Safe
  * address straight to Polymarket, bypassing the Cloudflare-mediation this
  * extension's privacy policy promises for every other Polymarket call. No
  * CLOB creds needed either way (this is a public lookup by address).

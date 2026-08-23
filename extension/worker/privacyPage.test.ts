@@ -37,7 +37,7 @@ describe('markdownToHtml', () => {
     expect(html).not.toMatch(/`/)
   })
 
-  it('drops nothing — every sentence of the source survives', () => {
+  it('drops nothing - every sentence of the source survives', () => {
     // The real risk is silent loss: a block the converter does not recognise
     // vanishing without a trace. Compare word counts rather than trusting
     // that the tags above imply completeness.
@@ -81,7 +81,7 @@ describe('markdownToHtml', () => {
 })
 
 describe('renderPrivacyPage', () => {
-  it('is a complete, self-contained page — no external CSS, fonts or scripts', () => {
+  it('is a complete, self-contained page - no external CSS, fonts or scripts', () => {
     const page = renderPrivacyPage(POLICY)
     expect(page.startsWith('<!doctype html>')).toBe(true)
     expect(page).toContain('<title>')

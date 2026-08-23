@@ -2,7 +2,7 @@
  * Redeeming a resolved position.
  *
  * Unlike every other action in this extension, redeem is an ON-CHAIN call, not
- * a CLOB order — and it has to be made AS the user's Polymarket Safe, because
+ * a CLOB order - and it has to be made AS the user's Polymarket Safe, because
  * that is what holds the outcome tokens. A call from the raw EOA would not be
  * `msg.sender == Safe` and would redeem nothing. Polymarket's own relayer
  * submits the call as the Safe and pays the gas, which is why this needs no
@@ -10,7 +10,7 @@
  *
  * The awkward part is the signer. `@polymarket/builder-abstract-signer`'s
  * factory accepts an ethers Wallet, an ethers JsonRpcSigner, or a viem
- * WalletClient — and a WalletConnect session is none of those. The mcp-server
+ * WalletClient - and a WalletConnect session is none of those. The mcp-server
  * has a private key and hands over an ethers Wallet; we have neither. So this
  * module builds the third option: a viem WalletClient over an EIP-1193
  * provider whose `request` is the WalletConnect session.
@@ -18,7 +18,7 @@
  * That works because of what the Safe path actually asks the signer for. The
  * RelayClient builds its own public client for every read (it never reads
  * through ours), and the only signer methods it reaches for are `getAddress`
- * and — inside the Safe transaction builder — `signMessage` over the struct
+ * and - inside the Safe transaction builder - `signMessage` over the struct
  * hash. Both are things a WalletConnect session can serve, provided the wallet
  * granted `personal_sign`. Nothing here needs eth_sendTransaction, so the
  * narrow set of methods our session requests is enough.
@@ -40,7 +40,7 @@ const POLYGON_CHAIN_ID = 137
 const REDEEM_WAIT_TIMEOUT_MS = 45_000
 
 /** Methods the wallet must serve. Anything else is a read, and reads must not
- * be routed to the wallet — the RelayClient has its own RPC for those, and a
+ * be routed to the wallet - the RelayClient has its own RPC for those, and a
  * WalletConnect session would reject a method outside its granted namespace
  * anyway. Failing loudly here beats a confusing rejection from the relay. */
 const WALLET_METHODS = new Set([
@@ -83,7 +83,7 @@ export function makeWcProvider(topic: string, address: string) {
 
 export interface RedeemArgs {
   topic: string
-  /** The EOA that owns the Safe — the account that signs. */
+  /** The EOA that owns the Safe - the account that signs. */
   address: string
   conditionId: string
   /** Every position held for that conditionId (normally one). */
@@ -123,7 +123,7 @@ export async function redeemPosition(args: RedeemArgs): Promise<RedeemResult> {
     // Builder auth, via the Worker as a REMOTE SIGNER.
     //
     // relayer-v2 rejects an unauthenticated POST /submit with 401
-    // "invalid authorization" — it wants HMAC headers derived from the
+    // "invalid authorization" - it wants HMAC headers derived from the
     // builder API credentials. Those cannot live in the extension: every
     // install would carry them in plaintext, and anyone extracting them
     // could spend the builder account's daily relayer quota.
@@ -153,7 +153,7 @@ export async function redeemPosition(args: RedeemArgs): Promise<RedeemResult> {
     )
     const submitted = await client.execute([tx], 'redeem_position')
     // execute() resolves once the relayer ACCEPTS the transaction, not once
-    // it is mined — wait() polls to a terminal on-chain state so this reports
+    // it is mined - wait() polls to a terminal on-chain state so this reports
     // a definitive outcome instead of "we submitted something".
     //
     // wait()'s contract (pollUntilState in the relayer client) is subtle and
@@ -165,7 +165,7 @@ export async function redeemPosition(args: RedeemArgs): Promise<RedeemResult> {
     // read as success.
     let mined: Awaited<ReturnType<typeof submitted.wait>>
     try {
-      // wait() polls up to 100 times at 2s intervals — over three minutes of
+      // wait() polls up to 100 times at 2s intervals - over three minutes of
       // a spinner reading "Redeeming…" with no way to tell a slow mine from a
       // dead flow. Cap it: past this point the honest answer is "submitted,
       // status unconfirmed", which is what the caller reports.
@@ -176,7 +176,7 @@ export async function redeemPosition(args: RedeemArgs): Promise<RedeemResult> {
         ),
       ])
     } catch (err) {
-      // The redeem was ACCEPTED — a poll hiccup after that does not mean it
+      // The redeem was ACCEPTED - a poll hiccup after that does not mean it
       // failed. Report the outcome as unknown and keep the id so the user
       // (and the log) can still find the transaction.
       return {
@@ -186,7 +186,7 @@ export async function redeemPosition(args: RedeemArgs): Promise<RedeemResult> {
       }
     }
     if (!mined) {
-      // Failed on-chain or timed out — one direct status read tells us which.
+      // Failed on-chain or timed out - one direct status read tells us which.
       let lastState: string | undefined
       try {
         lastState = (await submitted.getTransaction())[0]?.state

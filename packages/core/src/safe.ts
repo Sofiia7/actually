@@ -1,7 +1,7 @@
 import { getCreate2Address, keccak256, AbiCoder } from 'ethers'
 
 // Polymarket's Safe (funder) is created deterministically per EOA via CREATE2
-// from its Safe factory on Polygon. We compute it locally — Polymarket retired
+// from its Safe factory on Polygon. We compute it locally - Polymarket retired
 // the data-api EOA→proxy lookup endpoints (they now 404), and there is no public
 // EOA→proxy API; their own frontend derives it client-side. This is the exact
 // derivation `@polymarket/builder-relayer-client`'s deriveSafe uses, verified
@@ -11,7 +11,7 @@ const POLY_SAFE_INIT_CODE_HASH = '0x2bce2127ff07fb632d16c8347c4ebf501f4841168bed
 
 /**
  * Resolve a user's Polymarket Safe (funder) address from their EOA.
- * Deterministic CREATE2 derivation — the same address Polymarket itself uses,
+ * Deterministic CREATE2 derivation - the same address Polymarket itself uses,
  * computed locally with no network call. Works whether or not the Safe is
  * deployed yet; if the user has never funded their Polymarket account the
  * address is still correct, an order just fails later on insufficient balance.

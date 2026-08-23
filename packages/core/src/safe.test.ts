@@ -10,11 +10,11 @@ const POLY_SAFE_INIT_CODE_HASH = '0x2bce2127ff07fb632d16c8347c4ebf501f4841168bed
 
 /**
  * Independently computes the same CREATE2 Safe address as `deriveSafeAddress`,
- * but using viem — a completely separate EVM library from ethers, with its
+ * but using viem - a completely separate EVM library from ethers, with its
  * own ABI encoder, keccak256, and CREATE2 address implementation. If
  * `deriveSafeAddress` had a bug in the factory address, init-code hash, salt
  * encoding, or byte-order handling, a self-consistency test (determinism,
- * distinctness, case-insensitivity) would NOT catch it — those all pass even
+ * distinctness, case-insensitivity) would NOT catch it - those all pass even
  * for a wrong-but-internally-consistent derivation. This function is the
  * regression test for that class of bug: two independent implementations of
  * the public CREATE2 standard, cross-checked against each other.
@@ -50,7 +50,7 @@ describe('deriveSafeAddress', () => {
 
   it('is case-insensitive on the input EOA', () => {
     // NOTE: the plan's original vector here ('0xabc0000000000000000000000000000000000a')
-    // is malformed — only 38 hex chars, 2 short of a valid 20-byte address —
+    // is malformed - only 38 hex chars, 2 short of a valid 20-byte address -
     // and ethers v6 throws INVALID_ARGUMENT on it rather than silently
     // accepting it. Using a correctly-padded 40-hex-char address instead;
     // the case-insensitivity intent is unchanged.

@@ -9,7 +9,7 @@ import { rgbAt, rgba, toneDark } from '../colors';
 import type { TranslationNotice } from '../translate';
 
 // =============================================================
-// CheckTab — public state contract
+// CheckTab - public state contract
 // =============================================================
 export interface Market {
   q: string;
@@ -17,7 +17,7 @@ export interface Market {
   vol?: string;
   match?: number;
   market?: string;
-  /** Short market description — clarifies what the question actually resolves on. */
+  /** Short market description - clarifies what the question actually resolves on. */
   desc?: string;
 }
 
@@ -25,7 +25,7 @@ export type CheckState =
   | { kind: 'idle' }
   | {
       kind: 'loading';
-      /** Replaces "reading article…" while something slower is happening —
+      /** Replaces "reading article…" while something slower is happening -
        *  a one-time language-pack download, for instance. */
       note?: string;
     }
@@ -35,7 +35,7 @@ export type CheckState =
       message: string;
       /** Second line, quieter: the specifics behind `message`. */
       detail?: string;
-      /** When set, an action that opens this URL — for a dead end the user
+      /** When set, an action that opens this URL - for a dead end the user
        *  can still follow up on somewhere else. */
       searchUrl?: string;
       /**
@@ -60,14 +60,14 @@ export interface CheckTabProps {
   onEnableSearch?: () => void;
   /** Decline it, for good. */
   onDismissSearchOffer?: () => void;
-  /** Click "Trade this market →" on the featured match — switches to Trade tab. */
+  /** Click "Trade this market →" on the featured match - switches to Trade tab. */
   onTrade?: () => void;
-  /** Click an alternate match — re-runs in CheckTab as the new featured. */
+  /** Click an alternate match - re-runs in CheckTab as the new featured. */
   onPickRelated?: (index: number) => void;
   /**
    * What happened to the article's text before it was matched: translated
    * from another language, or why it could not be. Sits above the result
-   * because it changes how the result should be read — "no market matched"
+   * because it changes how the result should be read - "no market matched"
    * means something different when the page was never in English.
    */
   notice?: TranslationNotice | null;
@@ -244,7 +244,7 @@ const RelatedRow: React.FC<Market & { onClick?: () => void }> = ({ q, pct, onCli
     </IceCard>
   );
   if (!onClick) return card;
-  // Picking an alternate promotes it to the featured match (ТЗ §6.1 — "in case
+  // Picking an alternate promotes it to the featured match (ТЗ §6.1 - "in case
   // the user disagrees with #1"); it then flows through to the Trade tab.
   return (
     <div
@@ -265,11 +265,11 @@ const RelatedRow: React.FC<Market & { onClick?: () => void }> = ({ q, pct, onCli
 };
 
 // =============================================================
-// CheckTab — state machine
+// CheckTab - state machine
 // =============================================================
 export const CheckTab: React.FC<CheckTabProps> = (props) => {
   // Nothing has been checked yet on the idle screen, so there is nothing to
-  // explain — the banner would be reporting on a page the user never asked
+  // explain - the banner would be reporting on a page the user never asked
   // about.
   if (props.state.kind === 'idle' || !props.notice) return <CheckTabBody {...props} />;
   return (

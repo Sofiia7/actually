@@ -3,12 +3,12 @@
  *
  * The extension refuses to trade from a Polymarket-restricted jurisdiction
  * because, as the builder, we have an obligation to not actively facilitate
- * it (see extension/src/background/geo.ts) — discovery stays unrestricted,
+ * it (see extension/src/background/geo.ts) - discovery stays unrestricted,
  * only order placement is gated. This server signs and submits real orders
  * with the same builder code attached, so it carries the same obligation,
  * but until now had no equivalent check at all. This calls the same worker
  * `/geo` endpoint the extension uses, which resolves the jurisdiction of
- * whoever is actually making the request — here, wherever this server
+ * whoever is actually making the request - here, wherever this server
  * process runs.
  *
  * Fails closed: any error (network, auth, misconfigured, missing country)
@@ -36,7 +36,7 @@ export async function checkTradingGeoGate(workerUrl: string, workerSecret: strin
     } else {
       const data = (await res.json()) as { country?: string; blocked?: boolean }
       // Require `blocked` to actually be a boolean rather than coercing a
-      // missing field with `Boolean(undefined)` (=== false) — a future
+      // missing field with `Boolean(undefined)` (=== false) - a future
       // worker refactor that renames/drops the field would otherwise
       // silently disable the jurisdiction gate for every installed copy of
       // this package with no error anywhere. Fail closed instead.

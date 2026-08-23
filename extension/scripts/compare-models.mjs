@@ -1,6 +1,6 @@
 /**
  * Compare embedding model quality on real Polymarket data for the Trump/Iran
- * article — which we know SHOULD rank "US x Iran permanent peace deal" as #1.
+ * article - which we know SHOULD rank "US x Iran permanent peace deal" as #1.
  */
 import { pipeline, env } from '@xenova/transformers'
 

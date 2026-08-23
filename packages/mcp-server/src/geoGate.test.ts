@@ -52,7 +52,7 @@ describe('checkTradingGeoGate', () => {
 
   it('fails closed when the response has a country but no `blocked` field at all', async () => {
     // Regression: `Boolean(undefined) === false` would otherwise read a
-    // missing field as "not blocked" — this must fail closed instead.
+    // missing field as "not blocked" - this must fail closed instead.
     globalThis.fetch = vi.fn(async () =>
       new Response(JSON.stringify({ country: 'DE' }), { status: 200 }),
     ) as unknown as typeof fetch

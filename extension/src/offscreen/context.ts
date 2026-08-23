@@ -3,7 +3,7 @@
  *
  * Lives in its own module, free of the offscreen router's heavy imports
  * (WalletConnect, the CLOB SDK, transformers.js), so the guard can be unit
- * tested without dragging that graph — and, more importantly, so the check
+ * tested without dragging that graph - and, more importantly, so the check
  * itself can never accidentally depend on something that only loads in one
  * context.
  */
@@ -16,7 +16,7 @@ const OFFSCREEN_PATH = '/offscreen/offscreen.html'
  *
  * THIS GUARD IS LOAD-BEARING. `offscreen.ts` registers a global
  * `chrome.runtime.onMessage` listener at import time, and the bundler places
- * its entry chunk in the popup page and the service worker as well — the popup
+ * its entry chunk in the popup page and the service worker as well - the popup
  * statically imports `background/*` modules that share that graph, so
  * `dist/src/popup/index.html` ends up loading the very same offscreen chunk.
  *
@@ -24,7 +24,7 @@ const OFFSCREEN_PATH = '/offscreen/offscreen.html'
  * is a BROADCAST delivered to every extension context except the sender. With
  * the listener live in more than one context, every offscreen request was
  * handled more than once: connect ran twice (two SignClients, two pairings, two
- * QR codes — the wallet scans one and the other proposal is orphaned, so it
+ * QR codes - the wallet scans one and the other proposal is orphaned, so it
  * spins forever), the wallet was asked to sign twice, and a placed order could
  * be submitted twice.
  */

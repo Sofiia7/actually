@@ -36,12 +36,12 @@ export function cosineSimilarity(a: Float32Array, b: Float32Array): number {
 
 /**
  * Resolve the index of the YES outcome in a PolyMarket's `outcomes` JSON
- * string. Polymarket does not guarantee positional order — for some markets
+ * string. Polymarket does not guarantee positional order - for some markets
  * "No" is index 0. Sending a BUY_YES order to clobTokenIds[0] when [0] is
  * actually the NO token would place the trade in the wrong direction
  * (money loss). Always map via the string label.
  *
- * Returns 0 by default if parsing fails or "Yes" not found — the caller
+ * Returns 0 by default if parsing fails or "Yes" not found - the caller
  * should still validate the result.
  */
 export function findOutcomeIndex(outcomesJson: string, label: 'Yes' | 'No'): number {
@@ -57,7 +57,7 @@ export function findOutcomeIndex(outcomesJson: string, label: 'Yes' | 'No'): num
 /**
  * Read the YES-outcome price from a market's outcomePrices/outcomes JSON
  * strings. Probability is always shown as the YES side; maps by label since
- * some markets list "No" first. Returns 0 on any parse failure — callers
+ * some markets list "No" first. Returns 0 on any parse failure - callers
  * that need to distinguish "market has no probability" from "market says 0%"
  * should check for malformed input themselves before calling this.
  */
@@ -87,7 +87,7 @@ export function safeJsonArray(s: string | undefined): string[] {
 }
 
 /**
- * True only for a binary Yes/No market — exactly two outcomes that are "Yes"
+ * True only for a binary Yes/No market - exactly two outcomes that are "Yes"
  * and "No" (case-insensitive). The whole UI (YES %, BUY YES / BUY NO, payout
  * math) assumes binary markets; a categorical market like
  * ["Candidate A","Candidate B",...] would otherwise be mislabeled and, worse,
@@ -140,7 +140,7 @@ export function formatRelative(input: Date | number): string {
  * value that appears nowhere in Polymarket's UI or the CLOB. It exists to
  * anonymise identifiers in telemetry.
  *
- * Never show it to a user as an order/transaction reference — use
+ * Never show it to a user as an order/transaction reference - use
  * shortRef() for that.
  */
 export function shortHash(s: string): string {

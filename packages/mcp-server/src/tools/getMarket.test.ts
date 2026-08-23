@@ -152,7 +152,7 @@ describe('getMarket', () => {
   })
 })
 
-describe('getMarket — the market-sell floor is handed over, not left to the caller', () => {
+describe('getMarket - the market-sell floor is handed over, not left to the caller', () => {
   it('quotes a floor strictly below the bid, with the slippage it really costs', async () => {
     // An agent has no way to know that a fill-or-kill sell at the bid needs
     // the whole size resting on that level, nor that a 2% band vanishes into

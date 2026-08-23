@@ -78,7 +78,7 @@ function formatVolume(v: number): string {
   if (v >= 1_000) return `$${Math.round(v / 1_000)}k`
   return `$${Math.round(v)}`
 }
-/** Cut at a word boundary — a market question mid-word reads as corruption. */
+/** Cut at a word boundary - a market question mid-word reads as corruption. */
 function truncate(s: string, max: number): string {
   return s.length <= max ? s : s.slice(0, max).replace(/\s+\S*$/, '') + '…'
 }
@@ -94,7 +94,7 @@ function tradeToRow(t: TradeLogItem): TradeRow {
     if (t.usd != null) bits.push(`$${t.usd.toFixed(2)}`)
     if (t.shares != null) bits.push(`${t.shares.toFixed(2)} shares`)
     const at = cents(t.price)
-    bits.push(`${t.outcome ?? '—'}${at ? ` @ ${at}` : ''}`)
+    bits.push(`${t.outcome ?? '-'}${at ? ` @ ${at}` : ''}`)
     if (t.orderType) bits.push(t.orderType.toLowerCase())
   }
   return {
@@ -114,7 +114,7 @@ function historyToRow(h: HistoryItem): HistoryRow {
   return {
     pct: Math.round(h.probability * 100),
     q: h.question,
-    src: h.pageDomain || '—',
+    src: h.pageDomain || '-',
     when: formatRelative(h.timestamp),
   }
 }
@@ -177,22 +177,22 @@ export const IntegratedPopup: React.FC<IntegratedPopupProps> = ({
   // Check tab state
   const [checkState, setCheckState] = useState<CheckState>({ kind: 'idle' })
   const [lastMatch, setLastMatch] = useState<MatchResult | null>(null)
-  // Headline of the page the last match was run against — surfaced as match
+  // Headline of the page the last match was run against - surfaced as match
   // context in the Trade tab (ТЗ §6.1).
   const [lastArticleHeadline, setLastArticleHeadline] = useState<string | null>(null)
   // Distinguishes a live page-derived match (real confidence score) from a
-  // market picked from History (no scoring happened — the user chose it
+  // market picked from History (no scoring happened - the user chose it
   // directly). MatchContext must not present the latter as if it were the
   // former (see its own doc comment).
   const [lastMatchSource, setLastMatchSource] = useState<'page' | 'history'>('page')
-  // What happened to the article's language on the way into the matcher —
+  // What happened to the article's language on the way into the matcher -
   // translated, or why not. Cleared at the start of every check so it can
   // never describe a page the user has already navigated away from.
   const [translationNote, setTranslationNote] = useState<TranslationNotice | null>(null)
 
   // History tab state
   const [historyState, setHistoryState] = useState<HistoryState>({ kind: 'loading' })
-  // Raw items backing historyState, same order/index — lets onSelect/
+  // Raw items backing historyState, same order/index - lets onSelect/
   // onOpenArticle address the exact clicked item by index instead of
   // re-fetching history and re-matching it by (question, pageDomain), which
   // silently fails (and can pick the wrong item) whenever pageDomain is
@@ -200,7 +200,7 @@ export const IntegratedPopup: React.FC<IntegratedPopupProps> = ({
   const [historyItems, setHistoryItems] = useState<HistoryItem[]>([])
   const [historyResolveError, setHistoryResolveError] = useState<string | null>(null)
   // The user's own trades. Separate from historyItems: matches are things you
-  // looked at, these are things you did — and they must survive "Clear history".
+  // looked at, these are things you did - and they must survive "Clear history".
   const [tradeItems, setTradeItems] = useState<TradeLogItem[]>([])
 
   // Settings tab state
@@ -212,7 +212,7 @@ export const IntegratedPopup: React.FC<IntegratedPopupProps> = ({
   const [wallet, setWallet] = useState<SerializableWalletState | null>(null)
   const [wiping, setWiping] = useState(false)
 
-  // Refresh wallet view when entering Settings — covers the case where the
+  // Refresh wallet view when entering Settings - covers the case where the
   // user connected on the Trade tab and immediately switches over.
   useEffect(() => {
     if (tab !== 'Settings') return
@@ -248,6 +248,15 @@ export const IntegratedPopup: React.FC<IntegratedPopupProps> = ({
       setSettings(res.settings)
       const status = await getCacheStatus()
       setCache({ count: status.count, lastUpdated: status.lastUpdated })
+      // Load the check log up front, not just when the History tab is opened.
+      // The Trade tab has to be able to tell "you have never checked anything"
+      // apart from "you checked things, just not since this popup opened" -
+      // claiming the former while History sits full of entries is simply false.
+      const past = (await sendToBackground({ type: 'GET_HISTORY' })) as Extract<
+        ResponseMessage,
+        { type: 'HISTORY_RESPONSE' }
+      >
+      setHistoryItems(past.items)
       // Auto-populate the market cache on first open so the user never has to
       // press "Refresh" manually. Runs in the background; Check still works
       // (it refreshes inline if needed). Deduped in the offscreen.
@@ -299,8 +308,8 @@ export const IntegratedPopup: React.FC<IntegratedPopupProps> = ({
 
   // ---- check actions ----
   /**
-   * Accept the no-match screen's offer. The click IS the consent — the button
-   * says what gets sent — so this turns the setting on and immediately re-runs
+   * Accept the no-match screen's offer. The click IS the consent - the button
+   * says what gets sent - so this turns the setting on and immediately re-runs
    * the check the user was already waiting on, rather than saving a
    * preference and leaving them to press Check again themselves.
    */
@@ -333,7 +342,7 @@ export const IntegratedPopup: React.FC<IntegratedPopupProps> = ({
 
       // Every market question on Polymarket is English, and so is the local
       // embedding model, so a foreign-language page has to be translated
-      // before it can be matched at all — an untranslated Russian headline
+      // before it can be matched at all - an untranslated Russian headline
       // scores below the floor against the market it is literally about.
       // Chrome's built-in translator does this locally. When it can't, the
       // check still runs on the original text and the notice says why.
@@ -363,7 +372,7 @@ export const IntegratedPopup: React.FC<IntegratedPopupProps> = ({
       const matched = translation.kind === 'translated' ? translation.article : article
 
       // Name the phase the popup is actually in. Without this the spinner kept
-      // whatever the translator last wrote under it — most confusingly
+      // whatever the translator last wrote under it - most confusingly
       // "downloading the Russian translator… 100%", left standing for the whole
       // market lookup, which reads as a download stuck at 100% rather than a
       // finished one.
@@ -427,14 +436,14 @@ export const IntegratedPopup: React.FC<IntegratedPopupProps> = ({
               // Russian would send the user to a guaranteed-empty page.
               searchUrl: polymarketSearchUrl(matched.headline),
               // The setting lives in Settings, which is where nobody looks.
-              // Mention it at the only moment it is relevant — a check that
-              // just came back empty — and only until the user answers.
+              // Mention it at the only moment it is relevant - a check that
+              // just came back empty - and only until the user answers.
               offerSearch: !settings.searchFallbackEnabled && !settings.searchFallbackOfferDismissed,
             })
           }
         } else if (res.reason) {
           // Catch-all: any other reason (offscreen exception, OS_ERROR
-          // bubbled up, etc) — surface verbatim instead of hiding under
+          // bubbled up, etc) - surface verbatim instead of hiding under
           // a misleading "no markets matched" empty state.
           setCheckState({ kind: 'error', message: `Match failed: ${res.reason}` })
         } else {
@@ -504,7 +513,7 @@ export const IntegratedPopup: React.FC<IntegratedPopupProps> = ({
     shareStats: settings.telemetryEnabled,
     searchFallback: settings.searchFallbackEnabled,
     cacheSize: cache.count,
-    cacheAge: autoRefreshing ? 'loading markets…' : cache.lastUpdated ? formatRelative(cache.lastUpdated) : '—',
+    cacheAge: autoRefreshing ? 'loading markets…' : cache.lastUpdated ? formatRelative(cache.lastUpdated) : '-',
     version: chrome.runtime?.getManifest?.().version ?? '1.0.0',
     contract: BUILDER_CODE || '(not configured)',
     workerUrl: settings.workerUrl,
@@ -580,6 +589,8 @@ export const IntegratedPopup: React.FC<IntegratedPopupProps> = ({
               articleHeadline={lastArticleHeadline}
               matchSource={lastMatchSource}
               settings={settings}
+              hasEarlierChecks={historyItems.length > 0}
+              onOpenHistory={() => setTab('History')}
               onPickMatch={() => {
                 setTab('Check')
                 if (checkState.kind !== 'success') void startCheck()
@@ -601,7 +612,7 @@ export const IntegratedPopup: React.FC<IntegratedPopupProps> = ({
               <HistoryTab
                 state={historyState}
                 onSelect={(_row, index) => {
-                  // Jump straight into Trade with this market — no need to
+                  // Jump straight into Trade with this market - no need to
                   // revisit the original article and re-run Check. Address
                   // the item by its position in historyItems (the same array
                   // historyState.items was derived from) rather than
@@ -617,8 +628,8 @@ export const IntegratedPopup: React.FC<IntegratedPopupProps> = ({
                     if (!resolved.market) {
                       setHistoryResolveError(
                         resolved.error === 'closed'
-                          ? 'This market has since closed or resolved — no longer tradeable.'
-                          : "Couldn't find this market anymore — it may have been delisted.",
+                          ? 'This market has since closed or resolved - no longer tradeable.'
+                          : "Couldn't find this market anymore - it may have been delisted.",
                       )
                       return
                     }
@@ -630,7 +641,7 @@ export const IntegratedPopup: React.FC<IntegratedPopupProps> = ({
                       market,
                       probability,
                       // No real confidence score exists for a manually-picked
-                      // historical item — MatchContext must not print this as
+                      // historical item - MatchContext must not print this as
                       // if it were a scored match (see lastMatchSource).
                       confidence: 1,
                       color,
@@ -703,7 +714,7 @@ export const IntegratedPopup: React.FC<IntegratedPopupProps> = ({
 }
 
 // =============================================================
-// WalletSlot — read-only wallet info + wipe button inside Settings
+// WalletSlot - read-only wallet info + wipe button inside Settings
 // =============================================================
 interface WalletSlotProps {
   wallet: SerializableWalletState | null

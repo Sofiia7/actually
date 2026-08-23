@@ -18,7 +18,7 @@ export interface GlassButtonProps {
 
 /**
  * Glass button. Flat at rest, becomes convex on hover (gradient
- * highlight + lifted shadow + 0.5px lift) — see `.glass-btn` in
+ * highlight + lifted shadow + 0.5px lift) - see `.glass-btn` in
  * styles.css. No cursor-tracked shimmer, intentionally calm.
  */
 export const GlassButton: React.FC<GlassButtonProps> = ({

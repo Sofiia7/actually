@@ -10,7 +10,7 @@ import type {
 } from './types'
 
 // ============================================================
-// Light-weight messages — handled directly by the Service Worker
+// Light-weight messages - handled directly by the Service Worker
 // (settings, history, telemetry-adjacent state).
 // ============================================================
 export type RequestMessage =
@@ -56,7 +56,7 @@ export async function sendToBackground<R = ResponseMessage>(
 }
 
 // ============================================================
-// Heavy operations — handled inside the offscreen document.
+// Heavy operations - handled inside the offscreen document.
 // Routed by the SW via `target: 'offscreen'`.
 // ============================================================
 export type OffscreenRequest =
@@ -69,7 +69,7 @@ export type OffscreenRequest =
   | { target: 'offscreen'; type: 'OS_DISCONNECT_WALLET' }
   | { target: 'offscreen'; type: 'OS_START_CONNECT' }
   // `sessionId` is optional: the popup loses it whenever Chrome closes the
-  // popup (which happens on any focus loss — including switching to the
+  // popup (which happens on any focus loss - including switching to the
   // wallet app). Omitting it asks for whatever connect the offscreen document
   // currently knows about, so a reopened popup can rejoin one already in
   // flight instead of stranding it and starting another.
@@ -97,20 +97,20 @@ export interface OffscreenPlaceOrderArgs {
   minOrderSize?: number
   /** LIMIT → GTC resting order at `price`; MARKET → FOK capped at `price`. */
   orderType: 'LIMIT' | 'MARKET'
-  /** UI-derived maker/taker classification — telemetry only. */
+  /** UI-derived maker/taker classification - telemetry only. */
   makerTaker?: 'maker' | 'taker'
 }
 
 export interface OffscreenSellOrderArgs {
   tokenId: string
-  /** Shares to sell — a sell is denominated in what you hold, not in USD. */
+  /** Shares to sell - a sell is denominated in what you hold, not in USD. */
   sizeShares: number
   /** LIMIT → the resting limit price; MARKET → the worst-acceptable FLOOR price. */
   price: number
   /**
    * OMIT unless the caller holds a trusted Gamma record for this market. The
    * CLOB SDK only auto-resolves the market's real neg-risk flag when the
-   * option is absent (`options?.negRisk ?? await getNegRisk(tokenID)`) — an
+   * option is absent (`options?.negRisk ?? await getNegRisk(tokenID)`) - an
    * explicit `false` here forces the normal exchange contract and gets every
    * neg-risk sell rejected with a signature error. Positions come from the
    * data API with no Gamma record, so the sell ticket must not send this.
@@ -127,7 +127,7 @@ export type OffscreenResponse =
       type: 'OS_MATCH_RESULT'
       match: MatchResult | null
       reason?: string
-      /** Closest tradeable market when nothing cleared the floor — lets the
+      /** Closest tradeable market when nothing cleared the floor - lets the
        *  UI say what it nearly matched instead of printing cache counters. */
       nearest?: { question: string; slug: string; score: number }
       /** How many markets were scoreable at all (open, embedded, unexpired). */
@@ -141,7 +141,7 @@ export type OffscreenResponse =
   | { type: 'OS_CONNECT_STARTED'; sessionId: string }
   | {
       type: 'OS_CONNECT_STATUS'
-      /** `signing` = session approved, now waiting on the CLOB-auth signature —
+      /** `signing` = session approved, now waiting on the CLOB-auth signature -
        * a SECOND prompt the wallet raises separately from the QR approval. */
       stage: 'pending' | 'awaiting_approval' | 'signing' | 'done' | 'error'
       uri?: string
@@ -167,7 +167,7 @@ export type OffscreenResponse =
 /**
  * Mirror of WalletState that survives chrome.runtime message serialization.
  * (The real WalletState carries `ApiKeyCreds` from clob-client-v2, which is
- * a plain object too — safe to pass.) Kept separate so the widget can hold
+ * a plain object too - safe to pass.) Kept separate so the widget can hold
  * it without importing the SDK.
  */
 export interface SerializableWalletState {

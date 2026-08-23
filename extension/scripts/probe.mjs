@@ -5,7 +5,7 @@
  * Usage:
  *   WORKER_URL=https://... WORKER_SECRET=... EXTENSION_ID=... node scripts/probe.mjs
  *
- * Reads secrets from env — never hardcode them here. See .env.example.
+ * Reads secrets from env - never hardcode them here. See .env.example.
  */
 const SECRET = process.env.WORKER_SECRET
 const URL_BASE = process.env.WORKER_URL

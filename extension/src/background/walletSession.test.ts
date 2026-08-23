@@ -33,8 +33,8 @@ beforeEach(() => {
   vi.clearAllMocks()
 })
 
-describe('startConnect — the approved session must actually grant what signing needs', () => {
-  it('sends BOTH namespace fields — wallets that render from requiredNamespaces must not be starved', async () => {
+describe('startConnect - the approved session must actually grant what signing needs', () => {
+  it('sends BOTH namespace fields - wallets that render from requiredNamespaces must not be starved', async () => {
     // Sending only optionalNamespaces (to silence the SDK's deprecation
     // warning) left such wallets with nothing to build an approval screen
     // from: they spin forever and never prompt. The warning is noise;
@@ -60,7 +60,7 @@ describe('startConnect — the approved session must actually grant what signing
 
   it('rejects a session approved on the wrong chain, naming what was granted', async () => {
     // This is the failure that used to be invisible: approval succeeds, and
-    // only the later signature request fails — long after the user has been
+    // only the later signature request fails - long after the user has been
     // told the wallet is connected.
     approvedWith({
       eip155: { accounts: ['eip155:1:0xABC'], methods: ['eth_signTypedData_v4'], events: [] },

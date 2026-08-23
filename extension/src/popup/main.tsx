@@ -14,6 +14,6 @@ createRoot(document.getElementById('root')!).render(
 )
 
 // Paint/restore the frost texture AFTER first render so it never blocks the
-// popup from appearing — the heavy canvas paint previously froze the popup on
+// popup from appearing - the heavy canvas paint previously froze the popup on
 // open. Cached in localStorage, so it is generated at most once.
 setTimeout(() => ensureFrostTexture(), 0)

@@ -12,7 +12,7 @@ let creating: Promise<void> | null = null
 
 /**
  * Ensure the offscreen document exists. Idempotent across concurrent
- * callers — the second caller waits on the in-flight create.
+ * callers - the second caller waits on the in-flight create.
  */
 export async function ensureOffscreen(): Promise<void> {
   // Chrome 116+ exposes hasDocument; older builds need a manual check
@@ -27,13 +27,13 @@ export async function ensureOffscreen(): Promise<void> {
     .createDocument({
       url: OFFSCREEN_URL,
       reasons: [
-        // The closest justification to what we actually do — heavy
+        // The closest justification to what we actually do - heavy
         // background work (embeddings, WC, signing) that the SW
         // cannot host. Chrome accepts WORKERS for this.
         chrome.offscreen.Reason.WORKERS,
       ],
       justification:
-        'Run transformers.js embeddings, WalletConnect v2 session, and Polymarket CLOB order signing — all of which need full Web APIs that MV3 service workers do not expose.',
+        'Run transformers.js embeddings, WalletConnect v2 session, and Polymarket CLOB order signing - all of which need full Web APIs that MV3 service workers do not expose.',
     })
     .finally(() => {
       creating = null
@@ -49,7 +49,7 @@ async function offscreenExists(): Promise<boolean> {
     })
     return ctxs.length > 0
   } catch {
-    // Fallback for older Chrome — try create; if it throws "already
+    // Fallback for older Chrome - try create; if it throws "already
     // exists", we're good.
     try {
       return (await chrome.offscreen.hasDocument?.()) ?? false
@@ -63,7 +63,7 @@ async function offscreenExists(): Promise<boolean> {
  * Forward a request whose `target === 'offscreen'` to the offscreen
  * document and return its response. The forward is wrapped in a
  * distinct envelope shape (`__forward: true`) so that only the
- * offscreen listener picks it up — avoids the rebroadcast race
+ * offscreen listener picks it up - avoids the rebroadcast race
  * where the SW would otherwise receive its own forward.
  */
 export async function routeToOffscreen<T = unknown>(msg: unknown): Promise<T> {

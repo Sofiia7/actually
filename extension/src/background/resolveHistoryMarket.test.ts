@@ -1,5 +1,5 @@
 /**
- * Coverage for History's "trade this again" lookup — cache-first, Gamma
+ * Coverage for History's "trade this again" lookup - cache-first, Gamma
  * fallback, and the closed/expired guard that stops a stale History entry
  * from re-opening a dead market for trading.
  */
@@ -42,7 +42,7 @@ describe('resolveHistoryMarket', () => {
   const ORIGINAL_FETCH = global.fetch
 
   beforeEach(() => {
-    // @ts-expect-error — stub only the surface getMarketCache uses.
+    // @ts-expect-error - stub only the surface getMarketCache uses.
     globalThis.chrome = { storage: { local: makeStorageStub() } }
   })
   afterEach(() => {
@@ -53,7 +53,7 @@ describe('resolveHistoryMarket', () => {
 
   it('resolves from the cache without ever calling fetch', async () => {
     const market: CachedMarket = { ...makeMarket(), embeddingB64: '', questionHash: 'h', cachedAt: 0 }
-    // @ts-expect-error — test-only storage stub.
+    // @ts-expect-error - test-only storage stub.
     globalThis.chrome.storage.local.data[STORAGE_KEYS.marketCache] = [market]
     const fetchSpy = vi.fn()
     global.fetch = fetchSpy as unknown as typeof fetch
@@ -86,7 +86,7 @@ describe('resolveHistoryMarket', () => {
 
   it('refuses a market marked closed', async () => {
     const market: CachedMarket = { ...makeMarket({ closed: true }), embeddingB64: '', questionHash: 'h', cachedAt: 0 }
-    // @ts-expect-error — test-only storage stub.
+    // @ts-expect-error - test-only storage stub.
     globalThis.chrome.storage.local.data[STORAGE_KEYS.marketCache] = [market]
 
     const result = await resolveHistoryMarket('m1', 'https://worker.example', 'secret')
@@ -102,7 +102,7 @@ describe('resolveHistoryMarket', () => {
       questionHash: 'h',
       cachedAt: 0,
     }
-    // @ts-expect-error — test-only storage stub.
+    // @ts-expect-error - test-only storage stub.
     globalThis.chrome.storage.local.data[STORAGE_KEYS.marketCache] = [market]
 
     const result = await resolveHistoryMarket('m1', 'https://worker.example', 'secret')

@@ -6,7 +6,7 @@ beforeEach(async () => {
   await clearTradeLog()
 })
 
-describe('tradeLog — the only local record that a trade happened', () => {
+describe('tradeLog - the only local record that a trade happened', () => {
   it('keeps a sold position after it vanishes from the positions API', async () => {
     await logTrade({
       kind: 'SELL',
@@ -25,7 +25,7 @@ describe('tradeLog — the only local record that a trade happened', () => {
     expect(entry.id).toBeTruthy()
   })
 
-  it('records failures too — "I clicked sell and it broke" is worth keeping', async () => {
+  it('records failures too - "I clicked sell and it broke" is worth keeping', async () => {
     await logTrade({ kind: 'REDEEM', status: 'failed', question: 'Resolved market', error: 'relayer said 401' })
     const [entry] = await getTradeLog()
     expect(entry.status).toBe('failed')
@@ -48,7 +48,7 @@ describe('tradeLog — the only local record that a trade happened', () => {
     expect(items[0].question).toBe(`q${MAX_TRADE_LOG_ITEMS + 4}`)
   })
 
-  it('never throws when storage fails — a logging problem must not fail a real trade', async () => {
+  it('never throws when storage fails - a logging problem must not fail a real trade', async () => {
     const set = chrome.storage.local.set as unknown as ReturnType<typeof vi.fn>
     set.mockRejectedValueOnce(new Error('QUOTA_BYTES exceeded'))
     await expect(logTrade({ kind: 'BUY', status: 'placed', question: 'q' })).resolves.toBeUndefined()

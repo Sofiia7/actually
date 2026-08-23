@@ -78,7 +78,7 @@ describe('buildRedeemTransaction', () => {
   })
 })
 
-describe('buildRedeemTransaction — float-noise hardening (2026-08-16)', () => {
+describe('buildRedeemTransaction - float-noise hardening (2026-08-16)', () => {
   const iface = new Interface(['function redeemPositions(bytes32 conditionId, uint256[] amounts)'])
 
   it('floors a float-noise tail beyond 6 decimals instead of throwing', () => {

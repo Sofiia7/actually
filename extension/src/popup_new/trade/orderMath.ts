@@ -1,5 +1,5 @@
 /**
- * Pure order-ticket math for the Trade tab. No chrome.* / SDK imports — kept
+ * Pure order-ticket math for the Trade tab. No chrome.* / SDK imports - kept
  * unit-testable in isolation (see orderMath.test.ts). All prices are per-share
  * in USDC (0..1); sizes are USD notional unless named `shares`.
  */
@@ -11,7 +11,7 @@ export function sharesFor(sizeUsd: number, price: number): number {
   return sizeUsd / price
 }
 
-/** Max payout if the position resolves correct — $1 per share. */
+/** Max payout if the position resolves correct - $1 per share. */
 export function maxPayout(shares: number): number {
   return shares
 }

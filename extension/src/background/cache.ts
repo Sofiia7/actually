@@ -36,7 +36,7 @@ export async function getCacheStatus(): Promise<{ count: number; lastUpdated: nu
  * Refreshes the local market cache. The 'local' provider uses the same
  * MiniLM model as the Worker's precomputed `/market-cache` blob (built every
  * 2h by packages/market-cache-builder's cron), so it downloads that instead
- * of recomputing embeddings for ~800 markets on-device — on a fresh install
+ * of recomputing embeddings for ~800 markets on-device - on a fresh install
  * with an empty cache, on-device embedding took 3+ minutes of WASM inference
  * before this existed, every single time, for every new user. Falls back to
  * on-device embedding if the precomputed cache is unreachable/stale/mismatched,
@@ -68,7 +68,7 @@ const BLOB_RETRY_BASE_MS = 250
  *
  * Worth the retry because giving up is expensive. The blob is ~7 MB, and the
  * fallback for not having it is embedding hundreds of markets through WASM on
- * the user's device — minutes of work that also needs the same network, so a
+ * the user's device - minutes of work that also needs the same network, so a
  * blip takes out both paths and the user reads "Couldn't load markets:
  * TypeError: Failed to fetch" after a long wait.
  *
@@ -106,7 +106,7 @@ async function fetchBlobWithRetry(workerUrl: string, workerSecret: string): Prom
  * noise/binary filtering (see packages/market-cache-builder/src/buildBlob.ts),
  * so the blob's markets are used as-is, no re-filtering needed. Always fully
  * replaces the stored cache (matching the model, whatever provider produced
- * the previous cache) rather than diffing — there's nothing to reuse from
+ * the previous cache) rather than diffing - there's nothing to reuse from
  * on-device embeddings, and no cross-provider staleness risk since the write
  * is a full overwrite.
  */
@@ -149,7 +149,7 @@ async function refreshByEmbedding(
   workerSecret: string,
 ): Promise<{ added: number; reused: number; removed: number }> {
   // If the local model id changed since last refresh, vectors are not
-  // comparable across models — wipe and start fresh.
+  // comparable across models - wipe and start fresh.
   const stored = await chrome.storage.local.get(STORAGE_KEYS.marketCacheModel)
   const expectedModel = provider === 'local' ? LOCAL_MODEL_ID : 'openai'
   if (stored[STORAGE_KEYS.marketCacheModel] !== expectedModel) {
@@ -165,7 +165,7 @@ async function refreshByEmbedding(
     workerSecret,
     MAX_MARKETS_ON_DEVICE + 50, // overfetch a bit to compensate for noise/binary filters
   )
-  // Drop word-association noise AND non-binary markets — the trade flow assumes
+  // Drop word-association noise AND non-binary markets - the trade flow assumes
   // a Yes/No pair, so a categorical market must never reach the cache.
   const remote = rawRemote
     .filter((m) => !isNoiseMarket(m.question))
@@ -229,7 +229,7 @@ async function refreshByEmbedding(
   return { added: freshlyEmbedded.length, reused: reused.length, removed }
 }
 
-/** Wipe cache (e.g., on embedding provider change — dims differ). */
+/** Wipe cache (e.g., on embedding provider change - dims differ). */
 export async function clearMarketCache(): Promise<void> {
   await chrome.storage.local.remove([STORAGE_KEYS.marketCache, STORAGE_KEYS.marketCacheTs])
 }

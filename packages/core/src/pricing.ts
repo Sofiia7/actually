@@ -64,7 +64,7 @@ export function marketCapPrice(bestAsk: number, capPct: number, tickSize: string
  * The rounding direction is the whole point, and getting it wrong made cheap
  * positions unsellable. The sell ticket used to round to the NEAREST tick,
  * which at low prices rounds the cushion straight back into the bid: a 1.1¢
- * bid gives 1.1¢ × 0.98 = 1.078¢, which rounds to 1.1¢ — the bid itself. The
+ * bid gives 1.1¢ × 0.98 = 1.078¢, which rounds to 1.1¢ - the bid itself. The
  * order then goes out as fill-or-kill at exactly the top of the book, so it
  * can only fill if the ENTIRE size is resting on that one price level, and
  * any movement kills it. Below 2.5¢ a 2% cushion is smaller than half a tick,
@@ -75,7 +75,7 @@ export function marketCapPrice(bestAsk: number, capPct: number, tickSize: string
  *
  * Returns at most one tick below the bid and at least one tick outright,
  * since a price of zero is not a valid order. A bid already sitting on the
- * minimum tick therefore yields no cushion at all — unavoidable, and the
+ * minimum tick therefore yields no cushion at all - unavoidable, and the
  * caller is expected to say so rather than promise slippage it cannot give.
  */
 export function marketFloorPrice(bestBid: number, floorPct: number, tickSize: string): number {

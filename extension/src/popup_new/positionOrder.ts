@@ -1,21 +1,21 @@
 /**
  * Ordering for the positions list.
  *
- * Polymarket's data-api returns positions sorted by SIZE, descending — its
+ * Polymarket's data-api returns positions sorted by SIZE, descending - its
  * default is `sortBy=TOKENS&sortDirection=DESC` and this extension never
  * overrode it. That reads as arbitrary from the user's side: the position
  * they just opened lands wherever its share count happens to fall, which for
  * a small first trade is the bottom of the list, under markets they last
  * touched weeks ago.
  *
- * The obvious fix — ask the API for newest-first — isn't available: a
+ * The obvious fix - ask the API for newest-first - isn't available: a
  * position object carries no timestamp at all (28 fields, none temporal
  * except the market's own `endDate`), and `sortBy` offers no recency option.
  * So recency comes from the one record that does have it: the local trade
  * log, which timestamps every buy, sell and redeem made through the popup.
  *
- * Positions with no log entry — bought on polymarket.com, or older than the
- * log's 100-item ceiling — keep their incoming relative order and sit below
+ * Positions with no log entry - bought on polymarket.com, or older than the
+ * log's 100-item ceiling - keep their incoming relative order and sit below
  * the ones we can date. Guessing at their age would be worse than admitting
  * we don't know it.
  */
@@ -27,11 +27,11 @@ const norm = (v: string | undefined): string => (v ?? '').trim().toLowerCase()
  * How a position and a log entry are matched up.
  *
  * Slug is the reliable identifier, but `marketSlug` is documented as "when
- * known" and older entries can lack it — hence a question-text fallback. That
+ * known" and older entries can lack it - hence a question-text fallback. That
  * fallback is deliberately narrow: it indexes ONLY the slug-less entries.
  * Indexing every entry under its question too would let one market's trade
  * date an unrelated position whenever two markets share a title (Polymarket
- * recycles question text across recurring events — "Ethereum Up or Down" runs
+ * recycles question text across recurring events - "Ethereum Up or Down" runs
  * every five minutes), and a wrong date here silently reorders the list.
  *
  * Both keys are qualified by outcome: Yes and No on the same market are two
@@ -70,7 +70,7 @@ export function orderPositionsByRecentActivity(positions: Position[], log: Trade
   }
 
   // Decorate-sort-undecorate: Array#sort is stable in every engine this ships
-  // to, but the index tiebreak states the intent outright — undated positions
+  // to, but the index tiebreak states the intent outright - undated positions
   // must come out in exactly the order the API gave them (size, descending),
   // not in some order that happens to fall out of the comparator.
   return positions

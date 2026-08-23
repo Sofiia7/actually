@@ -1,15 +1,15 @@
 /**
  * Browser-level smoke for the packaged extension.
  *
- * Loads dist/ into a real installed Chromium browser (via playwright-core —
+ * Loads dist/ into a real installed Chromium browser (via playwright-core -
  * no browser download) the same way "Load unpacked" would, opens the popup
  * page, and walks all four tabs. Catches the class of "extension loads but
  * the popup white-screens / a tab crashes / the SW dies on startup"
- * regressions that neither unit tests nor the build-integrity smoke can see —
+ * regressions that neither unit tests nor the build-integrity smoke can see -
  * previously only caught by clicking through by hand.
  *
  * Default browser is Microsoft EDGE, not Chrome: branded Chrome 137+ silently
- * ignores --load-extension (verified here on Chrome 151 — the SW never
+ * ignores --load-extension (verified here on Chrome 151 - the SW never
  * starts, headed or headless), while Edge (same Chromium, preinstalled on
  * every Windows 10/11) still honors it, including headless. Because dist/'s
  * manifest pins `key`, Edge assigns the exact production extension ID, so the
@@ -26,7 +26,7 @@
  *   - any uncaught exception (pageerror) in the popup, on load or per tab
  *   - a tab button missing, or clicking it empties the UI
  *   - a console error that is not a plain network failure (network errors to
- *     the Worker/CLOB are reported as warnings — this smoke must also pass
+ *     the Worker/CLOB are reported as warnings - this smoke must also pass
  *     offline, matching the popup's own offline-tolerant design)
  *
  * Exit 0 = pass, 1 = checks failed, 2 = no build / no Chrome to run against.
@@ -52,7 +52,7 @@ const bad = (m) => {
 const warn = (m) => console.log(`  ~ ${m}`)
 
 if (!existsSync(join(DIST, 'manifest.json'))) {
-  console.error('No dist/manifest.json — run `npm run build` first.')
+  console.error('No dist/manifest.json - run `npm run build` first.')
   process.exit(2)
 }
 
@@ -77,7 +77,7 @@ try {
 console.log(`E2E smoke on dist/ (${HEADED ? 'headed' : 'headless'} ${CHANNEL}):`)
 
 try {
-  // 1. The MV3 service worker must come up — its absence means Chrome
+  // 1. The MV3 service worker must come up - its absence means Chrome
   // rejected the extension outright (manifest/CSP/bundle problem).
   let sw = context.serviceWorkers()[0]
   if (!sw) {
@@ -130,14 +130,14 @@ try {
     )
     if (!alive) bad(`tab "${tab}": UI went blank after switching`)
     else if (pageErrors.length > errorsBefore)
-      bad(`tab "${tab}": uncaught exception — ${pageErrors[pageErrors.length - 1]}`)
+      bad(`tab "${tab}": uncaught exception - ${pageErrors[pageErrors.length - 1]}`)
     else ok(`tab "${tab}" renders`)
   }
 
   // 5. Live match pipeline, end to end: send the same OS_RUN_MATCH message
   // the Check button sends (popup -> SW -> offscreen document -> Worker
   // market-cache fetch with the baked-in secret -> bundled WASM embedding ->
-  // matcher). This is the "открыла попап, нажала Check — и ничего не
+  // matcher). This is the "открыла попап, нажала Check - и ничего не
   // произошло" flow. A match and a clean no-match both PASS (matching
   // quality is not a smoke concern); a transport/auth/cache/model error
   // FAILS. Skipped with --offline.
@@ -184,7 +184,7 @@ try {
   }
 
   // 7. Console errors: real network failures (Worker/CLOB unreachable, geo
-  // probe offline, ...) are warnings — everything else fails the run.
+  // probe offline, ...) are warnings - everything else fails the run.
   const NETWORKY = /net::ERR_|Failed to fetch|ERR_INTERNET_DISCONNECTED|status of (4|5)\d\d/
   for (const e of consoleErrors) {
     NETWORKY.test(e) ? warn(`network console error (tolerated): ${e.slice(0, 160)}`) : bad(`console error: ${e.slice(0, 300)}`)

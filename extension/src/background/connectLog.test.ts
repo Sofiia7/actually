@@ -13,7 +13,7 @@ beforeEach(async () => {
 
 describe('redact', () => {
   it('never lets a WalletConnect pairing URI reach storage', () => {
-    // The URI carries the session's symmetric key — it is a live credential,
+    // The URI carries the session's symmetric key - it is a live credential,
     // not an identifier.
     const out = redact('connecting with wc:a1b2c3@2?relay-protocol=irn&symKey=deadbeef')
     expect(out).not.toContain('symKey')

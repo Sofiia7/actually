@@ -1,11 +1,11 @@
 /**
- * Offline matching test — runs transformers.js in Node against real markets
+ * Offline matching test - runs transformers.js in Node against real markets
  * fetched from the production Worker. Lets us iterate on matching quality
  * without rebuilding/reloading the extension every time.
  *
  * Usage:
  *   WORKER_URL=https://... WORKER_SECRET=... node scripts/test-match.mjs
- *   (or put both in .env.local — see .env.example)
+ *   (or put both in .env.local - see .env.example)
  */
 import { pipeline, env } from '@xenova/transformers'
 

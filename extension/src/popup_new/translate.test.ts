@@ -161,7 +161,7 @@ describe('translateArticle', () => {
   // Observed in a real Chromium build: `Translator` exists on the global, but
   // `availability()` never settles. Without a bound the popup waits forever on
   // a promise that will not resolve, and the user sees a spinner instead of an
-  // answer — strictly worse than being told the page could not be translated.
+  // answer - strictly worse than being told the page could not be translated.
   it('gives up when the browser never answers whether it can translate', async () => {
     const out = await translateArticle(RU, {
       translator: fakeTranslator({ availability: () => new Promise<never>(() => {}) }),

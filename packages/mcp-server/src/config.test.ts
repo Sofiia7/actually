@@ -13,7 +13,7 @@ describe('requireWorkerConfig', () => {
 
   // In the published package, __DEFAULT_WORKER_URL__/__DEFAULT_WORKER_SECRET__
   // are baked in by tsup (see tsup.config.ts) so this only throws in an
-  // unbuilt/test context where those defines don't exist — the typeof guard
+  // unbuilt/test context where those defines don't exist - the typeof guard
   // in config.ts falls back to '', reproducing the pre-bake behavior here.
   it('throws when no env vars are set and no default was baked in', async () => {
     delete process.env.ACTUALLY_WORKER_URL
@@ -123,7 +123,7 @@ describe('REDEEM_ENABLED', () => {
     process.env = { ...ORIGINAL_ENV }
   })
 
-  it('defaults to false — redeem_position needs an explicit second opt-in beyond PRIVATE_KEY', async () => {
+  it('defaults to false - redeem_position needs an explicit second opt-in beyond PRIVATE_KEY', async () => {
     delete process.env.ACTUALLY_ENABLE_REDEEM
     const { REDEEM_ENABLED } = await import('./config')
     expect(REDEEM_ENABLED).toBe(false)

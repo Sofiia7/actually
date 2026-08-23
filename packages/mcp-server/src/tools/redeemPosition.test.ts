@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { redeemPosition } from './redeemPosition'
 import type { Position } from '../positions'
 
-// conditionId must be a real bytes32 hex string — ethers' ABI encoder rejects
+// conditionId must be a real bytes32 hex string - ethers' ABI encoder rejects
 // anything else, same as it would for a live call.
 const COND = '0x' + '11'.repeat(32)
 
@@ -140,12 +140,12 @@ describe('redeemPosition', () => {
   })
 })
 
-describe('redeemPosition — a resolved market is not the same as a payout', () => {
+describe('redeemPosition - a resolved market is not the same as a payout', () => {
   it('refuses a losing position instead of paying to be told it is worthless', async () => {
     // data-api reports redeemable=true for the LOSING side as well, alongside
     // curPrice 0 and currentValue 0. Submitting anyway gets
     // "PRECHECK_SKIPPED: redeem skipped: zero position balance" from the
-    // relayer, after the signature and against the builder's daily quota —
+    // relayer, after the signature and against the builder's daily quota -
     // and an agent, unlike a person, will simply try again.
     let submitted = false
     const result = await redeemPosition(

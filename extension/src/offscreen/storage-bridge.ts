@@ -26,7 +26,7 @@ async function call(msg: StorageMsg): Promise<unknown> {
 
 export function installStorageBridge(): void {
   const c = chrome as unknown as { storage?: { local?: unknown } }
-  if (c.storage && c.storage.local) return // native API present — nothing to do
+  if (c.storage && c.storage.local) return // native API present - nothing to do
   c.storage = {
     local: {
       get: (keys?: string | string[] | null) =>

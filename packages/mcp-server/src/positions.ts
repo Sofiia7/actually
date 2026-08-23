@@ -8,9 +8,9 @@ export interface Position {
   cashPnl: number
   percentPnl: number
   outcome: string
-  /** 0 or 1 — which binary outcome slot this position occupies. Needed to redeem neg-risk positions. */
+  /** 0 or 1 - which binary outcome slot this position occupies. Needed to redeem neg-risk positions. */
   outcomeIndex: number
-  /** True for neg-risk (multi-outcome) markets — redeem_position needs this to pick the right contract. */
+  /** True for neg-risk (multi-outcome) markets - redeem_position needs this to pick the right contract. */
   negativeRisk: boolean
   /** True once the market has resolved and this position can be redeemed for pUSD. */
   redeemable: boolean
@@ -37,7 +37,7 @@ interface RawPosition {
 
 /**
  * Positions for a given on-chain address (the caller's derived Safe), read
- * directly from Polymarket's public, unauthenticated data-api — no worker
+ * directly from Polymarket's public, unauthenticated data-api - no worker
  * hop needed, same as the extension's `/clob/proxy/<eoa>` data-api calls.
  */
 export async function fetchPositions(address: string): Promise<Position[]> {

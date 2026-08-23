@@ -62,7 +62,7 @@ describe('minOrderUsd', () => {
     }
   })
 
-  it('is $1.55 at 31¢ — the price from the rejected order', () => {
+  it('is $1.55 at 31¢ - the price from the rejected order', () => {
     expect(minOrderUsd(0.31)).toBe(1.55)
   })
 

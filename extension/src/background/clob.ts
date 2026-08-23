@@ -1,5 +1,5 @@
 /**
- * Polymarket CLOB v2 client — built around `@polymarket/clob-client-v2`.
+ * Polymarket CLOB v2 client - built around `@polymarket/clob-client-v2`.
  *
  * Responsibility:
  *   - Initialize ClobClient with our build-time BUILDER_CODE
@@ -7,7 +7,7 @@
  *   - Persist creds to chrome.storage.local so the user signs once per device
  *   - Expose typed helpers used by trade.ts and the Trade tab
  *
- * Heavy lift — order construction + EIP-712 signing — is done inside the SDK
+ * Heavy lift - order construction + EIP-712 signing - is done inside the SDK
  * against the WCSigner we hand it (see ./wallet.ts).
  */
 import {
@@ -38,7 +38,7 @@ const CLOB_HOST = 'https://clob.polymarket.com'
  *   1. CLOB itself authenticates each request via per-user HMAC headers
  *      (`POLY_API_KEY`, `POLY_PASSPHRASE`, `POLY_SIGNATURE`) that the SDK
  *      builds from creds derived during connect. The Worker cannot
- *      meaningfully validate or re-sign these — it would be a pass-through.
+ *      meaningfully validate or re-sign these - it would be a pass-through.
  *   2. Wrapping every CLOB GET (orderbook, prices, status polling) through
  *      Worker would multiply latency and force us to keep Worker rate
  *      limits high enough to not break real users' polling, which neuters
@@ -46,7 +46,7 @@ const CLOB_HOST = 'https://clob.polymarket.com'
  *   3. Removes one moving part for v1 review/beta.
  *
  * The cost is `host_permissions: ["https://clob.polymarket.com/*"]` in
- * manifest.json — a single, public, well-known host. Reviewable.
+ * manifest.json - a single, public, well-known host. Reviewable.
  *
  * Planned for v1.2: re-introduce the Worker proxy when we also add HMAC
  * signing on `X-Actually-*` headers so the Worker leg adds real value
@@ -83,11 +83,11 @@ export function makeClient({
  *
  * DERIVE IS TRIED FIRST, AND THE ORDER IS THE POINT. Each of these SDK calls
  * builds L1 auth headers, and building them costs one `eth_signTypedData_v4`
- * — i.e. one wallet prompt the user has to approve. The SDK's own
+ * - i.e. one wallet prompt the user has to approve. The SDK's own
  * `createOrDeriveApiKey` helper POSTs *create* first and only falls back to
  * derive when that comes back without a key. But create fails for any address
- * that already has a CLOB key — which is everyone who has ever connected
- * before, here or on polymarket.com — so the helper's normal path is
+ * that already has a CLOB key - which is everyone who has ever connected
+ * before, here or on polymarket.com - so the helper's normal path is
  * create-then-derive: two prompts, every single connect, for the same one
  * credential. Derive alone succeeds for those users in one prompt, and a
  * genuinely new key still gets created by the fallback below.
@@ -108,7 +108,7 @@ export async function deriveCredentials(
   }
   // The combined helper is a LAST RESORT, never an extra attempt appended to
   // the two above: it internally performs create-then-derive, so running it
-  // after they have both already been tried repeats both calls — and each
+  // after they have both already been tried repeats both calls - and each
   // call is another wallet prompt. Use it only when this SDK version doesn't
   // expose the individual methods at all.
   if (attempts.length === 0 && typeof c.createOrDeriveApiKey === 'function') {
@@ -130,7 +130,7 @@ export async function deriveCredentials(
     }
     // A non-2xx resolves to an error object rather than throwing (we don't
     // set the SDK's `throwOnError`), so "returned something" is not the same
-    // as "returned credentials" — check the fields we actually need.
+    // as "returned credentials" - check the fields we actually need.
     if (creds?.key && creds.secret && creds.passphrase) return creds
     failures.push(`${name}:empty_credentials`)
   }
@@ -154,7 +154,7 @@ export interface BuyOrderArgs {
   negRisk?: boolean
   /**
    * Explicit tick size from the Gamma market record (e.g. "0.01" or
-   * "0.001"). Optional — falls back to negRisk-based default below.
+   * "0.001"). Optional - falls back to negRisk-based default below.
    * Hardcoding the wrong tick gets the order rejected as `invalid_tick`,
    * so prefer to pass the real value.
    */
@@ -188,7 +188,7 @@ export async function signBuyOrder(
     builderCode: BUILDER_CODE,
   }
   // SDK types tickSize as a closed union literal ('0.1' | '0.01' | ...).
-  // We accept the string from Gamma at runtime — if Gamma ever returns
+  // We accept the string from Gamma at runtime - if Gamma ever returns
   // an unsupported value the SDK rejects with a clear error. The cast
   // here is to the SDK's CreateOrderOptions shape since v2 marks the
   // second param as Partial<...>.
@@ -203,14 +203,14 @@ export interface SellOrderArgs {
   tokenId: string
   /** Price per share in USDC (0..1) */
   price: number
-  /** Shares to sell — NOT USD notional. A sell is denominated in what you hold. */
+  /** Shares to sell - NOT USD notional. A sell is denominated in what you hold. */
   size: number
   negRisk?: boolean
   tickSize?: string
 }
 
 /**
- * Sign-only step for a resting (GTC) SELL — the position-closing mirror of
+ * Sign-only step for a resting (GTC) SELL - the position-closing mirror of
  * signBuyOrder. Mirrors packages/mcp-server/src/clobClient.ts.
  */
 export async function signSellOrder(
@@ -226,7 +226,7 @@ export async function signSellOrder(
     builderCode: BUILDER_CODE,
   }
   // Unlike the buy path, a sell is initiated from the positions list, where we
-  // hold no Gamma record for the market — so tick size and neg-risk are often
+  // hold no Gamma record for the market - so tick size and neg-risk are often
   // genuinely unknown. Omitting them lets the SDK resolve the real values from
   // the CLOB; guessing via fallbackTick would get the order rejected as
   // invalid_tick on every market whose tick isn't the guess.
@@ -242,7 +242,7 @@ export interface MarketSellOrderArgs {
   /** Shares to sell (SDK `amount` for a SELL market order). */
   sizeShares: number
   /**
-   * Worst-acceptable price FLOOR (0..1) — the mirror of a buy's cap. A FOK
+   * Worst-acceptable price FLOOR (0..1) - the mirror of a buy's cap. A FOK
    * sell can't fill below it, which is the slippage guard.
    */
   capPrice?: number
@@ -278,7 +278,7 @@ export interface MarketBuyOrderArgs {
   sizeUsd: number
   /**
    * Worst-acceptable price cap (0..1). Passed to the SDK as the marketable
-   * limit so a FOK can't fill above it — our slippage guard. Omit for an
+   * limit so a FOK can't fill above it - our slippage guard. Omit for an
    * uncapped market take.
    */
   capPrice?: number
@@ -319,12 +319,12 @@ export async function signMarketBuyOrder(
  * Two distinct failure shapes have to be read here (same trap as cancelOrder
  * below): a *logical* rejection comes back HTTP 200 as
  * `{ success: false, errorMsg }`, but a rejection the CLOB answers with a
- * non-2xx status never sets either field — `makeClient` doesn't enable
+ * non-2xx status never sets either field - `makeClient` doesn't enable
  * `throwOnError`, so clob-client-v2's errorHandling() resolves it to
  * `{ error, status }` instead. Reading only `errorMsg` collapsed every one of
  * those (below-minimum size, insufficient balance/allowance, bad tick, market
  * not accepting orders) into a bare "clob_rejected" with the actual reason
- * discarded — the user signed, paid nothing, and learned nothing.
+ * discarded - the user signed, paid nothing, and learned nothing.
  */
 export async function submitSignedOrder(
   client: ClobClient,
@@ -332,7 +332,7 @@ export async function submitSignedOrder(
   orderType: OrderType = OrderType.GTC,
 ): Promise<{ success: boolean; orderId?: string; error?: string }> {
   try {
-    // SDK type is `SignedOrder` — we passed it through `unknown` to keep
+    // SDK type is `SignedOrder` - we passed it through `unknown` to keep
     // the sign/submit boundary explicit. Cast back here.
     const res = (await client.postOrder(
       signed as Parameters<ClobClient['postOrder']>[0],
@@ -340,7 +340,7 @@ export async function submitSignedOrder(
     )) as
       // `status` is typed `string` on the SDK's success shape (e.g. "matched"),
       // but the axios-error shape puts the numeric HTTP status in the same
-      // field — hence the union.
+      // field - hence the union.
       | { success?: boolean; errorMsg?: string; orderID?: string; error?: unknown; status?: number | string }
       | undefined
     if (!res) return { success: false, error: 'empty_response' }
@@ -373,7 +373,7 @@ function clobErrorText(res: {
  * Cancel a single resting order by id. Mirrors packages/mcp-server/src/clobClient.ts.
  *
  * The SDK's `cancelOrder` never throws on its own for a non-2xx response (our
- * `makeClient` doesn't set `throwOnError`) — a rejected/HTTP-failed cancel
+ * `makeClient` doesn't set `throwOnError`) - a rejected/HTTP-failed cancel
  * resolves to `{ error, status }` (from clob-client-v2's axios error
  * handling), not an exception. And a *successful* cancel has no `success`
  * field at all: the real CLOB response shape is `{ canceled: string[],
@@ -399,7 +399,7 @@ export async function cancelOrder(
       return { success: true }
     }
     // Ambiguous response (neither confirmed canceled nor explicitly rejected)
-    // — fail closed rather than silently report success on an unrecognized shape.
+    // - fail closed rather than silently report success on an unrecognized shape.
     return { success: false, error: 'cancel_unconfirmed' }
   } catch (err) {
     return { success: false, error: String(err) }
@@ -448,7 +448,7 @@ export async function pollOrderStatus(
       if (s === 'cancelled' || s === 'canceled') return 'cancelled'
       if (s === 'expired') return 'expired'
     } catch {
-      // transient — keep polling
+      // transient - keep polling
     }
     await new Promise((r) => setTimeout(r, 3000))
   }

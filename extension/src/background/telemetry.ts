@@ -30,7 +30,7 @@ export async function trackEvent(
   const data = await chrome.storage.local.get(STORAGE_KEYS.telemetryQueue)
   const queue = (data[STORAGE_KEYS.telemetryQueue] as TelemetryEvent[] | undefined) ?? []
   queue.push({ installId, event, ts: Date.now(), meta })
-  // Keep only the most recent MAX_QUEUED_EVENTS — older events are the
+  // Keep only the most recent MAX_QUEUED_EVENTS - older events are the
   // first to drop when flush has been failing.
   const trimmed =
     queue.length > MAX_QUEUED_EVENTS

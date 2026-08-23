@@ -4,10 +4,10 @@ import type { ClobClient } from '@polymarket/clob-client-v2'
 
 const creds = { key: 'k', secret: 's', passphrase: 'p' }
 
-describe('deriveCredentials — one wallet prompt, not two', () => {
+describe('deriveCredentials - one wallet prompt, not two', () => {
   it('derives first and never calls create when the address already has a key', async () => {
     // Every one of these SDK calls builds L1 auth headers, and that costs one
-    // eth_signTypedData_v4 — a wallet prompt the user must approve. The SDK's
+    // eth_signTypedData_v4 - a wallet prompt the user must approve. The SDK's
     // createOrDeriveApiKey POSTs create first, which fails for any address
     // that already has a CLOB key (i.e. every returning user) and only then
     // derives: two prompts for one credential, on every single connect.
@@ -58,7 +58,7 @@ describe('deriveCredentials — one wallet prompt, not two', () => {
 
   it('never falls through to the combined helper on top of the individual calls', async () => {
     // createOrDeriveApiKey internally does create-then-derive. Appending it
-    // after derive and create have already been tried repeats both — and each
+    // after derive and create have already been tried repeats both - and each
     // call is another wallet prompt, so a failing connect could ask the user
     // to sign four times.
     const deriveApiKey = vi.fn(async () => ({}) as never)
@@ -108,7 +108,7 @@ describe('submitSignedOrder', () => {
 
   it('surfaces the reason from an HTTP-error response instead of a bare clob_rejected', async () => {
     // The shape clob-client-v2's errorHandling() returns for a non-2xx POST
-    // when throwOnError is off: no `success`, no `errorMsg` — only `error` +
+    // when throwOnError is off: no `success`, no `errorMsg` - only `error` +
     // `status`. Reading just `errorMsg` here is what turned every real CLOB
     // rejection ("below minimum size", "not enough balance") into an
     // undiagnosable "Failed: clob_rejected".
@@ -156,7 +156,7 @@ describe('cancelOrder', () => {
 
   it('reports failure on an HTTP/axios error response (no success field at all)', async () => {
     // This is the shape clob-client-v2's errorHandling() returns for a non-2xx
-    // response when throwOnError is off — no `success` field, which the old
+    // response when throwOnError is off - no `success` field, which the old
     // `res.success === false` check could never match.
     const client = fakeClient(async () => ({ error: 'expired credentials', status: 401 }))
     const result = await cancelOrder(client, 'o1')
@@ -181,11 +181,11 @@ describe('cancelOrder', () => {
   })
 })
 
-describe('sell signing — negRisk must reach the SDK only when genuinely known', () => {
+describe('sell signing - negRisk must reach the SDK only when genuinely known', () => {
   // The SDK resolves the market's real neg-risk flag ONLY when the option is
   // absent (`options?.negRisk ?? await getNegRisk(tokenID)`). An explicit
   // `false` for a neg-risk market signs against the wrong exchange contract
-  // and the CLOB rejects the order — which is exactly how sells of every
+  // and the CLOB rejects the order - which is exactly how sells of every
   // multi-outcome position silently broke once. These tests pin the contract:
   // omitted in → omitted out, provided in → forwarded out.
 

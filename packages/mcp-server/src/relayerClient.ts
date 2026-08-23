@@ -3,12 +3,12 @@
  * Positions are held by the caller's Polymarket Safe, not their raw EOA, so a
  * plain on-chain call to CTF.redeemPositions from the EOA wouldn't be `msg.sender
  * == Safe` and would either revert or redeem nothing. The relayer submits the
- * call AS the Safe (Polymarket covers gas — no POL needed in the operator's
+ * call AS the Safe (Polymarket covers gas - no POL needed in the operator's
  * wallet, consistent with the rest of this server never touching gas).
  *
  * This package pins ethers v5 (`Wallet instanceof` check in
  * @polymarket/builder-abstract-signer) while the rest of this repo is on
- * ethers v6 — that mismatch is deliberately isolated to this one file. See
+ * ethers v6 - that mismatch is deliberately isolated to this one file. See
  * README's "Redeeming positions" section for the live-testing caveat: this
  * wiring has NOT been exercised against a real wallet/mainnet in development,
  * only verified against the published package's actual runtime exports and
@@ -53,13 +53,13 @@ export function makeRelayerSubmit(privateKey: string): (tx: EncodedRedeemTx) => 
 
   function getClient(): RelayClient {
     if (!client) {
-      // Validate shape before ethers v5's Wallet ever sees the value — see
+      // Validate shape before ethers v5's Wallet ever sees the value - see
       // validatePrivateKey.ts for why this must happen here.
       assertValidPrivateKeyShape(privateKey)
       const wallet = new Wallet(privateKey)
       // Builder auth: the relayer refuses POST /submit without it (401
       // "invalid authorization"), so a client built without credentials can
-      // only ever fail — after the transaction has been signed. See config.ts.
+      // only ever fail - after the transaction has been signed. See config.ts.
       const mode = relayerAuthMode()
       let builderConfig: BuilderConfig | undefined
       if (mode === 'builder') {
@@ -73,7 +73,7 @@ export function makeRelayerSubmit(privateKey: string): (tx: EncodedRedeemTx) => 
       } else if (mode === 'relayer') {
         // The signing SDK models only the HMAC scheme, but RelayClient just
         // calls isValid()/generateBuilderHeaders() and attaches whatever
-        // comes back — so a structural stand-in serves the static
+        // comes back - so a structural stand-in serves the static
         // relayer-key headers without patching the SDK.
         builderConfig = {
           isValid: () => true,
@@ -105,14 +105,14 @@ export function makeRelayerSubmit(privateKey: string): (tx: EncodedRedeemTx) => 
     try {
       const submitted = await getClient().execute([tx], 'redeem_position')
       // execute() resolves once the relayer ACCEPTS the transaction (state
-      // STATE_NEW), not once it's mined — wait() polls until a terminal
+      // STATE_NEW), not once it's mined - wait() polls until a terminal
       // on-chain state so redeem_position reports a definitive outcome
       // instead of "we submitted something, who knows".
       //
       // wait() (pollUntilState) returns the transaction ONLY for
       // STATE_MINED/STATE_CONFIRMED, and returns UNDEFINED for BOTH an
       // on-chain failure and a poll timeout. Falling back to
-      // `submitted.state` — the state at submission, always STATE_NEW —
+      // `submitted.state` - the state at submission, always STATE_NEW -
       // therefore reported every failed redeem as a success. Never read
       // undefined as success.
       let mined: Awaited<ReturnType<typeof submitted.wait>>
@@ -153,7 +153,7 @@ export function makeRelayerSubmit(privateKey: string): (tx: EncodedRedeemTx) => 
       // an unauthenticated call with 401 "invalid authorization" (verified
       // against the live endpoint 2026-08-17). We construct RelayClient with
       // no builderConfig, so this is the expected outcome until builder API
-      // credentials exist — say so instead of leaking a raw JSON blob.
+      // credentials exist - say so instead of leaking a raw JSON blob.
       if (/invalid authorization/i.test(raw) || /(^|[^0-9])401([^0-9]|$)/.test(raw)) {
         return {
           success: false,

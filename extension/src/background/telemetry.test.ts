@@ -37,15 +37,15 @@ const SETTINGS: Settings = {
   searchFallbackOfferDismissed: false,
 }
 
-describe('trackEvent — queue cap', () => {
+describe('trackEvent - queue cap', () => {
   let storage: ReturnType<typeof makeStorageStub>
 
   beforeEach(() => {
     storage = makeStorageStub()
     // Pre-seed installId so trackEvent does not try to generate one (which
-    // calls crypto.randomUUID — fine in node, but we want determinism).
+    // calls crypto.randomUUID - fine in node, but we want determinism).
     storage.data[STORAGE_KEYS.installId] = 'test-install-id'
-    // @ts-expect-error — we only stub the surface trackEvent uses.
+    // @ts-expect-error - we only stub the surface trackEvent uses.
     globalThis.chrome = { storage: { local: storage } }
   })
   afterEach(() => {
@@ -70,7 +70,7 @@ describe('trackEvent — queue cap', () => {
     }))
     storage.data[STORAGE_KEYS.telemetryQueue] = seed
 
-    // Three more events push past 1000 — should evict the first two (idx 0, 1).
+    // Three more events push past 1000 - should evict the first two (idx 0, 1).
     await trackEvent('match_shown', SETTINGS, { idx: 'a' })
     await trackEvent('match_shown', SETTINGS, { idx: 'b' })
     await trackEvent('match_shown', SETTINGS, { idx: 'c' })

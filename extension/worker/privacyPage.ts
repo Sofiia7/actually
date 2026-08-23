@@ -2,14 +2,14 @@
  * Renders the privacy policy as a standalone HTML page.
  *
  * The Chrome Web Store requires a live URL that shows the policy, and the
- * document only existed as `docs/privacy-policy.md` inside a private repo —
+ * document only existed as `docs/privacy-policy.md` inside a private repo -
  * nothing a reviewer or a user could open. Serving it from the Worker keeps
  * ONE source of truth: the markdown is imported as a text module at build
  * time (see the [[rules]] block in wrangler.toml), so the published page
  * cannot drift from the file the repo reviews.
  *
- * The converter deliberately handles only what that document uses — h1/h2/h3,
- * paragraphs, bullet lists, tables, bold and inline code — and is tested
+ * The converter deliberately handles only what that document uses - h1/h2/h3,
+ * paragraphs, bullet lists, tables, bold and inline code - and is tested
  * against the real file rather than against invented samples. A general
  * markdown library would be far more code than the page is worth, and a
  * partial one that silently mangles a clause is worse than no page at all:
@@ -122,7 +122,7 @@ export function markdownToHtml(md: string): string {
 }
 
 /** Full page. Self-contained: no external CSS, fonts or scripts. */
-export function renderPrivacyPage(md: string, title = 'Actually — Privacy Policy'): string {
+export function renderPrivacyPage(md: string, title = 'Actually - Privacy Policy'): string {
   return `<!doctype html>
 <html lang="en">
 <head>

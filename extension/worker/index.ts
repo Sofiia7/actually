@@ -1,6 +1,6 @@
 /// <reference types="@cloudflare/workers-types" />
 /**
- * Actually API — Cloudflare Worker
+ * Actually API - Cloudflare Worker
  *
  * Proxies extension requests to external APIs (Polymarket Gamma, CLOB, OpenAI)
  * with auth + rate limiting. Phase 1: read-only proxy. Phase 1.5: signed-order
@@ -19,7 +19,7 @@ interface Env {
   OPENAI_DAILY_CHAR_LIMIT?: string
   POLYMARKET_BUILDER_CODE?: string
   /**
-   * Atomic per-IP rate limiting + the OpenAI daily character cap — see
+   * Atomic per-IP rate limiting + the OpenAI daily character cap - see
    * RateLimiterDO below. Replaced a KV read-then-write counter (see git
    * history) that had a race window: concurrent requests could read the same
    * stale count and both increment from it, letting a determined caller
@@ -30,11 +30,11 @@ interface Env {
   RATE_LIMITER_DO?: DurableObjectNamespace
   /** Optional Analytics Engine dataset for telemetry persistence. */
   TELEMETRY?: AnalyticsEngineDataset
-  /** Precomputed market-cache blob storage — see /market-cache routes. */
+  /** Precomputed market-cache blob storage - see /market-cache routes. */
   MARKET_CACHE?: KVNamespace
   /**
    * Guards PUT /market-cache. Unlike WORKER_SHARED_SECRET (public by design,
-   * baked into every client), this secret is NEVER baked into anything —
+   * baked into every client), this secret is NEVER baked into anything -
    * only the precompute cron job holds it.
    */
   MARKET_CACHE_WRITE_SECRET?: string
@@ -45,7 +45,7 @@ interface Env {
    * the SDK calls POLY_BUILDER_*.
    *
    * They live HERE and only here. Unlike WORKER_SHARED_SECRET (public by
-   * design — it ships inside every extension build), this credential is the
+   * design - it ships inside every extension build), this credential is the
    * builder account's own: anything holding it can spend the builder's daily
    * relayer quota. The extension never sees it; it asks this Worker to sign
    * each request instead (POST /builder-sign), which is the "remote signer"
@@ -57,7 +57,7 @@ interface Env {
   /**
    * Alternative relayer auth: a RELAYER API KEY, the second scheme
    * POST /submit accepts. Unlike the builder triple it is just two static
-   * headers (key + owning address) — no HMAC, no passphrase — and it is
+   * headers (key + owning address) - no HMAC, no passphrase - and it is
    * ACCOUNT-scoped: it authorizes gasless operations for the address that
    * created it, which is what Polymarket's settings UI currently hands out
    * (Settings → API Keys → Relayer API Keys).
@@ -65,8 +65,8 @@ interface Env {
    * Trade-off vs builder mode: in remote-signer flow the client receives the
    * headers to attach, so in relayer mode the KEY ITSELF transits to the
    * client (an HMAC signature doesn't reveal the builder secret; a static
-   * key IS the credential). Holding it doesn't let anyone move funds — every
-   * /submit still needs the user's own Safe signature — but it can read the
+   * key IS the credential). Holding it doesn't let anyone move funds - every
+   * /submit still needs the user's own Safe signature - but it can read the
    * owner's relayer transactions and burn rate limit. Acceptable while the
    * only client is the operator's own unpublished build; switch to builder
    * creds for public launch. Builder creds take precedence when both exist.
@@ -79,7 +79,7 @@ interface Env {
  * One Durable Object instance per rate-limit counter (e.g. "rl:markets:1.2.3.4"
  * or "openai-daily-cap"), addressed via idFromName so the same logical counter
  * always routes to the same instance. The instance holds a single {windowStart,
- * count} record and resets itself the moment `now` crosses into a new window —
+ * count} record and resets itself the moment `now` crosses into a new window -
  * no explicit TTL/expiry needed, and no per-window instance proliferation
  * (unlike embedding the window into the DO name, which would mint a fresh,
  * permanently-stored instance every single minute).
@@ -125,7 +125,7 @@ async function openAiCharCap(env: Env, chars: number): Promise<boolean> {
 
 /**
  * Reads a request body up to `maxBytes`, enforcing the cap on the actual
- * bytes received rather than trusting the `Content-Length` header — a
+ * bytes received rather than trusting the `Content-Length` header - a
  * chunked-transfer request (or one that simply omits the header) has no
  * Content-Length at all, which `parseInt(... ?? '0')` reads as 0 and lets
  * straight through the old header-only check, after which `req.json()` would
@@ -175,14 +175,14 @@ export const EMBED_LIMITS = {
 
 /**
  * Input limits for the /telemetry route. `maxEvents` is capped at
- * Analytics Engine's own hard limit — "a maximum of 250 data points per
+ * Analytics Engine's own hard limit - "a maximum of 250 data points per
  * Worker invocation" (developers.cloudflare.com/analytics/analytics-engine/limits/)
- * — not an arbitrary product choice: the old cap of 1000 let a client believe
+ * - not an arbitrary product choice: the old cap of 1000 let a client believe
  * a whole batch was recorded (every event returns `{ ok: true }` per the
  * "never error a client on telemetry" policy below) while everything past
  * #250 silently failed writeDataPoint() and was swallowed by the per-event
  * catch. `maxBodyBytes` guards the same way readBodyWithLimit already does
- * for /embeddings and PUT /market-cache — parsing an unbounded body is real
+ * for /embeddings and PUT /market-cache - parsing an unbounded body is real
  * Worker compute/memory regardless of how many events end up used.
  * `maxBlobBytes` mirrors Analytics Engine's own "combined blobs must not
  * exceed 16 KB per data point" limit so a single oversized `meta` can't get
@@ -194,14 +194,14 @@ export const TELEMETRY_LIMITS = {
   maxBlobBytes: 16 * 1024,
 } as const
 
-/** Per-upstream-fetch timeout — see the `signal:` argument on every outbound fetch() below. */
+/** Per-upstream-fetch timeout - see the `signal:` argument on every outbound fetch() below. */
 const UPSTREAM_TIMEOUT_MS = 10_000
 
 export type EmbeddingsValidation =
   | { ok: true; texts: string[]; model?: string; totalChars: number }
   | { ok: false; status: number; error: string }
 
-/** Pure validation for an /embeddings request body. No I/O — unit-tested. */
+/** Pure validation for an /embeddings request body. No I/O - unit-tested. */
 export function validateEmbeddingsInput(body: unknown): EmbeddingsValidation {
   if (typeof body !== 'object' || body === null) {
     return { ok: false, status: 400, error: 'bad_body' }
@@ -229,13 +229,13 @@ export function validateEmbeddingsInput(body: unknown): EmbeddingsValidation {
 
 /**
  * Input limits for PUT /market-cache. The blob holds ~800 markets at ~2KB of
- * base64 embedding each (~1.6MB total at MAX_MARKETS_CACHE) — 5MB leaves
+ * base64 embedding each (~1.6MB total at MAX_MARKETS_CACHE) - 5MB leaves
  * comfortable headroom without allowing an unbounded upload.
  */
 export const MARKET_CACHE_LIMITS = {
   // A 2000-market blob is ~7.5 MB: 384 float32s per market, base64'd, is
   // 2 KB of the ~3.8 KB each row costs. The old 5 MB ceiling was sized for
-  // the old 800-market cap and would 413 the cron silently — leaving a stale
+  // the old 800-market cap and would 413 the cron silently - leaving a stale
   // blob served indefinitely with nothing in the logs to say why.
   maxBodyBytes: 12 * 1024 * 1024,
   // MAX_MARKETS_CACHE (2000) plus headroom, so a builder that overfetches
@@ -247,7 +247,7 @@ export type MarketCacheValidation =
   | { ok: true; blob: MarketCacheBlob }
   | { ok: false; status: number; error: string }
 
-/** Pure validation for a PUT /market-cache request body. No I/O — unit-tested. */
+/** Pure validation for a PUT /market-cache request body. No I/O - unit-tested. */
 export function validateMarketCacheInput(body: unknown): MarketCacheValidation {
   if (typeof body !== 'object' || body === null) {
     return { ok: false, status: 400, error: 'bad_body' }
@@ -280,7 +280,7 @@ export function validateMarketCacheInput(body: unknown): MarketCacheValidation {
 
 // Polymarket-restricted jurisdictions (commercial-availability restrictions)
 // plus comprehensively OFAC-sanctioned jurisdictions (a separate, stricter
-// obligation than Polymarket's own market-access list — the builder code
+// obligation than Polymarket's own market-access list - the builder code
 // attached to every order means we are a monetizing counterparty, not just
 // a UI). Mirrors the client list in src/background/geo.ts; the Worker is the
 // source of truth at request time. EXTRA_BLOCKED_COUNTRIES (see wrangler.toml)
@@ -295,7 +295,7 @@ const CORS_BASE = {
   // `Authorization` is load-bearing and was missing, which broke in-app redeem
   // completely for weeks.
   //
-  // checkAuth() has always ACCEPTED `Authorization: Bearer <secret>` — it has
+  // checkAuth() has always ACCEPTED `Authorization: Bearer <secret>` - it has
   // to, because @polymarket/builder-signing-sdk's remote-signer mode sends the
   // token that way and no other (config.js: `Authorization: Bearer ${token}`).
   // But accepting a header is worthless if the browser never sends it:
@@ -307,7 +307,7 @@ const CORS_BASE = {
   // headers to attach, the SDK submitted to relayer-v2 unauthenticated, the
   // relayer answered a perfectly correct 401 "invalid authorization", and the
   // popup reported that Polymarket had refused us and that this build "needs a
-  // builder API key it doesn't have yet" — while the key sat on the Worker,
+  // builder API key it doesn't have yet" - while the key sat on the Worker,
   // valid, signing 200s for anything that asked from outside a browser.
   'Access-Control-Allow-Headers': 'Content-Type, X-Actually-Auth, Authorization',
   'Access-Control-Max-Age': '86400',
@@ -339,7 +339,7 @@ function corsHeaders(origin: string | null, allowedExtId: string | undefined): H
   if (allowed.size === 0) {
     // Browsers sometimes treat `Access-Control-Allow-Origin: null` as a match
     // for opaque origins (file://, sandboxed iframes). Echo a clearly-invalid
-    // URL instead — no browser ever matches this, and the operator sees the
+    // URL instead - no browser ever matches this, and the operator sees the
     // misconfig in DevTools.
     return { ...CORS_BASE, 'Access-Control-Allow-Origin': 'https://__actually_misconfigured__.invalid' }
   }
@@ -369,7 +369,7 @@ function relayerAuthMode(env: Env): 'builder' | 'relayer' | null {
  * Base64 → bytes with Node's `Buffer.from(s, 'base64')` semantics, which is
  * what the signing SDK decodes the secret with: tolerate the URL-SAFE
  * alphabet, whitespace, and missing padding. Plain atob() throws on all
- * three — and Polymarket issues url-safe base64 secrets (hit live
+ * three - and Polymarket issues url-safe base64 secrets (hit live
  * 2026-08-18: every /builder-sign call 500'd on a perfectly valid secret).
  */
 function b64ToBytes(s: string): Uint8Array {
@@ -416,7 +416,7 @@ let warnedNoDo = false
  * Shared entry point for both per-IP rate limiting and the OpenAI daily
  * cap: routes a check-and-increment of `amount` (default 1) against the
  * named counter's Durable Object instance. `name` fully identifies the
- * counter (e.g. `rl:markets:1.2.3.4` or `openai-daily-cap`) — the window
+ * counter (e.g. `rl:markets:1.2.3.4` or `openai-daily-cap`) - the window
  * itself is NOT embedded in the name; RateLimiterDO tracks and resets its
  * own window internally so the same counter instance is reused forever
  * instead of minting a new persisted instance every window.
@@ -432,7 +432,7 @@ async function checkRateLimit(
     if (!warnedNoDo) {
       warnedNoDo = true
       console.warn(
-        '[actually] RATE_LIMITER_DO is not bound — per-IP rate limiting and the ' +
+        '[actually] RATE_LIMITER_DO is not bound - per-IP rate limiting and the ' +
           'OpenAI daily quota are DISABLED (fail-open). This is only reachable in ' +
           'WORKER_DEV_MODE; production refuses authenticated routes without it (see checkAuth).',
       )
@@ -472,7 +472,7 @@ function checkAuth(req: Request, env: Env): { ok: boolean; status?: number; reas
   if (!env.ALLOWED_EXTENSION_ID && env.WORKER_DEV_MODE !== 'true') {
     return { ok: false, status: 503, reason: 'worker_misconfigured_no_extension_id' }
   }
-  // RateLimiterDO is the real abuse backstop — the shared secret is publicly
+  // RateLimiterDO is the real abuse backstop - the shared secret is publicly
   // extractable from the shipped build (see SECURITY.md), so without it every
   // per-IP limit and the OpenAI daily cap silently fail-open. Refuse to serve
   // authenticated routes in prod until RATE_LIMITER_DO is bound; dev mode
@@ -484,7 +484,7 @@ function checkAuth(req: Request, env: Env): { ok: boolean; status?: number; reas
   // `Authorization: Bearer <secret>` is accepted alongside our own header
   // because Polymarket's builder-signing-sdk sends the remote-signer token
   // that way and the header name isn't ours to choose (see /builder-sign).
-  // Same secret, same checks — only the envelope differs.
+  // Same secret, same checks - only the envelope differs.
   const bearer = req.headers.get('Authorization')?.replace(/^Bearer\s+/i, '')
   const auth = req.headers.get('X-Actually-Auth') ?? bearer
   if (auth !== env.WORKER_SHARED_SECRET) {
@@ -496,8 +496,8 @@ function checkAuth(req: Request, env: Env): { ok: boolean; status?: number; reas
     // Origin is validated only when PRESENT. Browsers set it and pages can't
     // forge it, so a mismatched Origin (a foreign website's fetch) is safely
     // rejected. Its ABSENCE, however, is normal for the worker's legitimate
-    // non-browser clients — the market-cache cron builder and the published
-    // MCP server — and rejecting it (tried 2026-07-08, deployed 2026-07-14)
+    // non-browser clients - the market-cache cron builder and the published
+    // MCP server - and rejecting it (tried 2026-07-08, deployed 2026-07-14)
     // broke both in production the same day while stopping no real attacker:
     // any curl caller can set the header. The shared secret gates access;
     // the RateLimiterDO per-IP limits + OpenAI daily cap are the abuse
@@ -528,8 +528,8 @@ export default {
 
     // Global per-IP cap, applied before auth and before any per-route limit
     // below. Every per-route `rateLimit(...)` call only ever runs AFTER
-    // checkAuth succeeds, so without this a flood of wrong-secret requests —
-    // or repeated hits to /health, which needs no auth at all — had NO rate
+    // checkAuth succeeds, so without this a flood of wrong-secret requests -
+    // or repeated hits to /health, which needs no auth at all - had NO rate
     // limit whatsoever: unbounded compute against the operator's Workers
     // quota/bill, and more attempts per second to brute-force
     // WORKER_SHARED_SECRET (negligible on its own given its 256-bit entropy,
@@ -540,7 +540,7 @@ export default {
       return json({ error: 'rate_limited' }, 429, headers)
     }
 
-    // Privacy policy — deliberately BEFORE checkAuth. It is a public document
+    // Privacy policy - deliberately BEFORE checkAuth. It is a public document
     // whose whole purpose is to be readable by people who have no credential:
     // Chrome Web Store reviewers, and anyone deciding whether to install.
     if (url.pathname === '/privacy' && (req.method === 'GET' || req.method === 'HEAD')) {
@@ -553,7 +553,7 @@ export default {
       })
     }
 
-    // Health probe — no auth, no body
+    // Health probe - no auth, no body
     if (url.pathname === '/health') {
       return json({ ok: true, ts: Date.now() }, 200, headers)
     }
@@ -592,7 +592,7 @@ export default {
       //
       // Gamma's public-search answers with EVENTS wrapping their markets, so
       // this flattens to plain market records (carrying the event slug, which
-      // is what polymarket.com actually routes on) and drops resolved ones —
+      // is what polymarket.com actually routes on) and drops resolved ones -
       // a closed market is not something the user could act on.
       if (url.pathname === '/search' && req.method === 'GET') {
         if (!(await rateLimit(env, 'search', ip, 20))) {
@@ -641,7 +641,7 @@ export default {
         return new Response(await res.text(), { status: res.status, headers })
       }
 
-      // --- OpenAI embeddings (centralized — uses Worker env key) ----
+      // --- OpenAI embeddings (centralized - uses Worker env key) ----
       if (url.pathname === '/embeddings' && req.method === 'POST') {
         if (!(await rateLimit(env, 'embed', ip, 60))) {
           return json({ error: 'rate_limited' }, 429, headers)
@@ -649,7 +649,7 @@ export default {
         const apiKey = env.OPENAI_API_KEY
         if (!apiKey) return json({ error: 'no_openai_key' }, 503, headers)
 
-        // Reject oversized bodies before parsing (cheap DoS guard) — enforced
+        // Reject oversized bodies before parsing (cheap DoS guard) - enforced
         // on actual bytes read, not the (spoofable/omittable) Content-Length
         // header.
         const embedBody = await readBodyWithLimit(req, EMBED_LIMITS.maxBodyBytes)
@@ -724,11 +724,11 @@ export default {
 
       // --- Geo check via CF headers / request.cf ---------------------
       if (url.pathname === '/geo' && req.method === 'GET') {
-        // 60/min, up from 10/min — this is a cheap header read (no upstream
+        // 60/min, up from 10/min - this is a cheap header read (no upstream
         // fetch), and every Trade-tab mount/connect/submit triggers one
         // (OS_GET_GEO force-resets the client's 5-min cache), so several
-        // active users behind one shared IP (office/CGNAT) — or a single
-        // user rapidly reopening the popup — could trip a 10/min cap on
+        // active users behind one shared IP (office/CGNAT) - or a single
+        // user rapidly reopening the popup - could trip a 10/min cap on
         // themselves and hit the prod fail-closed "couldn't verify region"
         // block for no abuse reason at all.
         if (!(await rateLimit(env, 'geo', ip, 60))) {
@@ -736,7 +736,7 @@ export default {
         }
         const rawCountry = (req.headers.get('CF-IPCountry') ?? '').toUpperCase()
         // Cloudflare sends 'T1' for Tor exit traffic and 'XX' when it
-        // genuinely can't geolocate the request — neither is a confirmed
+        // genuinely can't geolocate the request - neither is a confirmed
         // country. The client (geo.ts) treats any non-empty `country` as a
         // CONFIRMED verdict, so passing these through as-is would silently
         // skip the fail-closed posture (GEO_FAIL_OPEN=false in prod) for
@@ -786,7 +786,7 @@ export default {
       // The extension can't hold the builder credential (it would be public
       // in every install), and Polymarket's relayer requires builder auth on
       // POST /submit. So the client asks us to sign each request: exactly the
-      // "remote signer" contract @polymarket/builder-signing-sdk implements —
+      // "remote signer" contract @polymarket/builder-signing-sdk implements -
       // POST {method, path, body?, timestamp?}, receive the POLY_BUILDER_*
       // headers back. The credential never leaves this Worker.
       if (url.pathname === '/builder-status' && req.method === 'GET') {
@@ -825,7 +825,7 @@ export default {
         if (reqBody && reqBody.length > 200_000) {
           return json({ error: 'body_too_large' }, 413, headers)
         }
-        // Daily quota guard — see BUILDER_SIGN_DAILY_LIMIT.
+        // Daily quota guard - see BUILDER_SIGN_DAILY_LIMIT.
         if (!(await checkRateLimit(env, 'builder-sign-daily', 86_400_000, BUILDER_SIGN_DAILY_LIMIT))) {
           return json({ error: 'builder_daily_limit_reached' }, 429, headers)
         }
@@ -908,7 +908,7 @@ export default {
       }
 
       // --- Polymarket Safe (funder) lookup by EOA -------------------
-      // GET /clob/proxy/<eoa> — returns the Polymarket Safe address.
+      // GET /clob/proxy/<eoa> - returns the Polymarket Safe address.
       //
       // Polymarket's public data-api exposes the proxy wallet under a few
       // shapes that have shifted historically. We try the canonical
@@ -959,10 +959,10 @@ export default {
       }
 
       // --- Positions lookup by Safe address --------------------------
-      // GET /clob/positions/<address> — proxies data-api.polymarket.com so
+      // GET /clob/positions/<address> - proxies data-api.polymarket.com so
       // the client's real IP + Safe address are never sent to Polymarket
       // directly (see privacy-policy.md's "All API calls go through
-      // Cloudflare" claim — this route is what makes that claim true for
+      // Cloudflare" claim - this route is what makes that claim true for
       // the positions panel too, not just market/price/geo lookups).
       if (url.pathname.startsWith('/clob/positions/') && req.method === 'GET') {
         if (!(await rateLimit(env, 'positions', ip, 30))) {
@@ -988,10 +988,10 @@ export default {
           return json({ ok: true }, 200, headers) // silently drop
         }
         // Same "reject oversized bodies before parsing" guard as /embeddings
-        // and PUT /market-cache — see readBodyWithLimit's doc comment.
+        // and PUT /market-cache - see readBodyWithLimit's doc comment.
         const telemRaw = await readBodyWithLimit(req, TELEMETRY_LIMITS.maxBodyBytes)
         if (telemRaw === null) {
-          return json({ ok: true }, 200, headers) // never error a client on telemetry — just drop it
+          return json({ ok: true }, 200, headers) // never error a client on telemetry - just drop it
         }
         let telemBody: { events?: unknown[] }
         try {
@@ -1000,7 +1000,7 @@ export default {
           return json({ ok: true }, 200, headers) // never error a client on telemetry
         }
         // Capped at Analytics Engine's own per-invocation writeDataPoint()
-        // limit (250) — see TELEMETRY_LIMITS' doc comment. Anything beyond
+        // limit (250) - see TELEMETRY_LIMITS' doc comment. Anything beyond
         // this would previously fail server-side and be swallowed by the
         // per-event catch below, silently under-counting the client's batch.
         const events = Array.isArray(telemBody.events) ? telemBody.events.slice(0, TELEMETRY_LIMITS.maxEvents) : []
@@ -1028,7 +1028,7 @@ export default {
       return json({ error: 'not_found' }, 404, headers)
     } catch (err) {
       // Log the real detail server-side (visible via `wrangler tail` / the
-      // Workers dashboard) but never echo it to the client — anyone holding
+      // Workers dashboard) but never echo it to the client - anyone holding
       // the public-by-design shared secret could otherwise read internal
       // error strings (upstream fetch failures, DO errors, stack traces).
       console.error('[worker_exception]', err)

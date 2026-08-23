@@ -6,7 +6,7 @@ import manifest from './manifest.json' with { type: 'json' }
 /**
  * Tighten manifest CSP at build time. The committed manifest.json carries a
  * permissive `https://*.workers.dev` in `connect-src` so the dev unpacked
- * build works out of the box — but for production we replace that wildcard
+ * build works out of the box - but for production we replace that wildcard
  * with the exact Worker host pinned via `VITE_WORKER_URL`. Any CWS reviewer
  * looking at the shipped manifest then sees one concrete origin.
  *
@@ -31,12 +31,12 @@ function tightenConnectSrc(workerUrl: string | undefined): typeof manifest {
 
 /**
  * Every value here is baked into the bundle at build time and has no runtime
- * fallback — an empty one produces an extension that installs fine and then
+ * fallback - an empty one produces an extension that installs fine and then
  * does nothing: "Worker not configured" on Check, `wc_project_id_missing` on
  * connect, `builder_code_not_configured` on every order.
  *
  * Silence is the danger. A build with no env present succeeds, looks normal,
- * and only fails once it is loaded in a browser — which is exactly how a dead
+ * and only fails once it is loaded in a browser - which is exactly how a dead
  * build got shipped after a verification run that had moved .env.local aside.
  * CI supplies deliberate stub values for these, so requiring them non-empty
  * costs nothing there and makes an accidental env-less build impossible.
@@ -73,13 +73,13 @@ export default defineConfig(({ mode, command }) => {
       // an old baked secret) never linger into a release artifact.
       emptyOutDir: true,
       // Vite's default modulepreload polyfill/dynamic-import-preload helper
-      // touches `document.head`/`document.querySelectorAll` — meaningless in
+      // touches `document.head`/`document.querySelectorAll` - meaningless in
       // an MV3 service worker (no DOM at all) and in a 360px popup/offscreen
       // page it buys nothing. Worse than useless here: the background entry
       // ends up sharing a chunk with this helper (pulled in transitively via
       // embeddings.ts's dynamic `import('@xenova/transformers')`), and the
       // helper's own "no document? stub one" fallback only stubs
-      // createElement/documentElement/head — not querySelectorAll — so the
+      // createElement/documentElement/head - not querySelectorAll - so the
       // service worker crashes on its very first evaluation with
       // "Service worker registration failed. Status code: 15" (script
       // evaluation error) the instant that shared chunk is imported.
@@ -101,8 +101,8 @@ export default defineConfig(({ mode, command }) => {
            * Left to itself, rolldown parks individual `@actually/core`
            * modules (pricing.ts and friends) *inside* the popup entry chunk
            * and then has the shared core barrel import them back out of it.
-           * That single edge drags the entire popup chunk — React DOM
-           * included — into the service worker's static graph. React DOM
+           * That single edge drags the entire popup chunk - React DOM
+           * included - into the service worker's static graph. React DOM
            * initializes on evaluation by calling
            * `document.createElement('div').setAttribute('oninput','return;')`,
            * there is no DOM in a worker, and Chrome reports the whole thing
@@ -115,7 +115,7 @@ export default defineConfig(({ mode, command }) => {
            * pages import. `minSize: 0` stops rolldown from merging either
            * back into a neighbour on size grounds.
            *
-           * This is not theoretical tidiness — it shipped broken in the
+           * This is not theoretical tidiness - it shipped broken in the
            * vite 5 -> 8 (rolldown) upgrade and nothing caught it, so
            * scripts/preflight.mjs now asserts the worker's graph is DOM-free
            * on the built artifact.

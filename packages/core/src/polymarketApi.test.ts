@@ -96,7 +96,7 @@ describe('fetchMarketById', () => {
   })
 
   it('returns null on an id mismatch instead of silently falling back to the first result', async () => {
-    // This sits directly on the order-placement path — trading whatever
+    // This sits directly on the order-placement path - trading whatever
     // Gamma happened to return first when no row actually matches would
     // sign an order against the wrong market.
     const otherMarket = { ...rawMarket, id: 'different-id' }
@@ -132,13 +132,13 @@ function mockGamma(byOrder: Record<string, Record<string, unknown>[]>) {
   })
 }
 
-describe('fetchActiveMarkets — the cache must not be "biggest markets only"', () => {
+describe('fetchActiveMarkets - the cache must not be "biggest markets only"', () => {
   afterEach(() => vi.unstubAllGlobals())
 
   it('blends all three orderings instead of paging lifetime volume alone', async () => {
     // The bug this replaces: a single `order=volumeNum` pass. Lifetime volume
     // ranks by ACCUMULATED interest, so markets opened under today's headline
-    // — the ones a news reader wants — always lose to year-old ones. The live
+    // - the ones a news reader wants - always lose to year-old ones. The live
     // cache had a $508,649 floor because of it.
     const fetchMock = mockGamma({
       volume24hr: [gammaMarket({ id: 'hot1' }), gammaMarket({ id: 'hot2' })],
@@ -199,10 +199,10 @@ describe('fetchActiveMarkets — the cache must not be "biggest markets only"', 
   })
 })
 
-describe('searchMarkets — the long-tail escape hatch', () => {
+describe('searchMarkets - the long-tail escape hatch', () => {
   afterEach(() => vi.unstubAllGlobals())
 
-  it('drops resolved markets — a closed market is not something to act on', async () => {
+  it('drops resolved markets - a closed market is not something to act on', async () => {
     vi.stubGlobal('fetch', vi.fn(async () => ({
       ok: true, status: 200,
       json: async () => [gammaMarket({ id: 'open' }), gammaMarket({ id: 'done', closed: true })],

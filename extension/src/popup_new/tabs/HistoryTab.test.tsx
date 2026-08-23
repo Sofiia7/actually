@@ -19,8 +19,8 @@ const trades: TradeRow[] = [
 ]
 
 /**
- * The tab shows two different KINDS of record — things you did, and pages you
- * looked at — and used to leave the reader to work that out from the words
+ * The tab shows two different KINDS of record - things you did, and pages you
+ * looked at - and used to leave the reader to work that out from the words
  * "Your trades" and "Recent matches" alone.
  */
 describe('HistoryTab tells its two lists apart', () => {
@@ -38,7 +38,7 @@ describe('HistoryTab tells its two lists apart', () => {
 
   it('regression: the bottom button says which list it clears', async () => {
     // It was labelled "Clear history" and wired to CLEAR_HISTORY, which wipes
-    // the checked-stories list ONLY — trades survive it. Sitting under the
+    // the checked-stories list ONLY - trades survive it. Sitting under the
     // stories with a name that sounds global, it read as "erase everything on
     // this tab", which is the one thing it does not do.
     const onClear = vi.fn()

@@ -4,7 +4,7 @@ import { buildDomainType } from './wallet'
 describe('buildDomainType', () => {
   it('builds the full EIP712Domain type in canonical field order for a CTF Exchange domain', () => {
     // This is the exact shape clob-client-v2 passes for order signing after it
-    // deletes types.EIP712Domain — WalletConnect/MetaMask need it rebuilt or
+    // deletes types.EIP712Domain - WalletConnect/MetaMask need it rebuilt or
     // they hash an empty domain separator and every signature is invalid.
     expect(
       buildDomainType({

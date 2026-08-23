@@ -1,22 +1,22 @@
-# Actually — Roadmap to v1 (post-audit)
+# Actually - Roadmap to v1 (post-audit)
 
-**Status date:** 2026-07-05 (re-verified against code — see per-sprint notes below;
+**Status date:** 2026-07-05 (re-verified against code - see per-sprint notes below;
 original write-up was 2026-06-23 and had drifted from what had actually landed).
-**Canonical source of truth for remaining work.** Spec sprints 0–5 are done
+**Canonical source of truth for remaining work.** Spec sprints 0-5 are done
 (see `actually-extension-spec.md` §16). This document supersedes the "pending"
 rows of spec §16 and folds in the post-audit findings.
 
-Legend — "green" = `npx tsc --noEmit` + `npx vitest run` + `npm run build` all clean.
+Legend - "green" = `npx tsc --noEmit` + `npx vitest run` + `npm run build` all clean.
 
-**2026-07-05 re-verification: Sprints 6–10 are ALL DONE**, confirmed by reading
+**2026-07-05 re-verification: Sprints 6-10 are ALL DONE**, confirmed by reading
 the actual current code (not just trusting this doc), with one real gap found
-and fixed in the same pass (10.7 — SECURITY.md was missing the `ws`/viem
+and fixed in the same pass (10.7 - SECURITY.md was missing the `ws`/viem
 WalletConnect-transport advisory chain; added). **Sprint 11 (beta + CWS) is the
 only sprint below still open**, and it's non-code (human process). Since this
 doc was last written, an unrelated agentic MCP-server layer (`packages/core`,
 `packages/mcp-server`, `packages/market-cache-builder`) was also built on top
-of the shared matching engine — see
-`docs/superpowers/specs/2026-06-30-agentic-layer-design.md` — it does not
+of the shared matching engine - see
+`docs/superpowers/specs/2026-06-30-agentic-layer-design.md` - it does not
 change anything below.
 
 ## Locked product decisions
@@ -28,7 +28,7 @@ change anything below.
   Confirmed-restricted countries are always blocked. Polymarket still enforces
   its own block at order time. Aligned in SECURITY.md; spec §10/§5.3 updated.
 - **Trade UX is wallet-gated.** Without a connected wallet the Trade tab shows
-  only the odds card + "Connect wallet" — no sparkline / orderbook / resolution.
+  only the odds card + "Connect wallet" - no sparkline / orderbook / resolution.
   With a wallet: full order ticket (Limit + Market) + analytics.
 - **i18n = English-only for v1.** Reduce to `en`; remove i18next /
   react-i18next / locale files / language selector. Re-introduce later if a
@@ -36,14 +36,14 @@ change anything below.
 
 ---
 
-## v2.1 audit hardening (this pass) — landed
+## v2.1 audit hardening (this pass) - landed
 
 Beyond the sprints below (which are largely done), this pass added:
 
 - **Worker fail-closed on unbound KV** (`worker/index.ts`): authenticated routes
-  return 503 if `RATE_LIMITS` is missing in prod — supersedes the warn-only 7.4.
+  return 503 if `RATE_LIMITS` is missing in prod - supersedes the warn-only 7.4.
 - **Geo build flag** `GEO_FAIL_OPEN` (prod fail-closed) + UI gating.
-- **Binary-market filter** at cache entry (`isBinaryOutcomes`) — non-binary
+- **Binary-market filter** at cache entry (`isBinaryOutcomes`) - non-binary
   markets never reach the YES/NO trade flow.
 - **Confirm step before signing** (spec §6.5) + **match context** (headline +
   confidence, spec §6.1) + **selectable alternates** (`onPickRelated`).
@@ -52,7 +52,7 @@ Beyond the sprints below (which are largely done), this pass added:
 
 **Release-blocker status (updated 2026-06-23): the secret is rotated.** The
 burned `770d0e45…` is gone from the build and `npm run preflight` passes. The
-shared secret is baked into the client *by design* — it cannot be kept private
+shared secret is baked into the client *by design* - it cannot be kept private
 in a distributed extension; the real abuse backstop is the Worker's per-IP rate
 limit + OpenAI cap, which fail closed (503) when `RATE_LIMITS` KV is unbound in
 prod. CI is green on Node 24 / npm 11. The remaining gates to public launch are
@@ -60,7 +60,7 @@ prod. CI is green on Node 24 / npm 11. The remaining gates to public launch are
 
 ---
 
-## Sprint 6 — Trading correctness + order ticket ✅ done (verified 2026-07-05)
+## Sprint 6 - Trading correctness + order ticket ✅ done (verified 2026-07-05)
 
 | ID | Exact change | Files | Acceptance |
 |---|---|---|---|
@@ -78,7 +78,7 @@ Tests (TDD): `orderMath` (shares/payout/return, tick, maker/taker, FOK cap). ✅
 `orderMath.test.ts` (19 tests) + `TradeTabWired.test.tsx` cover wallet-gating,
 slippage>20% disable, and the confirm-before-sign step.
 
-## Sprint 7 — Worker hardening ✅ done (verified 2026-07-05)
+## Sprint 7 - Worker hardening ✅ done (verified 2026-07-05)
 
 | ID | Exact change | Files |
 |---|---|---|
@@ -91,7 +91,7 @@ All four confirmed live in `worker/index.ts`, covered by `worker.test.ts`/
 `embeddings-validation.test.ts`/`market-cache-validation.test.ts` (46 tests total).
 
 **2026-07-08 addendum:** 7.2's KV-based `openai_chars_day` counter (and the
-per-IP limiter it shared a pattern with) had a non-atomic read-then-write —
+per-IP limiter it shared a pattern with) had a non-atomic read-then-write -
 concurrent requests could both read the same stale count and increment from
 it, letting a determined caller exceed the nominal limit several times over
 under concurrency. Replaced with `RateLimiterDO`, a Durable Object that does
@@ -99,9 +99,9 @@ an atomic check-and-increment (Cloudflare guarantees one instance processes
 one request at a time, closing the race with no extra locking code). `env.RATE_LIMITS`
 KV binding removed; `env.RATE_LIMITER_DO` added, wired via `wrangler.toml`'s
 `[[durable_objects.bindings]]` + `[[migrations]]`. Requires the Workers Paid
-plan (Durable Objects aren't on Workers Free) — see `README.md`.
+plan (Durable Objects aren't on Workers Free) - see `README.md`.
 
-## Sprint 8 — Secrets, geo posture, build hygiene ✅ done (verified 2026-07-05)
+## Sprint 8 - Secrets, geo posture, build hygiene ✅ done (verified 2026-07-05)
 
 | ID | Exact change | Files |
 |---|---|---|
@@ -112,13 +112,13 @@ plan (Durable Objects aren't on Workers Free) — see `README.md`.
 
 **2026-07-05 addendum (found during re-verification, not in the original
 8.x list):** the CA-ON check in `/geo` read `CF-Region-Code` as an HTTP
-*header* — Cloudflare never sends region as a header to a Worker, only via
+*header* - Cloudflare never sends region as a header to a Worker, only via
 `request.cf.regionCode`. Ontario would silently never have been geo-blocked
 in production despite the existing test passing (the test injected the same
 wrong header). Fixed in `worker/index.ts` + regression test added in
 `worker.test.ts` asserting a spoofed `CF-Region-Code` header is ignored.
 
-## Sprint 9 — Tests & CI (finishes spec Sprint 6) ✅ done (verified 2026-07-05)
+## Sprint 9 - Tests & CI (finishes spec Sprint 6) ✅ done (verified 2026-07-05)
 
 | ID | Exact change | Files |
 |---|---|---|
@@ -128,10 +128,10 @@ wrong header). Fixed in `worker/index.ts` + regression test added in
 
 9.3 is moot rather than done-as-written: the matcher moved to `@actually/core`
 entirely during the agentic-layer work (dependency-injected `findMatch`), so
-there's no extension-local `matcher.ts`/`matcher.test.ts` left to deduplicate —
+there's no extension-local `matcher.ts`/`matcher.test.ts` left to deduplicate -
 its tests live in `packages/core/src/matcher.test.ts` (13 tests) instead.
 
-## Sprint 10 — Cleanup & honesty ✅ done (verified 2026-07-05)
+## Sprint 10 - Cleanup & honesty ✅ done (verified 2026-07-05)
 
 | ID | Exact change | Files |
 |---|---|---|
@@ -144,27 +144,27 @@ its tests live in `packages/core/src/matcher.test.ts` (13 tests) instead.
 | 10.7 | Correct npm-audit triage in SECURITY.md (onnx exercised, trusted CDN) | `SECURITY.md` |
 | 10.8 | Remove dead `popup_new/Popup.tsx` if unused; resolve untracked `design/` | `popup_new/Popup.tsx`, `.gitignore` |
 
-10.1–10.6 and 10.8 were already landed and re-verified clean by grep (no
+10.1-10.6 and 10.8 were already landed and re-verified clean by grep (no
 `personal_sign`, no dead `popup_new/Popup.tsx`, no untracked `design/`, TTL
 wired). **10.7 had a real gap**, fixed 2026-07-05: `npm audit` on the live
 tree shows a high-severity `ws` chain via
 `@walletconnect/jsonrpc-ws-connection` → `viem` that SECURITY.md didn't
 address at all. Confirmed the vulnerable `require('ws')` branch is present as
 dead bytes in the built `offscreen-*.js` (string-verified) but unreachable at
-runtime — the offscreen document always has `self.WebSocket`. Documented in
+runtime - the offscreen document always has `self.WebSocket`. Documented in
 `SECURITY.md`'s npm-audit-triage section.
 
-## Sprint 11 — Beta + CWS (spec Sprint 7) ⚪ still open — non-code, human process
+## Sprint 11 - Beta + CWS (spec Sprint 7) ⚪ still open - non-code, human process
 
 1. Prod build with rotated `.env.local`; verify dist CSP single origin + host_permissions = clob only.
 2. Clean-Chrome smoke per updated `release-checklist.md` (discovery → connect → limit → market FOK → disconnect&wipe → telemetry off).
-3. CWS assets: 3–5 screenshots, promo images, privacy URL, single-purpose + permission justifications.
-4. Closed beta: 10–20 crypto-native + 10–20 normie; collect KPIs (computable after 7.3).
+3. CWS assets: 3-5 screenshots, promo images, privacy URL, single-purpose + permission justifications.
+4. Closed beta: 10-20 crypto-native + 10-20 normie; collect KPIs (computable after 7.3).
 5. Sprint 12 = beta fixes → public launch (Product Hunt + CryptoTwitter).
 
 ## Post-v1 (parked)
 
-- ~~**v1.1:** bundle MiniLM-L12 weights into .crx → drop `huggingface.co` from CSP~~ —
+- ~~**v1.1:** bundle MiniLM-L12 weights into .crx → drop `huggingface.co` from CSP~~ -
   **landed 2026-07-07.** `npm run models:fetch` bundles the model weights +
   onnxruntime-web WASM; `huggingface.co`/`*.hf.co`/`cdn.jsdelivr.net` removed
   from CSP; extension is fully offline-installable.
@@ -178,13 +178,13 @@ product-feature backlog (sell-to-close, multi-market per page, Safari port,
 in-page widget toggle) lives in `README.md`'s Roadmap section, deliberately
 un-numbered there to avoid the same version label meaning two different
 things in two documents again. (Order status polling and a position list
-were on that backlog too, but both shipped — open positions with cost basis/
+were on that backlog too, but both shipped - open positions with cost basis/
 P&L and resting orders with live status + in-app cancel are in the Trade tab
 now; see README.md's Status table.)
 
 ## Critical path
 
-Sprints 6–10 are done. **Sprint 11 (beta + CWS) is the entire remaining
-critical path** to public launch — it is a human/process gate (recruit
+Sprints 6-10 are done. **Sprint 11 (beta + CWS) is the entire remaining
+critical path** to public launch - it is a human/process gate (recruit
 testers, capture screenshots, submit to the Chrome Web Store, run the closed
 beta), not an engineering task. No further code changes block it.

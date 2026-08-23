@@ -6,7 +6,7 @@ import { NeutralScanner } from '../components/NeutralScanner';
 import { toneDark } from '../colors';
 
 // =============================================================
-// TradeTab — public state contract
+// TradeTab - public state contract
 // =============================================================
 export interface Suggestion {
   q: string;

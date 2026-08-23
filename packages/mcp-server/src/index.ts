@@ -65,15 +65,15 @@ server.registerTool(
     description:
       'Map a piece of news text to the relevant Polymarket market and return its ' +
       'objective YES probability. Does not classify whether the news is dramatized ' +
-      'or accurate relative to the market — that interpretation is left to the ' +
+      'or accurate relative to the market - that interpretation is left to the ' +
       'calling agent, which has both the original text and this market anchor. ' +
       'The probability comes from a precomputed cache refreshed on a cron cadence ' +
-      '(can be up to ~2 hours stale) — for a live price before trading, call ' +
+      '(can be up to ~2 hours stale) - for a live price before trading, call ' +
       'get_market with the returned marketId.',
     inputSchema: { text: z.string().min(1).max(8000) },
   },
   async ({ text }) => {
-    // Long-tail search only when the operator opted in — see
+    // Long-tail search only when the operator opted in - see
     // SEARCH_FALLBACK_ENABLED. Built here rather than inside checkNews so the
     // tool stays a pure function of its deps and testable without network.
     const searchFallback = SEARCH_FALLBACK_ENABLED
@@ -115,20 +115,20 @@ server.registerTool(
 
 // Trading tools (place_order, sell_order, cancel_order, get_open_orders,
 // get_positions) are only registered when an operator has configured their
-// own signing key — no key custody happens on our side, ever (see design
+// own signing key - no key custody happens on our side, ever (see design
 // spec). They share one TradingSession so credential derivation happens once
 // per process, and one SpendGuard so a per-order and daily USD ceiling is
 // enforced across both buys and sells.
 if (PRIVATE_KEY) {
-  // BUILDER_CODE missing doesn't disable trading tools outright — cancel_order,
+  // BUILDER_CODE missing doesn't disable trading tools outright - cancel_order,
   // get_open_orders, and get_positions never touch it and work fine without
   // it. Only place_order/sell_order need it, and clobClient.ts's
   // signBuyOrder/signMarketBuyOrder/signSellOrder already fail loudly
   // (`builder_code_not_configured`) on first use rather than silently
-  // omitting attribution — so this is a diagnostics gap, not a silent-money
+  // omitting attribution - so this is a diagnostics gap, not a silent-money
   // risk. Still worth a clear signal at startup: an operator staring at
   // "place_order keeps failing" has no reason to suspect a publish-time env
-  // var. console.error (not console.log) — stdout is reserved for the MCP
+  // var. console.error (not console.log) - stdout is reserved for the MCP
   // JSON-RPC protocol over StdioServerTransport; writing there would corrupt it.
   if (!BUILDER_CODE) {
     console.error(
@@ -151,7 +151,7 @@ if (PRIVATE_KEY) {
       description:
         "Buy YES or NO shares in a Polymarket market using this server's configured " +
         "POLYMARKET_PRIVATE_KEY, with this server's builder code attached. The token " +
-        "to trade is resolved server-side from marketId + side — callers cannot " +
+        "to trade is resolved server-side from marketId + side - callers cannot " +
         `supply a raw token id. Capped at $${MAX_ORDER_USD}/order and $${DAILY_LIMIT_USD}/day.`,
       inputSchema: {
         marketId: z.string().min(1),
@@ -163,7 +163,7 @@ if (PRIVATE_KEY) {
           .lt(1)
           .describe(
             'LIMIT: the resting price. MARKET: the WORST price you accept, and it must be ' +
-              'strictly below the best bid — a market sell is fill-or-kill, so a floor equal ' +
+              'strictly below the best bid - a market sell is fill-or-kill, so a floor equal ' +
               'to the bid fills only if the whole size rests on that one level. Call ' +
               'get_market first and pass orderbook.marketSellFloor.price rather than deriving ' +
               'it; on cheap books a 2% band is thinner than one tick and rounds back onto the bid.',
@@ -218,7 +218,7 @@ if (PRIVATE_KEY) {
       }
       const target = resolveOrderToken(market, input.side === 'SELL_YES' ? 'Yes' : 'No')
       // Anchor the spend-guard's notional estimate to the market's own cached
-      // price for the side being sold, not just the caller-supplied price —
+      // price for the side being sold, not just the caller-supplied price -
       // see sellOrder.ts's `marketPriceHint` doc comment for why.
       const outcomeIdx = findOutcomeIndex(market.outcomes, input.side === 'SELL_YES' ? 'Yes' : 'No')
       const marketPriceHint = parseFloat(safeJsonArray(market.outcomePrices)[outcomeIdx] ?? '') || undefined
@@ -281,8 +281,8 @@ if (PRIVATE_KEY) {
   )
 
   // redeem_position needs a second, explicit opt-in beyond just having a
-  // signing key configured — see REDEEM_ENABLED's doc comment in config.ts.
-  // Unset, the tool isn't registered at all (not "registered but errors" —
+  // signing key configured - see REDEEM_ENABLED's doc comment in config.ts.
+  // Unset, the tool isn't registered at all (not "registered but errors" -
   // an agent enumerating tools shouldn't even see it as an option).
   if (REDEEM_ENABLED) {
     const relayerSubmit = makeRelayerSubmit(PRIVATE_KEY)
@@ -291,13 +291,13 @@ if (PRIVATE_KEY) {
       {
         description:
           'Claim payout for a resolved, winning position (get its conditionId from ' +
-          'get_positions — only positions with redeemable:true can be redeemed). This ' +
+          'get_positions - only positions with redeemable:true can be redeemed). This ' +
           'is an on-chain transaction submitted through the Polymarket relayer, not a ' +
-          'CLOB order — no POL/gas needed in your wallet, Polymarket covers it. ' +
+          'CLOB order - no POL/gas needed in your wallet, Polymarket covers it. ' +
           'Not gated by the spend guard (this claims money owed to you, it does not risk new capital). ' +
           'IN TESTING: no redeem has yet been observed collecting funds end to end, so treat a ' +
           'success as unconfirmed until the payout shows in the wallet. Note that redeemable:true ' +
-          'only means the market RESOLVED — a losing position also reports it, and is refused here ' +
+          'only means the market RESOLVED - a losing position also reports it, and is refused here ' +
           'with nothing_to_redeem rather than being submitted.',
         inputSchema: { conditionId: z.string().min(1) },
       },

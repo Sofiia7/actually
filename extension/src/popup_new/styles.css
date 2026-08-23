@@ -1,5 +1,5 @@
 /* ============================================================
-   Actually popup — global styles
+   Actually popup - global styles
    ============================================================
    Everything in here is either:
      - a pseudo-element (::before / ::after on .glass-btn)
@@ -57,7 +57,7 @@ select.thin-glass{
 @keyframes spin{ from{transform:rotate(0)} to{transform:rotate(360deg)} }
 
 /* ============================================================
-   FROST TRAIL — crumpled / crystalline glass texture revealed
+   FROST TRAIL - crumpled / crystalline glass texture revealed
    locally under the cursor. NOT a star, NOT radiating lines.
    Driven by --mx / --my custom properties on the host element.
    The host element MUST have class "frost-host" and set
@@ -95,7 +95,7 @@ select.thin-glass{
 .frost-host.is-tracking .frost-needles{ opacity:.48; }
 
 /* Popup chrome (GlassSurface) frost: grey needles visible across the whole
-   panel — faint, denser at the edges, sparser in the centre — always on. The
+   panel - faint, denser at the edges, sparser in the centre - always on. The
    cursor adds only a soft local brighten, no hard reveal circle. Colored
    IceCards keep the original cursor-reveal behavior above. */
 .frost-host--chrome .frost-needles{ -webkit-mask:none; mask:none; opacity:1; }
@@ -120,8 +120,8 @@ select.thin-glass{
 
 /* ============================================================
    ICE-PLATE textures
-     .ice-crackle — coarse crystalline surface (market cards)
-     .matte-grain — fine matte film (main popup chrome)
+     .ice-crackle - coarse crystalline surface (market cards)
+     .matte-grain - fine matte film (main popup chrome)
    ============================================================ */
 .ice-crackle{
   position:absolute; inset:0; border-radius:inherit; pointer-events:none;
@@ -138,11 +138,11 @@ select.thin-glass{
 }
 
 /* ============================================================
-   GLASS BUTTON — flat at rest, convex on hover.
+   GLASS BUTTON - flat at rest, convex on hover.
    Hover state = gradient highlight (top light / bottom dark) +
    inset highlights + lifted shadow + 0.5px lift.
    Tinted with the same cold blue as the ProbDot ramp's 0% stop
-   (#1E5FD7) — was pure white/grey, reading as nothing to grab
+   (#1E5FD7) - was pure white/grey, reading as nothing to grab
    onto against the rest of the "ice" palette.
    ============================================================ */
 .glass-btn{

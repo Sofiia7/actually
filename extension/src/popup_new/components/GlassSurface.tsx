@@ -4,14 +4,14 @@ export interface GlassSurfaceProps {
   children: React.ReactNode;
   radius?: number;
   style?: React.CSSProperties;
-  /** Optional tint for the cursor frost trail. Currently unused —
+  /** Optional tint for the cursor frost trail. Currently unused -
    *  the trail is pure white. Keep this prop so consumers can opt
    *  into temperature-tinted frost later. */
   frostRgb?: string;
 }
 
 /**
- * The popup chrome. Near-invisible matte frosted glass — page behind
+ * The popup chrome. Near-invisible matte frosted glass - page behind
  * shows through almost completely; only the blur betrays the panel.
  * Tracks the global mouse position into CSS custom properties so the
  * `.frost-needles` overlay can render the crumpled-glass trail.

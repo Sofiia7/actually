@@ -56,7 +56,7 @@ describe('SpendGuard', () => {
       expect(result.ok).toBe(false)
       expect(!result.ok && result.error).toBe('invalid_size')
     }
-    // The daily total must be untouched — a subsequent real reserve at the
+    // The daily total must be untouched - a subsequent real reserve at the
     // per-order cap still succeeds (would fail if a NaN had poisoned
     // daySpentUsd toward a value where dailyLimitUsd comparisons broke).
     expect(guard.reserve(100).ok).toBe(true)
@@ -67,7 +67,7 @@ describe('SpendGuard', () => {
     guard.reserve(100)
     guard.release(NaN)
     guard.release(-5)
-    // Still fully reserved — the bad releases must not have refunded anything.
+    // Still fully reserved - the bad releases must not have refunded anything.
     expect(guard.reserve(1).ok).toBe(false)
   })
 
@@ -83,7 +83,7 @@ describe('SpendGuard', () => {
     expect(guard.reserve(100).ok).toBe(true)
 
     // The original order (reserved against day D) finally fails and releases
-    // — must NOT refund into day D+1's already-fully-spent budget.
+    // - must NOT refund into day D+1's already-fully-spent budget.
     guard.release(100, reserved.ok ? reserved.reservedDay : undefined)
     expect(guard.reserve(1).ok).toBe(false)
   })
@@ -130,7 +130,7 @@ describe('SpendGuard', () => {
       const a = new SpendGuard({ maxOrderUsd: 100, dailyLimitUsd: 150, statePath })
       const b = new SpendGuard({ maxOrderUsd: 100, dailyLimitUsd: 150, statePath })
       expect(a.reserve(80).ok).toBe(true) // process A spends $80, writes to disk
-      expect(b.reserve(80).ok).toBe(false) // process B re-reads disk before checking — sees A's $80, $80+$80 > $150
+      expect(b.reserve(80).ok).toBe(false) // process B re-reads disk before checking - sees A's $80, $80+$80 > $150
       expect(b.reserve(60).ok).toBe(true) // $80 + $60 = $140, still under $150
     } finally {
       rmSync(dir, { recursive: true, force: true })
@@ -173,7 +173,7 @@ describe('SpendGuard', () => {
     }
   }, 10_000)
 
-  it('release() still proceeds unlocked (best-effort) if a live lock is held past the max wait — safe direction, unlike reserve()', () => {
+  it('release() still proceeds unlocked (best-effort) if a live lock is held past the max wait - safe direction, unlike reserve()', () => {
     const dir = mkdtempSync(join(tmpdir(), 'spend-guard-test-'))
     const statePath = join(dir, 'spend-guard.json')
     const lockPath = `${statePath}.lock`

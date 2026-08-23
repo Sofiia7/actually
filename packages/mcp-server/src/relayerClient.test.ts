@@ -5,7 +5,7 @@ const { executeMock, creds } = vi.hoisted(() => ({
   // Mutable stand-in for the builder credentials. Deliberately NOT
   // process.env: config.ts reads the environment once at import time, so
   // driving these tests through env means mutating a process-wide global that
-  // vitest shares between test files in the same worker — which made this
+  // vitest shares between test files in the same worker - which made this
   // suite pass alone and fail intermittently in a full run.
   creds: {
     key: undefined as string | undefined,
@@ -71,7 +71,7 @@ beforeEach(() => {
   creds.relayerAddress = undefined
 })
 
-describe('makeRelayerSubmit — builder credentials gate the whole flow', () => {
+describe('makeRelayerSubmit - builder credentials gate the whole flow', () => {
   it('refuses BEFORE signing when credentials are missing, and says where to get them', async () => {
     // The SDK signs the Safe transaction before it posts, so without
     // credentials the operator would pay a wallet signature for a request the
@@ -136,7 +136,7 @@ describe('makeRelayerSubmit — builder credentials gate the whole flow', () => 
   })
 })
 
-describe('makeRelayerSubmit — relayer API key mode', () => {
+describe('makeRelayerSubmit - relayer API key mode', () => {
   it('submits with just a relayer key + address (what the settings UI hands out)', async () => {
     creds.relayerKey = 'rk-456'
     creds.relayerAddress = '0xC6B48f603C439B4a6b55462AfCae10594D31242A'

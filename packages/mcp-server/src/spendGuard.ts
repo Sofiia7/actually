@@ -2,24 +2,24 @@ import { closeSync, existsSync, mkdirSync, openSync, readFileSync, statSync, unl
 import { dirname } from 'node:path'
 
 // How long a lock file may sit unreleased before a NEW acquirer assumes its
-// owner crashed mid-reserve() and busts it — an `openSync(path, 'wx')` lock
+// owner crashed mid-reserve() and busts it - an `openSync(path, 'wx')` lock
 // has no OS-level "owner died" notification, unlike flock(2), so a orphaned
 // lock would otherwise wedge every future reserve()/release() call forever.
 const LOCK_STALE_MS = 5_000
 // How long a NEW acquirer retries before giving up and proceeding WITHOUT
 // the lock. This is a best-effort race reduction (see syncFromDisk's own
-// doc comment), not a hard guarantee — a real trading call must never hang
+// doc comment), not a hard guarantee - a real trading call must never hang
 // indefinitely over local file contention.
 const LOCK_MAX_WAIT_MS = 2_000
 const LOCK_RETRY_MS = 20
 
 /**
  * Synchronous cross-process mutual exclusion via exclusive file creation
- * (`wx` — fails if the file already exists), the one atomic primitive
+ * (`wx` - fails if the file already exists), the one atomic primitive
  * `node:fs` offers without a native addon or extra dependency. Busy-waits
  * with `Atomics.wait` (safe on Node's main thread, unlike a browser) instead
  * of an async retry loop, because reserve()/release() must stay fully
- * synchronous — see reserve()'s own doc comment for why that matters.
+ * synchronous - see reserve()'s own doc comment for why that matters.
  */
 function acquireLock(lockPath: string): boolean {
   const deadline = Date.now() + LOCK_MAX_WAIT_MS
@@ -31,14 +31,14 @@ function acquireLock(lockPath: string): boolean {
       closeSync(fd)
       return true
     } catch (err) {
-      if ((err as NodeJS.ErrnoException).code !== 'EEXIST') return false // unexpected fs error — don't block a real trade on it
+      if ((err as NodeJS.ErrnoException).code !== 'EEXIST') return false // unexpected fs error - don't block a real trade on it
       try {
         if (Date.now() - statSync(lockPath).mtimeMs > LOCK_STALE_MS) {
-          unlinkSync(lockPath) // orphaned lock from a crashed process — bust it and retry immediately
+          unlinkSync(lockPath) // orphaned lock from a crashed process - bust it and retry immediately
           continue
         }
       } catch {
-        continue // lock vanished between our failed create and this stat (owner released it) — retry immediately
+        continue // lock vanished between our failed create and this stat (owner released it) - retry immediately
       }
       if (Date.now() >= deadline) return false
       Atomics.wait(sleeper, 0, 0, LOCK_RETRY_MS)
@@ -50,7 +50,7 @@ function releaseLock(lockPath: string): void {
   try {
     unlinkSync(lockPath)
   } catch {
-    // Already gone (e.g. busted as stale by another process) — fine.
+    // Already gone (e.g. busted as stale by another process) - fine.
   }
 }
 
@@ -83,7 +83,7 @@ function today(): string {
 /**
  * Backstop against a prompt-injected or buggy agent draining the operator's
  * wallet through place_order. A blast-radius limiter, not a full accounting
- * system — see `statePath` above for why persistence still matters.
+ * system - see `statePath` above for why persistence still matters.
  */
 export class SpendGuard {
   private daySpentUsd = 0
@@ -110,7 +110,7 @@ export class SpendGuard {
       this.daySpentUsd = parsed.daySpentUsd
     } catch {
       // A state file we can't trust must not silently reopen the full daily
-      // budget — that's the dangerous direction for a real-money backstop
+      // budget - that's the dangerous direction for a real-money backstop
       // (an operator who'd already spent most of today's cap would get a
       // fresh $0 and could blow through the limit on the next call). Fail
       // closed instead: treat today as already fully spent. Self-heals at
@@ -126,7 +126,7 @@ export class SpendGuard {
    * of every reserve() (in addition to the one-time load in the
    * constructor). Every MCP client (Claude Desktop, Claude Code, Cursor...)
    * spawns its own server subprocess, each starting from whatever the file
-   * said at ITS launch time — without re-reading here, N concurrent
+   * said at ITS launch time - without re-reading here, N concurrent
    * processes each track spend independently and combined real spend can
    * reach N × dailyLimitUsd. Re-reading before every reserve() closes most
    * of that gap (a residual write-write race remains: two processes can
@@ -150,13 +150,13 @@ export class SpendGuard {
         this.daySpentUsd = Math.max(this.daySpentUsd, parsed.daySpentUsd)
       } else if (parsed.day > this.day) {
         // A peer process already rolled over to a newer UTC day than we've
-        // observed — adopt its view rather than keep comparing stale totals
+        // observed - adopt its view rather than keep comparing stale totals
         // from yesterday against today's.
         this.day = parsed.day
         this.daySpentUsd = parsed.daySpentUsd
       }
     } catch {
-      // Best-effort merge only — loadState()'s fail-closed handling already
+      // Best-effort merge only - loadState()'s fail-closed handling already
       // covers the startup case; a transient read/parse hiccup here just
       // means this call proceeds on the in-memory view.
     }
@@ -169,7 +169,7 @@ export class SpendGuard {
       mkdirSync(dirname(path), { recursive: true })
       writeFileSync(path, JSON.stringify({ day: this.day, daySpentUsd: this.daySpentUsd } satisfies PersistedState))
     } catch {
-      // Best-effort — a filesystem error here must not crash a trading call.
+      // Best-effort - a filesystem error here must not crash a trading call.
       // Worst case the cap reverts to process-lifetime-only for this run.
     }
   }
@@ -184,16 +184,16 @@ export class SpendGuard {
 
   /**
    * Runs `fn` holding a cross-process file lock derived from `statePath`
-   * (`<statePath>.lock`) — see acquireLock's doc comment. Without a
+   * (`<statePath>.lock`) - see acquireLock's doc comment. Without a
    * configured statePath there's nothing on disk for another process to
    * race against, so this just runs `fn` directly. If the lock can't be
    * acquired within LOCK_MAX_WAIT_MS, callers that pass `onLockFailed`
-   * (reserve()) get that fallback instead of `fn` running unlocked — for a
+   * (reserve()) get that fallback instead of `fn` running unlocked - for a
    * real-money cap, proceeding without the lock is the dangerous direction
    * (two processes could both pass the check and combined spend exceeds
    * dailyLimitUsd). Callers that omit it (release()) still run `fn`
    * unlocked best-effort, because failing to give budget back only makes
-   * the guard MORE conservative, never less — see release()'s doc comment.
+   * the guard MORE conservative, never less - see release()'s doc comment.
    */
   private withLock<T>(fn: () => T, onLockFailed?: () => T): T {
     const path = this.config.statePath
@@ -209,7 +209,7 @@ export class SpendGuard {
   }
 
   /**
-   * Checks the per-order and daily caps AND commits the spend in one call —
+   * Checks the per-order and daily caps AND commits the spend in one call -
    * no `await` anywhere in `fn`, so no other tool call in THIS process can
    * interleave (JS's single-threaded event loop makes that part atomic on
    * its own). The previous check()-then-record() split left an await-sized
@@ -219,7 +219,7 @@ export class SpendGuard {
    * dailyLimitUsd. Call release() if the order ultimately doesn't go
    * through, to give the reserved budget back. Wrapped in withLock() so a
    * SEPARATE process doing the same read-modify-write can't interleave with
-   * this one either — see withLock's and acquireLock's doc comments. If the
+   * this one either - see withLock's and acquireLock's doc comments. If the
    * lock can't be acquired within LOCK_MAX_WAIT_MS, this fails closed
    * (`spend_guard_busy`) rather than committing the spend unlocked: for a
    * real-money daily cap, running the check-and-commit without the
@@ -230,7 +230,7 @@ export class SpendGuard {
   reserve(sizeUsd: number): SpendCheck {
     if (!Number.isFinite(sizeUsd) || sizeUsd <= 0) {
       // A non-finite or non-positive size (NaN, Infinity, 0, negative) must
-      // never silently pass the checks below — NaN comparisons are always
+      // never silently pass the checks below - NaN comparisons are always
       // false, which would poison daySpentUsd and disable the daily cap for
       // the rest of the UTC day.
       return { ok: false, error: 'invalid_size' }
@@ -257,13 +257,13 @@ export class SpendGuard {
   /**
    * Give back budget reserved by reserve() for an order that was rejected,
    * failed, or threw. `reservedDay` should be the `reservedDay` a matching
-   * reserve() call returned — if the UTC day has since rolled over, this is
+   * reserve() call returned - if the UTC day has since rolled over, this is
    * a no-op instead of refunding into the NEW day's budget (rollDayIfNeeded
    * already zeroed the counter at rollover, so crediting it again here would
    * let that day's real spend exceed dailyLimitUsd by the refunded amount).
    * Omit `reservedDay` to preserve the old same-day-assumed behavior for
    * callers/tests that don't track it. Also syncs from disk and takes the
-   * same cross-process lock as reserve() — without both, this could refund
+   * same cross-process lock as reserve() - without both, this could refund
    * against a stale in-memory total or race a concurrent process's own
    * reserve()/release() write.
    */

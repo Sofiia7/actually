@@ -11,16 +11,16 @@ import type { OpenOrderSummary, Position } from '../../shared/types'
 /** Redeem failures the user can actually do something about. */
 export function humanRedeemError(raw: string): string {
   if (/not_yet_redeemable/.test(raw)) {
-    return "Polymarket doesn't consider this resolved yet — try again once it settles."
+    return "Polymarket doesn't consider this resolved yet - try again once it settles."
   }
-  if (/position_not_found/.test(raw)) return 'That position is no longer held — refresh.'
-  if (/no_wallet/.test(raw)) return 'Wallet session expired — reconnect and try again.'
+  if (/position_not_found/.test(raw)) return 'That position is no longer held - refresh.'
+  if (/no_wallet/.test(raw)) return 'Wallet session expired - reconnect and try again.'
   if (/worker_not_configured/.test(raw)) return 'Set the Worker URL and secret in Settings first.'
   if (/wc_provider_unsupported_method|personal_sign/i.test(raw)) {
     return "Your wallet didn't grant permission to sign this. Reconnect and approve the full request."
   }
   if (/redeem_status_unknown/.test(raw)) {
-    return "The redeem was submitted but its final status couldn't be confirmed — wait a minute and refresh your positions before retrying."
+    return "The redeem was submitted but its final status couldn't be confirmed - wait a minute and refresh your positions before retrying."
   }
   // The relayer rejects unauthenticated /submit outright.
   //
@@ -41,10 +41,10 @@ export function humanRedeemError(raw: string): string {
   // the correct outcome: the market resolved against this position, so the
   // tokens settle to nothing. Shown as raw JSON before this branch existed.
   if (/PRECHECK_SKIPPED|zero position balance/i.test(raw)) {
-    return "Nothing to claim here — this outcome didn't win, so the position settles to $0. Your other positions are unaffected."
+    return "Nothing to claim here - this outcome didn't win, so the position settles to $0. Your other positions are unaffected."
   }
   if (/relayer_state/.test(raw)) {
-    return 'The transaction failed on-chain. Nothing was redeemed — try again shortly.'
+    return 'The transaction failed on-chain. Nothing was redeemed - try again shortly.'
   }
   if (/user rejected|user disapproved|rejected/i.test(raw)) return 'You declined the signature in your wallet.'
   return raw
@@ -57,9 +57,9 @@ export interface PositionsPanelProps {
   cancellingId: string | null
   onCancelOrder: (orderId: string) => void
   onRefresh: () => void
-  /** Set when the last positions/open-orders fetch failed — shown instead of silently rendering an empty list. */
+  /** Set when the last positions/open-orders fetch failed - shown instead of silently rendering an empty list. */
   portfolioError?: string | null
-  /** Set when the last cancel attempt failed — cleared on the next successful cancel or refresh. */
+  /** Set when the last cancel attempt failed - cleared on the next successful cancel or refresh. */
   cancelError?: string | null
 }
 
@@ -70,7 +70,7 @@ export interface PositionsPanelProps {
  * API can briefly disagree with itself after a fill: a $2 buy of 153.84 shares
  * showed up as "@ 6.0¢ … -$7.38 (-80.0%)" for a minute before settling to
  * "@ 1.3¢ … -$0.15 (-7.7%)". Both readings were internally consistent, so
- * nothing on screen gave it away — a user who paid $2 had to reverse-engineer
+ * nothing on screen gave it away - a user who paid $2 had to reverse-engineer
  * an $9.23 cost basis out of a percentage to see that the row was wrong.
  * Spelling out size × avgPrice makes that visible at a glance instead.
  */
@@ -83,7 +83,7 @@ const shortenMarketId = (id: string) => (id.length > 10 ? `${id.slice(0, 10)}…
  * Whether a resolved position has anything to collect.
  *
  * `redeemable` from data-api means "this market has resolved", NOT "there is
- * money here" — it comes back true for every holder of the losing side, with
+ * money here" - it comes back true for every holder of the losing side, with
  * curPrice 0.0000 and currentValue 0.00 alongside it. Reading it as the
  * latter is what put a "Redeem →" link on a position worth exactly nothing:
  * the click cost a wallet signature and then failed, every time, with the
@@ -96,7 +96,7 @@ function hasPayout(p: Position): boolean {
 
 /**
  * Read-only view of the connected wallet's current Polymarket positions and
- * resting orders — previously the only way to see either was polymarket.com
+ * resting orders - previously the only way to see either was polymarket.com
  * directly, since the extension only ever showed the order you'd just placed
  * in the current popup session.
  */
@@ -110,11 +110,11 @@ export const PositionsPanel: React.FC<PositionsPanelProps> = ({
   portfolioError,
   cancelError,
 }) => {
-  // Which position's sell ticket is open. One at a time, by tokenId — an
+  // Which position's sell ticket is open. One at a time, by tokenId - an
   // expanded ticket per row would let two sells be half-filled in at once.
   const [sellingTokenId, setSellingTokenId] = useState<string | null>(null)
   // Confirmation for a sell that has already closed its ticket. Held here
-  // because the panel outlives the ticket — see SellTicket's onDone. Redeem
+  // because the panel outlives the ticket - see SellTicket's onDone. Redeem
   // outcomes land here too, so the notice carries its own tone: a failure
   // painted in the success green reads as a confirmation to anyone skimming.
   const [sellNotice, setSellNotice] = useState<{ text: string; isError: boolean; slug?: string } | null>(null)
@@ -129,7 +129,7 @@ export const PositionsPanel: React.FC<PositionsPanelProps> = ({
   const [redeemingId, setRedeemingId] = useState<string | null>(null)
   // Whether the deployment can redeem in-app at all (Worker holds builder API
   // credentials). Asked at runtime rather than baked into the build, so the
-  // button appears the moment those credentials are configured — and never
+  // button appears the moment those credentials are configured - and never
   // before, since without them the relayer 401s AFTER the wallet has signed.
   const [canRedeemInApp, setCanRedeemInApp] = useState(false)
   const hasRedeemable = positions.some((p) => p.redeemable)
@@ -146,7 +146,7 @@ export const PositionsPanel: React.FC<PositionsPanelProps> = ({
 
   async function onRedeem(conditionId: string) {
     // A LinkAction is a plain <a> with no native disabled state, and this one
-    // signs an on-chain call — guard synchronously so a double-click can't
+    // signs an on-chain call - guard synchronously so a double-click can't
     // submit two relayer transactions for the same position.
     if (redeemingId) return
     setRedeemingId(conditionId)
@@ -166,7 +166,7 @@ export const PositionsPanel: React.FC<PositionsPanelProps> = ({
       })
       setSellNotice(
         r.ok
-          ? { text: `Redeemed${r.transactionId ? ` · ${r.transactionId.slice(0, 10)}…` : ''} — the payout lands in your Polymarket balance. Saved to History.`, isError: false }
+          ? { text: `Redeemed${r.transactionId ? ` · ${r.transactionId.slice(0, 10)}…` : ''} - the payout lands in your Polymarket balance. Saved to History.`, isError: false }
           : { text: humanRedeemError(r.error ?? 'unknown_error'), isError: true, slug: held?.slug },
       )
     } catch (err) {
@@ -284,14 +284,14 @@ export const PositionsPanel: React.FC<PositionsPanelProps> = ({
             </Etched>
           </div>
 
-          {/* A resolved market no longer trades — offering Sell there would
+          {/* A resolved market no longer trades - offering Sell there would
               only ever produce a CLOB rejection. Those are redeemed instead. */}
           {p.redeemable ? (
             !hasPayout(p) ? (
               /* Resolved AGAINST this position: the tokens still sit in the
                  wallet, and data-api still calls them redeemable, but they
                  settle to nothing. Redeeming used to be offered here anyway
-                 and could only ever fail — after a wallet signature — with
+                 and could only ever fail - after a wallet signature - with
                  the relayer's "PRECHECK_SKIPPED: zero position balance",
                  which is the chain agreeing there is nothing to collect. */
               <div style={{ marginTop: 5 }}>

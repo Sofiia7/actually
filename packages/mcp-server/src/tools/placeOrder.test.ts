@@ -113,7 +113,7 @@ describe('placeOrder', () => {
   })
 })
 
-describe('placeOrder — minimum order size', () => {
+describe('placeOrder - minimum order size', () => {
   const base = {
     marketId: 'm1',
     tokenId: 'tok-yes',
@@ -140,7 +140,7 @@ describe('placeOrder — minimum order size', () => {
           release: () => {},
         },
       },
-      // $1 at 31¢ buys 3.22 shares — under CLOB's 5-share floor.
+      // $1 at 31¢ buys 3.22 shares - under CLOB's 5-share floor.
       { ...base, sizeUsd: 1, price: 0.31 },
     )
     expect(result).toEqual({ ok: false, error: 'order_below_min_size:5' })

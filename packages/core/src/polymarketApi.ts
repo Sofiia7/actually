@@ -7,7 +7,7 @@ function authHeaders(workerSecret: string): HeadersInit {
 
 // Gamma API caps each page at 100 results regardless of the `limit` param,
 // so we paginate via `offset`. `order=volumeNum` is the only sort that
-// returns by actual numeric volume — `order=volume` sorts the field as a
+// returns by actual numeric volume - `order=volume` sorts the field as a
 // string, producing nonsense.
 const GAMMA_PAGE = 100
 
@@ -30,7 +30,7 @@ type RawGammaMarket = Partial<PolyMarket> & {
   minimumTickSize?: number | string
   orderMinSize?: number | string
   minimum_order_size?: number | string
-  /** Set by Gamma on per-fixture sports rows — see isPerGameSportsMarket. */
+  /** Set by Gamma on per-fixture sports rows - see isPerGameSportsMarket. */
   gameId?: string | number
   sportsMarketType?: string
 }
@@ -94,7 +94,7 @@ function isPerGameSportsMarket(m: RawGammaMarket): boolean {
  * market's whole life, so it ranks by ACCUMULATED interest: a market opened
  * this morning under today's headline has near-zero lifetime volume and loses
  * to a year-old election market every time. Measured on the live cache, the
- * cheapest market that made the cut had $508,649 of lifetime volume — so a
+ * cheapest market that made the cut had $508,649 of lifetime volume - so a
  * real, open, actively-traded market like "Who will Trump publicly insult by
  * August 31?" ($47,851) was invisible to the extension by a factor of ten,
  * and the user reasonably read that as "the tool is broken".
@@ -184,7 +184,7 @@ export async function fetchActiveMarkets(
   for (const slice of CACHE_SLICES) {
     await fillFrom(slice.order, Math.min(total, out.length + Math.ceil(total * slice.share)))
   }
-  // A slice can come up short — heavy filtering, Gamma's offset ceiling, an
+  // A slice can come up short - heavy filtering, Gamma's offset ceiling, an
   // ordering with fewer rows than expected. Backfill from lifetime volume so
   // a thin slice costs coverage of ITS kind, not the size of the whole cache.
   if (out.length < total) await fillFrom('volumeNum', total)
@@ -195,13 +195,13 @@ export async function fetchActiveMarkets(
  * Free-text market lookup through the Worker's /search proxy.
  *
  * The cache is a fixed-size shelf, so however it is chosen, the long tail is
- * off it — Polymarket carries thousands of open markets and the cache holds
+ * off it - Polymarket carries thousands of open markets and the cache holds
  * two thousand. This is the escape hatch: when nothing cached matches an
  * article, ask Polymarket's own search, which indexes everything.
  *
  * PRIVACY: this sends words from the user's headline off-device. That is
  * exactly what the local-embedding path promises never to do, so the caller
- * must gate it behind an explicit opt-in — see `searchFallbackEnabled`.
+ * must gate it behind an explicit opt-in - see `searchFallbackEnabled`.
  */
 export async function searchMarkets(
   workerUrl: string,
@@ -255,7 +255,7 @@ export async function fetchMarketById(
 /**
  * Normalize Gamma's tick-size value to a decimal string CLOB accepts
  * ("0.01", "0.001", ...). Returns undefined when the input doesn't look like
- * a valid tick — the caller then falls back to negRisk-based defaults.
+ * a valid tick - the caller then falls back to negRisk-based defaults.
  *
  * Exported for unit testing; production callsite is `fetchActiveMarkets`.
  */
@@ -299,7 +299,7 @@ export async function fetchLivePrice(
 
 /**
  * Fetch the raw CLOB orderbook via the worker's unauthenticated-to-CLOB proxy
- * (public order-book data — no signer or wallet needed). Returns an empty
+ * (public order-book data - no signer or wallet needed). Returns an empty
  * book rather than throwing on failure so callers can degrade gracefully
  * (e.g. get_market still returns market info without a live orderbook).
  */

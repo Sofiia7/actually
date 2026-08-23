@@ -4,7 +4,7 @@
  * Browser-free: it loads dist/ the way Chrome would and asserts every file the
  * manifest (and the popup / offscreen HTML) references actually exists and is
  * non-empty. Catches the class of "build emitted a broken or partial bundle"
- * regressions that unit tests can't see — without needing a headed Chromium.
+ * regressions that unit tests can't see - without needing a headed Chromium.
  * The human click-through smoke stays in docs/release-checklist.md.
  *
  *   npm run build && npm run smoke
@@ -40,7 +40,7 @@ let manifest
 try {
   manifest = JSON.parse(readFileSync(join(DIST, 'manifest.json'), 'utf8'))
 } catch {
-  console.error('No dist/manifest.json — run `npm run build` first.')
+  console.error('No dist/manifest.json - run `npm run build` first.')
   process.exit(2)
 }
 
@@ -55,7 +55,7 @@ const popup = manifest.action?.default_popup
 popup && exists(popup) ? ok(`popup html present (${popup})`) : bad(`popup html missing: ${popup}`)
 
 // 3. Offscreen HTML exists (created at runtime via chrome.offscreen, so it is
-//    not in the manifest — but the build must still emit it at this path).
+//    not in the manifest - but the build must still emit it at this path).
 const offscreen = 'src/offscreen/offscreen.html'
 exists(offscreen) ? ok('offscreen html present') : bad(`offscreen html missing: ${offscreen}`)
 
@@ -66,7 +66,7 @@ for (const ic of icons) if (!exists(ic)) iconsOk = false
 iconsOk ? ok(`icons present (${icons.length})`) : bad('one or more manifest icons missing')
 
 // 5. Every url() reference in shipped CSS resolves to a bundled file.
-// (Generalizes the old "a woff2 must exist" check from the Marck Script era —
+// (Generalizes the old "a woff2 must exist" check from the Marck Script era -
 // the UI moved to the system font stack 2026-08-06, so no font file is
 // required anymore, but a CSS reference to a file the build didn't emit
 // would still silently degrade the popup, e.g. the cyrillic-only-font bug of
@@ -110,7 +110,7 @@ function checkHtmlScripts(htmlRel) {
 checkHtmlScripts(popup)
 checkHtmlScripts(offscreen)
 
-// 7. Local embedding model + ONNX WASM runtime are actually bundled — a
+// 7. Local embedding model + ONNX WASM runtime are actually bundled - a
 // build run without `npm run models:fetch` first (or one where that step
 // silently failed) would otherwise pass every check above and still
 // white-screen/error at first Check click, since the offscreen document has
@@ -129,7 +129,7 @@ const onnxRel = `${MODEL_DIR}/onnx/model_quantized.onnx`
 if (!exists(onnxRel)) {
   bad(`ONNX model missing: ${onnxRel} (run npm run models:fetch)`)
 } else if (statSync(join(DIST, onnxRel)).size < MIN_ONNX_BYTES) {
-  bad(`ONNX model at ${onnxRel} is suspiciously small (${statSync(join(DIST, onnxRel)).size} bytes) — likely truncated`)
+  bad(`ONNX model at ${onnxRel} is suspiciously small (${statSync(join(DIST, onnxRel)).size} bytes) - likely truncated`)
 } else {
   ok(`ONNX model present (${onnxRel})`)
 }

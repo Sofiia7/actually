@@ -1,10 +1,10 @@
 /**
- * Local activity log — every buy, sell and redeem the user makes from the
+ * Local activity log - every buy, sell and redeem the user makes from the
  * extension, kept in chrome.storage.local.
  *
  * Why this exists at all: Polymarket's positions API only reports what you
  * hold RIGHT NOW. The moment a sell fills or a redeem lands, the position
- * disappears from it — so a user who sold a position and then looked for it
+ * disappears from it - so a user who sold a position and then looked for it
  * saw nothing at all, with no way to tell "it sold" from "it never existed".
  * The CLOB does keep order history behind an authenticated endpoint, but that
  * is a network round-trip that fails exactly when the wallet session is gone,
@@ -39,7 +39,7 @@ export async function logTrade(entry: Omit<TradeLogItem, 'id' | 'timestamp'>): P
     const next = [item, ...items].slice(0, MAX_TRADE_LOG_ITEMS)
     await chrome.storage.local.set({ [STORAGE_KEYS.tradeLog]: next })
   } catch {
-    // Logging is best-effort by design — see the doc comment above.
+    // Logging is best-effort by design - see the doc comment above.
   }
 }
 

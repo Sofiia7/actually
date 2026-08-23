@@ -5,7 +5,7 @@ import './styles.css';
 import { Popup } from './Popup';
 
 /**
- * Demo entry — mounts the popup over a fake browser chrome so you
+ * Demo entry - mounts the popup over a fake browser chrome so you
  * can preview the design in isolation. In the real extension, just
  * render <Popup /> inside your popup HTML's root.
  */

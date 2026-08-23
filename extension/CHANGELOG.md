@@ -2,28 +2,28 @@
 
 All notable changes to the Actually browser extension.
 
-## [Unreleased] — v1.0.0 (post-rc1, pre-CWS-submission)
+## [Unreleased] - v1.0.0 (post-rc1, pre-CWS-submission)
 
 Everything below landed after rc1 and before the first Chrome Web Store
 submission. Grouped by what a user/reviewer actually cares about, not by
-commit — see git history for the full detail.
+commit - see git history for the full detail.
 
-### Trading — new capability
+### Trading - new capability
 - **Open positions panel**: current Polymarket positions with cost basis and
   unrealized P&L, visible in the Trade tab without leaving the extension.
 - **Resting orders, in-app cancel**: your open orders (with live status) are
-  listed alongside positions, and can be cancelled directly — no round-trip
+  listed alongside positions, and can be cancelled directly - no round-trip
   to polymarket.com required.
 - **Order-book depth**: the Trade tab now shows levels beyond best bid/ask,
   not just top-of-book.
 
 ### Security fixes
 - Fixed a WalletConnect signing bug (`WCSigner._signTypedData`) that made
-  every connect/order signature invalid against MetaMask/Rabby — this was
+  every connect/order signature invalid against MetaMask/Rabby - this was
   never caught before because the live wallet flow had never been exercised
   against a real WalletConnect session.
 - Added a jurisdiction check to the MCP server (`packages/mcp-server`) that
-  mirrors the extension's — it previously had none.
+  mirrors the extension's - it previously had none.
 - Extended the geo blocklist (extension + Worker + MCP server) to cover
   comprehensively OFAC-sanctioned jurisdictions (Iran, North Korea, Cuba,
   Syria), and added `EXTRA_BLOCKED_COUNTRIES` for fast additions without a
@@ -32,18 +32,18 @@ commit — see git history for the full detail.
   Gamma-API fallback path, and a stale-cache gap that could offer a
   closed/resolved market as a live, tradeable match.
 - Fixed `cancelOrder` (extension + MCP server) reporting success on every
-  actual CLOB failure mode — a cancel could silently not go through.
+  actual CLOB failure mode - a cancel could silently not go through.
 - Fixed a spend-guard gap in the MCP server's `sell_order` tool where a
   caller-supplied low price could make a large real-money sell look small to
   the per-order/daily USD caps.
 - `Disconnect & wipe` now unconditionally clears local wallet
-  credentials — previously a WalletConnect relay outage during disconnect
+  credentials - previously a WalletConnect relay outage during disconnect
   could leave credentials in storage with no error shown.
 - `/geo`'s Tor/unknown-region traffic is no longer treated as an implicitly
   allowed country.
 
 ### Privacy / telemetry
-- Telemetry stays **opt-in, default off**, as before — but the tracked event
+- Telemetry stays **opt-in, default off**, as before - but the tracked event
   list grew (`order_cancelled`, `order_cancel_failed`, `geo_unknown` added
   alongside the original set) and failure events (`order_failed`,
   `order_cancel_failed`) now disclose that they carry a short error-reason
@@ -57,10 +57,10 @@ commit — see git history for the full detail.
 
 ### Documentation
 - `docs/cws-listing.md`, `docs/release-checklist.md`, `docs/privacy-policy.md`,
-  and `docs/terms-of-service.md` synced with the above — see each file's own
+  and `docs/terms-of-service.md` synced with the above - see each file's own
   history for specifics.
 
-## [Unreleased] — v1.0.0-rc1 (audit-pass)
+## [Unreleased] - v1.0.0-rc1 (audit-pass)
 
 Implements `actually-extension-spec.md` v2.1. Six sprints of remediation off
 the v2.0 baseline; not yet submitted to the Chrome Web Store.
@@ -89,7 +89,7 @@ the v2.0 baseline; not yet submitted to the Chrome Web Store.
 - WC approval poll deadline cut from 30 min to 5 min.
 
 ### Discovery
-- CheckTab "View on Polymarket →" and "Trade this market →" links wired —
+- CheckTab "View on Polymarket →" and "Trade this market →" links wired -
   previously rendered as inert `<a href="#" preventDefault>`.
 - Live price now resolved by YES outcome label, not `clobTokenIds[0]`.
   Markets with `outcomes=["No","Yes"]` no longer display the NO price under
@@ -136,8 +136,8 @@ the v2.0 baseline; not yet submitted to the Chrome Web Store.
   model and the Disconnect & wipe path.
 
 ### Known deferrals (planned)
-- v1.1 — bundle MiniLM model into the .crx; CREATE2 funder fallback;
+- v1.1 - bundle MiniLM model into the .crx; CREATE2 funder fallback;
   Miniflare-based worker tests.
-- v1.2 — Worker `/clob/order` proxy paired with HMAC-signed
+- v1.2 - Worker `/clob/order` proxy paired with HMAC-signed
   `X-Actually-Auth`; opt-in in-page Shadow-DOM widget via
   `chrome.permissions.request`.

@@ -23,7 +23,7 @@ export interface SignAndSubmitResult {
 export interface SpendGuardLike {
   /**
    * `reservedDay` (when present) identifies the UTC day this reservation was
-   * charged against — pass it back to `release()` so a reservation that
+   * charged against - pass it back to `release()` so a reservation that
    * straddles a UTC-midnight rollover doesn't refund into the wrong day's
    * budget. Optional so simple test doubles that don't model day rollover
    * can omit it.
@@ -38,7 +38,7 @@ export interface PlaceOrderDeps {
   /**
    * Backstop against a prompt-injected or buggy calling agent placing
    * unbounded real-money orders. Optional only so existing unit tests that
-   * don't care about spend limits stay minimal — index.ts always wires a
+   * don't care about spend limits stay minimal - index.ts always wires a
    * real one in production.
    */
   spendGuard?: SpendGuardLike
@@ -52,7 +52,7 @@ export interface PlaceOrderOutput {
 
 // deps.signAndSubmit is preferably expected to report failures via the
 // SignAndSubmitResult's success/error fields rather than throwing, but that's
-// not guaranteed — e.g. clobClient.ts's signBuyOrder/signMarketBuyOrder throw
+// not guaranteed - e.g. clobClient.ts's signBuyOrder/signMarketBuyOrder throw
 // (rather than returning a failure object) when BUILDER_CODE isn't
 // configured. The try/catch below normalizes either failure mode into the
 // same PlaceOrderOutput shape, so callers (and Task 26's real wiring) never
@@ -63,7 +63,7 @@ export async function placeOrder(deps: PlaceOrderDeps, input: PlaceOrderInput): 
   }
 
   // CLOB refuses anything under the market's minimum order size, and that
-  // floor is on SHARES — so it moves with price ($1 clears it at 15¢, misses
+  // floor is on SHARES - so it moves with price ($1 clears it at 15¢, misses
   // it at 31¢). Checked before reserve() so a doomed order neither burns
   // budget nor comes back as an opaque CLOB rejection the agent can't act on.
   if (isBelowMinOrderSize(input.sizeUsd, input.price, input.minOrderSize)) {
@@ -88,7 +88,7 @@ export async function placeOrder(deps: PlaceOrderDeps, input: PlaceOrderInput): 
   }
 
   if (!result.success) {
-    // Rejected/failed order — give back the budget reserve() committed.
+    // Rejected/failed order - give back the budget reserve() committed.
     deps.spendGuard?.release(input.sizeUsd, reservedDay)
     return { ok: false, error: result.error ?? 'unknown_error' }
   }

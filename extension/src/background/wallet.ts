@@ -2,13 +2,13 @@
  * WalletConnect v2 integration for the popup runtime.
  *
  * Why WC v2 instead of injected `window.ethereum`:
- *   Chrome extension popups run at `chrome-extension://<id>/...` — wallet
+ *   Chrome extension popups run at `chrome-extension://<id>/...` - wallet
  *   browser extensions do not inject providers into that origin. WC v2
  *   bypasses this entirely by talking to a relay over WSS and using
  *   QR / deeplink for approval.
  *
  * This module is import-safe in the service worker (it does not initialize
- * the SignClient on import — only on the first `getSignClient()` call from
+ * the SignClient on import - only on the first `getSignClient()` call from
  * the popup). The SW only uses the types.
  */
 import { SignClient } from '@walletconnect/sign-client'
@@ -25,13 +25,13 @@ const SIGN_METHOD = 'eth_signTypedData_v4'
  * The SDK warns that this differs from the actual `chrome-extension://` page
  * URL and "can lead to issues", and setting it to the extension's own origin
  * does silence that. But wallets render their approval screen from this
- * metadata and expect an http(s) origin — several handle an unknown scheme by
+ * metadata and expect an http(s) origin - several handle an unknown scheme by
  * showing a spinner and never producing an approval at all. A cosmetic console
  * warning is not worth a wallet that won't connect; the warning stays.
  */
 const WC_METADATA = {
   name: 'Actually',
-  description: 'What markets really think — trade news in your browser',
+  description: 'What markets really think - trade news in your browser',
   url: 'https://actually.app',
   icons: ['https://actually.app/icon-128.png'],
 }
@@ -56,7 +56,7 @@ export async function getSignClient(): Promise<WCSignClient> {
     // Drop the cached promise if init fails. Without this, one transient
     // failure (relay unreachable while the laptop's network comes back, or
     // the offscreen document being torn down mid-init) leaves a permanently
-    // rejected promise in the module cache — and then EVERY later call, in
+    // rejected promise in the module cache - and then EVERY later call, in
     // this document's whole lifetime, re-throws that same stale error. The
     // user sees a wallet that can never reconnect until Chrome recycles the
     // offscreen document.
@@ -89,7 +89,7 @@ function sessionAddress(s: { namespaces: { eip155?: { accounts?: string[] } } })
  * `preferredTopic` is the whole point of this function. Nothing prunes WC
  * sessions on the wallet's side, so a user who has connected more than once
  * has several live sessions at the same time. Picking "the one with the
- * furthest expiry" — as this used to, unconditionally — then returns an
+ * furthest expiry" - as this used to, unconditionally - then returns an
  * arbitrary one of them, which the caller reads as "you're connected to a
  * different wallet now". Ask for our own topic first; fall back to
  * furthest-expiry only when the caller has no topic to ask for (a cold
@@ -102,7 +102,7 @@ export async function restoreSession(preferredTopic?: string): Promise<ActiveSes
   if (sessions.length === 0) return null
 
   const preferred = preferredTopic ? sessions.find((s) => s.topic === preferredTopic) : undefined
-  // Sorted defensively — WC v2 returns sessions in roughly creation order.
+  // Sorted defensively - WC v2 returns sessions in roughly creation order.
   const s = preferred ?? [...sessions].sort((a, b) => b.expiry - a.expiry)[0]
   const address = sessionAddress(s)
   if (!address) return null
@@ -115,7 +115,7 @@ export async function restoreSession(preferredTopic?: string): Promise<ActiveSes
  *
  * Called right after a successful connect. Each connect leaves the previous
  * session live on the relay, and that pile-up is what made session lookup
- * ambiguous in the first place — one session in the store means there is
+ * ambiguous in the first place - one session in the store means there is
  * nothing to pick wrong. Best-effort per session: a relay that won't take the
  * teardown must not fail the connect the user just completed.
  */
@@ -136,7 +136,7 @@ export async function pruneOtherSessions(keepTopic: string): Promise<number> {
     const stale = client.session.getAll().filter((s) => s.topic !== keepTopic)
     // Time-boxed and concurrent. Each teardown is a relay round-trip to a peer
     // that is, by definition, most likely gone, so an unbounded `await` can
-    // stall indefinitely — and doing them one after another multiplies that by
+    // stall indefinitely - and doing them one after another multiplies that by
     // however many sessions have piled up.
     const results = await Promise.all(
       stale.map(async (s) => {
@@ -150,7 +150,7 @@ export async function pruneOtherSessions(keepTopic: string): Promise<number> {
           )
           return true
         } catch {
-          // Best-effort — see above. An un-torn-down session is harmless:
+          // Best-effort - see above. An un-torn-down session is harmless:
           // restoreSession() now looks its topic up by name rather than
           // guessing, and WC expires it on its own.
           return false
@@ -159,7 +159,7 @@ export async function pruneOtherSessions(keepTopic: string): Promise<number> {
     )
     dropped = results.filter(Boolean).length
   } catch {
-    // Client unavailable — nothing to prune, and definitely not worth
+    // Client unavailable - nothing to prune, and definitely not worth
     // failing the connect over.
   }
   return dropped
@@ -179,18 +179,18 @@ export interface ConnectStart {
  */
 export async function startConnect(): Promise<ConnectStart> {
   const client = await getSignClient()
-  // `requiredNamespaces` is deprecated — the SDK logs "requiredNamespaces are
+  // `requiredNamespaces` is deprecated - the SDK logs "requiredNamespaces are
   // deprecated and are automatically assigned to optionalNamespaces" and does
   // exactly that. So nothing we ask for is actually required any more: the
   // wallet is free to approve a session that grants neither Polygon nor
   // eth_signTypedData_v4, and the approval still succeeds. That is the split
-  // that made this look like "I approved it and nothing happened" — the
+  // that made this look like "I approved it and nothing happened" - the
   // session connects, and only the LATER signature request fails, because the
   // method it needs was never in the approved namespaces.
   //
   // Declared as optionalNamespaces directly (no deprecated field), with the
   // signing methods wallets actually recognise, so there is the best chance of
-  // being granted what we need — and checked below, so a session that lacks it
+  // being granted what we need - and checked below, so a session that lacks it
   // fails immediately with something the user can act on.
   const eip155 = {
     methods: [SIGN_METHOD, 'eth_signTypedData', 'personal_sign'],
@@ -200,7 +200,7 @@ export async function startConnect(): Promise<ConnectStart> {
   // BOTH fields, deliberately, despite the deprecation warning on the first.
   // Dropping requiredNamespaces to silence that warning was a mistake: plenty
   // of wallets still build their approval screen from requiredNamespaces, and
-  // a proposal carrying only optionalNamespaces gives them nothing to render —
+  // a proposal carrying only optionalNamespaces gives them nothing to render -
   // they sit on a spinner and never produce an approval at all. The warning is
   // noise; interop is not. The post-approval check below is what actually
   // guarantees we got Polygon and the signing method, on any wallet.
@@ -246,7 +246,7 @@ export async function disconnect(topic: string): Promise<void> {
     })
   } catch {
     // Session may already be gone, or the WC client couldn't even
-    // initialize (relay unreachable, offline, corrupted WC storage) — either
+    // initialize (relay unreachable, offline, corrupted WC storage) - either
     // way this must not throw: the caller's local storage wipe is what
     // actually matters for "did my creds get cleared", and must proceed
     // regardless of whether the relay-side teardown succeeded.
@@ -256,7 +256,7 @@ export async function disconnect(topic: string): Promise<void> {
 /**
  * Drop the cached SignClient so the next `getSignClient()` call constructs a
  * fresh one. Used after a wipe that deletes WalletConnect's own IndexedDB
- * storage out from under an already-initialized client — without this, a
+ * storage out from under an already-initialized client - without this, a
  * subsequent connect would keep using a client bound to now-deleted storage.
  */
 export function resetSignClient(): void {
@@ -270,7 +270,7 @@ export function resetSignClient(): void {
  * an EIP-1193 provider with this session (viem needs one to build a
  * WalletClient, which is the only signer shape Polymarket's relayer accepts
  * short of a private key). Only methods the wallet actually granted will be
- * accepted — the SDK validates each request against the approved namespaces.
+ * accepted - the SDK validates each request against the approved namespaces.
  */
 export async function wcRequest(
   topic: string,
@@ -306,9 +306,9 @@ export async function signTypedData(
 }
 
 /**
- * WCSigner — implements the minimal "EthersSigner" shape that
+ * WCSigner - implements the minimal "EthersSigner" shape that
  * `@polymarket/clob-client-v2` checks for: `_signTypedData` (note the
- * underscore — that is the ethers v5 method name, which the SDK still
+ * underscore - that is the ethers v5 method name, which the SDK still
  * uses for compatibility) and `getAddress`.
  *
  * We do NOT extend ethers' AbstractSigner because v6 renamed the method
@@ -316,7 +316,7 @@ export async function signTypedData(
  * v5 name. A plain class with the right shape is simpler and works
  * across SDK versions.
  *
- * We never broadcast transactions — CLOB orders are signed and submitted
+ * We never broadcast transactions - CLOB orders are signed and submitted
  * off-chain via the Relayer.
  */
 export class WCSigner {
@@ -335,12 +335,12 @@ export class WCSigner {
     types: Record<string, Array<{ name: string; type: string }>>,
     value: Record<string, unknown>,
   ): Promise<string> {
-    // clob-client-v2 deletes `types.EIP712Domain` before calling us — correct
+    // clob-client-v2 deletes `types.EIP712Domain` before calling us - correct
     // for ethers signers, which reconstruct the domain type internally, but
     // a raw eth_signTypedData_v4 payload MUST include it per the EIP-712
     // schema. Without it, MetaMask/eth-sig-util substitute an EMPTY domain
     // type, hash an empty domain separator, and the signature can never
-    // verify against the real CLOB/ClobAuth domain — every connect and order
+    // verify against the real CLOB/ClobAuth domain - every connect and order
     // sign fails. Rebuild it from whichever domain fields are actually
     // present, in the canonical EIP-712 order.
     const payload = {
@@ -381,7 +381,7 @@ function inferPrimaryType(
  * cares (the SDK accepts either).
  */
 function checksum(addr: string): string {
-  // For our purposes lowercase is fine — the SDK normalizes internally.
+  // For our purposes lowercase is fine - the SDK normalizes internally.
   // If a downstream consumer rejects mixed-case we can swap in a full
   // EIP-55 implementation, but it's not needed today.
   return addr.toLowerCase()

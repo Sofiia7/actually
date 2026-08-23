@@ -11,7 +11,7 @@ export async function addToHistory(match: MatchResult, pageUrl: string): Promise
   const items = await getHistory()
   const pageDomain = safeHost(pageUrl)
 
-  // Dedup: same pageUrl matched within DEDUP_MINUTES — skip
+  // Dedup: same pageUrl matched within DEDUP_MINUTES - skip
   const last = items[0]
   if (
     last &&

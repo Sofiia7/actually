@@ -26,10 +26,10 @@ const resolved: Position = {
   slug: 'google-ai', redeemable: true, outcomeIndex: 0, negativeRisk: false,
 }
 
-describe('humanRedeemError — say what happened and what to do next', () => {
+describe('humanRedeemError - say what happened and what to do next', () => {
   it('explains the relayer 401 instead of dumping its JSON', () => {
     // What the live relayer actually returns for an unauthenticated
-    // POST /submit — the exact blob a user saw in the popup on 2026-08-16.
+    // POST /submit - the exact blob a user saw in the popup on 2026-08-16.
     const raw = '{"error":"request error","status":401,"statusText":"","data":{"error":"invalid authorization"}}'
     const msg = humanRedeemError(raw)
     expect(msg).toMatch(/unauthorized \(401\)/i)
@@ -38,7 +38,7 @@ describe('humanRedeemError — say what happened and what to do next', () => {
     expect(msg).toMatch(/safe/i)
     expect(msg).not.toContain('statusText')
     // It must NOT blame a missing builder credential. That claim was wrong
-    // for weeks — the credential was configured and signing 200s, while a
+    // for weeks - the credential was configured and signing 200s, while a
     // missing CORS header kept the browser from ever fetching a signature.
     // A message that diagnoses beyond its evidence sends people to fix the
     // wrong thing.
@@ -100,7 +100,7 @@ describe('the position row', () => {
 describe('a resolved position', () => {
   it('sends the user to Polymarket when the Worker has no builder credentials', async () => {
     // The relayer SDK signs BEFORE it submits, and that submit 401s without
-    // builder credentials — so an in-app "Redeem →" would cost a wallet
+    // builder credentials - so an in-app "Redeem →" would cost a wallet
     // prompt and fail every time.
     opsm.builderStatusViaOffscreen.mockResolvedValue(false)
     render(
@@ -109,7 +109,7 @@ describe('a resolved position', () => {
     )
     expect(await screen.findByText(/Claim on Polymarket/i)).toBeInTheDocument()
     expect(screen.queryByText(/^Redeem →$/)).not.toBeInTheDocument()
-    // A resolved market must never offer Sell — the CLOB would only reject it.
+    // A resolved market must never offer Sell - the CLOB would only reject it.
     expect(screen.queryByText(/Sell →/)).not.toBeInTheDocument()
   })
 
@@ -148,7 +148,7 @@ describe('a resolved position that lost', () => {
 
   it('does not offer a redeem that can only fail', async () => {
     // The click cost a wallet signature and then came back with the relayer's
-    // PRECHECK_SKIPPED: zero position balance — the chain agreeing there is
+    // PRECHECK_SKIPPED: zero position balance - the chain agreeing there is
     // nothing to collect. An action whose only outcome is an error is not an
     // action.
     opsm.builderStatusViaOffscreen.mockResolvedValue(true)
@@ -158,7 +158,7 @@ describe('a resolved position that lost', () => {
     )
     expect(await screen.findByText(/didn't win, so there's nothing to claim/i)).toBeInTheDocument()
     expect(screen.queryByText(/^Redeem →$/)).not.toBeInTheDocument()
-    // Nor a Sell — a resolved market does not trade.
+    // Nor a Sell - a resolved market does not trade.
     expect(screen.queryByText(/Sell →/)).not.toBeInTheDocument()
   })
 

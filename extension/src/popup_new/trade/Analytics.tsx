@@ -1,5 +1,5 @@
 /**
- * Trade analytics blocks — Sparkline, Orderbook, ResolutionCard.
+ * Trade analytics blocks - Sparkline, Orderbook, ResolutionCard.
  *
  * Per spec §6, all three render between the matched-market card and the
  * order form in the Trade tab. Kept in one file because the components
@@ -36,7 +36,7 @@ const Block: React.FC<{ children: React.ReactNode; title?: string }> = ({
 )
 
 // =============================================================
-// Sparkline — 7-day YES probability history, single SVG polyline.
+// Sparkline - 7-day YES probability history, single SVG polyline.
 // =============================================================
 export const Sparkline: React.FC<{ tokenId: string; days?: number }> = ({
   tokenId,
@@ -98,7 +98,7 @@ export const Sparkline: React.FC<{ tokenId: string; days?: number }> = ({
 }
 
 // =============================================================
-// Orderbook — best bid / best ask / spread.
+// Orderbook - best bid / best ask / spread.
 // =============================================================
 interface OrderbookLevel {
   price: number
@@ -124,12 +124,12 @@ export const Orderbook: React.FC<{ tokenId: string }> = ({ tokenId }) => {
     return () => { cancelled = true }
   }, [tokenId])
 
-  const fmt = (v: number | null) => (v == null ? '—' : `${(v * 100).toFixed(1)}¢`)
+  const fmt = (v: number | null) => (v == null ? '-' : `${(v * 100).toFixed(1)}¢`)
 
   return (
     <Block title="Orderbook">
       {/* This always shows the YES token's book, regardless of which side
-          (YES/NO) is selected in the order form below — NO's book is the
+          (YES/NO) is selected in the order form below - NO's book is the
           mirror image (price ≈ 1 - YES price) and would otherwise silently
           disagree with the form's own top-of-book for that side. Label it
           explicitly rather than let the two panels show different numbers
@@ -150,7 +150,7 @@ export const Orderbook: React.FC<{ tokenId: string }> = ({ tokenId }) => {
 }
 
 /**
- * Compact depth ladder beyond top-of-book — bids and asks side by side, each
+ * Compact depth ladder beyond top-of-book - bids and asks side by side, each
  * row's bar width scaled to that side's deepest level so relative size reads
  * at a glance. Previously the order form only ever showed best bid/ask, with
  * no way to see how much size sat behind them.
@@ -233,13 +233,13 @@ const Cell: React.FC<{ label: string; value: string }> = ({ label, value }) => (
 )
 
 // =============================================================
-// ResolutionCard — date, source, rules excerpt with toggle.
+// ResolutionCard - date, source, rules excerpt with toggle.
 // =============================================================
 export const ResolutionCard: React.FC<{ market: PolyMarket }> = ({ market }) => {
   const [expanded, setExpanded] = useState(false)
   const end = market.endDate ? new Date(market.endDate) : null
   const rules = (market.description ?? '').trim()
-  // First 2 lines / ~140 chars — whichever ends first.
+  // First 2 lines / ~140 chars - whichever ends first.
   const collapsed = rules.split('\n').slice(0, 2).join(' ').slice(0, 160)
   const hasMore = rules.length > collapsed.length
 
@@ -280,7 +280,7 @@ export const ResolutionCard: React.FC<{ market: PolyMarket }> = ({ market }) => 
 }
 
 // =============================================================
-// MarketAnalytics — bundles the three blocks so callers don't
+// MarketAnalytics - bundles the three blocks so callers don't
 // re-derive YES-token id or thread three components by hand.
 // =============================================================
 export const MarketAnalytics: React.FC<{

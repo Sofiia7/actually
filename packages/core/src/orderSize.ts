@@ -1,5 +1,5 @@
 /**
- * Minimum order size — the CLOB rejects any order whose SHARE count falls
+ * Minimum order size - the CLOB rejects any order whose SHARE count falls
  * below the market's `minimum_order_size`. Gamma exposes the same number as
  * `orderMinSize` (carried on `PolyMarket.minOrderSize`); every market on
  * clob.polymarket.com/sampling-markets reported 5 when this was checked
@@ -8,7 +8,7 @@
  * The constraint bites harder than the number suggests, because it is on
  * shares and not dollars: the USD floor scales with price, so a $1 order is
  * fine at 15¢ (6.6 shares) and rejected at 31¢ (3.2 shares). Without a
- * client-side check the user pays a wallet signature before CLOB says no —
+ * client-side check the user pays a wallet signature before CLOB says no -
  * and CLOB's rejection arrives as a bare HTTP 400, which is exactly the
  * "Failed: clob_rejected" dead end this module exists to prevent.
  */
@@ -25,7 +25,7 @@ export function minOrderShares(minOrderSize?: number): number {
  * Shares a USD notional buys at `price`, truncated to 2dp.
  *
  * This is THE conversion the order path uses (trade.ts signs exactly this
- * size), so the minimum-size guard must measure the same quantity — checking
+ * size), so the minimum-size guard must measure the same quantity - checking
  * the untruncated `sizeUsd / price` instead would pass $1.55 @ 31¢ (5.0
  * shares in exact math, 4.99 after float error + truncation) straight into a
  * CLOB rejection.

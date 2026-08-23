@@ -1,11 +1,11 @@
 /**
- * Trade module — orchestrates the popup's order placement flow.
+ * Trade module - orchestrates the popup's order placement flow.
  *
  * Composition:
- *   ./wallet.ts   — WCSigner backed by WalletConnect v2 session
- *   ./clob.ts     — ClobClient (with builderCode), createOrDeriveApiKey,
+ *   ./wallet.ts   - WCSigner backed by WalletConnect v2 session
+ *   ./clob.ts     - ClobClient (with builderCode), createOrDeriveApiKey,
  *                   signBuyOrder + submitSignedOrder, pollOrderStatus
- *   ./geo.ts      — country gate
+ *   ./geo.ts      - country gate
  *
  * Persisted state in chrome.storage.local (managed via settings.ts):
  *   wcSessionTopic, walletAddress, safeAddress,
@@ -65,7 +65,7 @@ export interface ConnectCallbacks {
  * How long to wait for the CLOB-auth signature before giving up.
  *
  * This request goes out over the WalletConnect session as a separate prompt
- * from the QR approval — a second thing to approve, raised by the wallet app
+ * from the QR approval - a second thing to approve, raised by the wallet app
  * on its own schedule, and easy to miss if the wallet is in the background.
  * `client.request` has no timeout of its own, so an unapproved prompt used to
  * park the whole connect forever with the popup still showing the QR screen
@@ -89,7 +89,7 @@ function withTimeout<T>(p: Promise<T>, ms: number, label: string): Promise<T> {
  * CLOB API credentials are derived deterministically from a signature by the
  * address that owns them, so the ones on disk stay valid for that address
  * across any number of WalletConnect sessions. Reconnecting the same wallet
- * therefore does not need a fresh derivation — and skipping it removes a
+ * therefore does not need a fresh derivation - and skipping it removes a
  * whole wallet-signature prompt from the reconnect flow.
  */
 function reusableCreds(
@@ -137,12 +137,12 @@ export async function connectWallet(cb: ConnectCallbacks): Promise<WalletState> 
   }
 
   void trackEvent('wallet_connect_started', settings)
-  // Fresh log per attempt — the previous attempt's trace is only noise once a
+  // Fresh log per attempt - the previous attempt's trace is only noise once a
   // new one starts, and this keeps what the user copies short and relevant.
   await clearConnectLog()
   await logConnect('connect_started')
 
-  // 2. Start WC session — caller renders the QR / deeplink
+  // 2. Start WC session - caller renders the QR / deeplink
   let session: ActiveSession
   try {
     const { uri, approval } = await startConnect()
@@ -173,7 +173,7 @@ export async function connectWallet(cb: ConnectCallbacks): Promise<WalletState> 
   }
   if (!creds) {
     await logConnect('signature_requested', 'waiting for the wallet to sign ClobAuth')
-    // Tell the UI before blocking on it — this is the step where the wallet
+    // Tell the UI before blocking on it - this is the step where the wallet
     // raises its second prompt, and the user has to go back to the wallet app
     // to approve it. Silence here read as "the connect did nothing".
     cb.onStage?.('signing')
@@ -200,14 +200,14 @@ export async function connectWallet(cb: ConnectCallbacks): Promise<WalletState> 
     clobApiPassphrase: creds.passphrase,
   })
 
-  // 6. Only now drop the sessions this connect superseded — AFTER the new one
+  // 6. Only now drop the sessions this connect superseded - AFTER the new one
   //    is on disk, and without awaiting it. Tearing down a stale session is a
   //    relay round-trip to a peer that is, by definition, probably gone, so it
   //    can stall for a long time or never answer at all. Doing it before the
   //    save (as this briefly did) put every one of those round-trips between
   //    the user's signature and the moment the wallet became usable: the
   //    connect appeared to hang forever, and reopening the popup found nothing
-  //    stored. Pruning is housekeeping — it must never gate the connect.
+  //    stored. Pruning is housekeeping - it must never gate the connect.
   void pruneOtherSessions(session.topic)
 
   await logConnect('connect_complete', 'wallet is ready to trade')
@@ -220,12 +220,12 @@ export async function connectWallet(cb: ConnectCallbacks): Promise<WalletState> 
  * session is stored, restoreSession() couldn't confirm one right now, or
  * the WC relay reports a different session in its place.
  *
- * Called far more often than "on popup open" alone — every offscreen op
+ * Called far more often than "on popup open" alone - every offscreen op
  * that needs a signer (orderbook snapshot, place/cancel order, positions)
  * independently re-derives its own WalletState via this same function
  * (see offscreen.ts's rehydrateWallet()), rather than trusting a cached
  * reference. That makes restoreSession()'s reliability load-bearing far
- * more often than it looks from call sites alone — including calls that
+ * more often than it looks from call sites alone - including calls that
  * fire moments after the offscreen document itself was just recreated
  * (MV3 can evict it during any idle stretch, e.g. the user reading an
  * article before returning to trade), when the WalletConnect SignClient's
@@ -239,13 +239,13 @@ export async function connectWallet(cb: ConnectCallbacks): Promise<WalletState> 
  * offscreen document during any idle stretch, and the SignClient rebuilt on
  * the next call answers `session.getAll() === []` until its own IndexedDB
  * store finishes hydrating. That answer used to travel all the way to the UI
- * as "Couldn't confirm your wallet session — reopen the popup or reconnect",
+ * as "Couldn't confirm your wallet session - reopen the popup or reconnect",
  * which is homework: nothing on screen tells the user their session was fine
  * and the lookup was merely early, and the advice they're given (reconnect)
  * is the one action that makes it worse. So ask again instead of asking THEM.
  *
  * Two extra attempts cover hydration (tens of milliseconds in practice) while
- * capping the added wait at ~0.55s for a session that really is gone — where
+ * capping the added wait at ~0.55s for a session that really is gone - where
  * "reconnect" is finally the honest answer.
  */
 export const SESSION_RETRY_DELAYS_MS = [150, 400]
@@ -266,7 +266,7 @@ export async function restoreWallet(): Promise<WalletState | null> {
   }
   // Ask for OUR topic by name rather than "whichever session looks newest".
   // Retried, because "not there yet" and "not there" look identical from
-  // here and only one of them is worth telling the user about — see
+  // here and only one of them is worth telling the user about - see
   // SESSION_RETRY_DELAYS_MS. The address-mismatch check below is deliberately
   // NOT retried: that answer came from a store that clearly had our session
   // in it, so asking again just returns the same thing more slowly.
@@ -278,15 +278,15 @@ export async function restoreWallet(): Promise<WalletState | null> {
   }
   if (!session || session.topic !== s.wcSessionTopic) {
     // Either no session came back at all, or ours specifically isn't in the
-    // store right now — and it stayed that way across every retry.
+    // store right now - and it stayed that way across every retry.
     //
     // NEITHER wipes storage. A fresh SignClient (right after the offscreen
-    // document was recreated — MV3 evicts it during any idle stretch, e.g.
+    // document was recreated - MV3 evicts it during any idle stretch, e.g.
     // while the user reads the article) can report zero sessions, or a
     // partially-hydrated subset, for a moment before its own IndexedDB store
     // finishes loading. Treating that as "you connected a different wallet"
     // and clearing the API credentials is what turned an ordinary popup
-    // reopen into "connect again, scan again, sign again" — and because the
+    // reopen into "connect again, scan again, sign again" - and because the
     // reconnect left the old session live too, the next lookup was even more
     // ambiguous than the last. Report "not restorable right now" and let the
     // next call succeed; the only thing that clears credentials is the user
@@ -296,7 +296,7 @@ export async function restoreWallet(): Promise<WalletState | null> {
   if (session.address.toLowerCase() !== s.walletAddress.toLowerCase()) {
     // Same topic, different account selected in the wallet. The stored CLOB
     // credentials belong to the old address and must not be used to sign for
-    // the new one — but they're still valid for their own address, so this
+    // the new one - but they're still valid for their own address, so this
     // reports "reconnect needed" without destroying them either.
     return null
   }
@@ -313,7 +313,7 @@ export async function restoreWallet(): Promise<WalletState | null> {
 }
 
 /**
- * WalletConnect v2's own persistence — see wallet.ts's `resetSignClient` doc
+ * WalletConnect v2's own persistence - see wallet.ts's `resetSignClient` doc
  * comment. Deleting it removes pairings, the keychain, and the JSON-RPC
  * history (which includes every order's signed typed-data payload and the
  * connected address) that `chrome.storage.local` never touched. Best-effort:
@@ -329,13 +329,13 @@ async function wipeWalletConnectStorage(): Promise<void> {
       req.onblocked = () => resolve()
     })
   } catch {
-    // Best-effort — see comment above.
+    // Best-effort - see comment above.
   }
 }
 
 export async function disconnectWallet(state: WalletState | null): Promise<void> {
   // Clear local storage FIRST and unconditionally. This is the part the
-  // user actually asked for ("wipe") — the WC-side teardown below is
+  // user actually asked for ("wipe") - the WC-side teardown below is
   // already best-effort (wcDisconnect never throws) and must never delay or
   // gate this, so a relay outage or a corrupted WC session can't leave
   // credentials behind.
@@ -350,12 +350,12 @@ export async function disconnectWallet(state: WalletState | null): Promise<void>
   // wcDisconnect (wallet.ts) already catches its own failures internally,
   // but this call is wrapped again here too: the storage wipe above must
   // never depend on that invariant holding across future changes to
-  // wallet.ts — belt and suspenders for a real-money credential wipe.
+  // wallet.ts - belt and suspenders for a real-money credential wipe.
   if (state) {
     try {
       await wcDisconnect(state.topic)
     } catch {
-      // Best-effort — see comment above.
+      // Best-effort - see comment above.
     }
   }
   await wipeWalletConnectStorage()
@@ -378,7 +378,7 @@ export interface PlaceOrderArgs {
   minOrderSize?: number
   /** LIMIT → GTC resting order; MARKET → FOK capped at `price`. */
   orderType: 'LIMIT' | 'MARKET'
-  /** UI-derived maker/taker classification — telemetry only. */
+  /** UI-derived maker/taker classification - telemetry only. */
   makerTaker?: 'maker' | 'taker'
 }
 
@@ -389,7 +389,7 @@ export interface OrderSubmitResult {
 }
 
 export async function placeOrder(args: PlaceOrderArgs): Promise<OrderSubmitResult> {
-  // Enforced here (not just the UI's `max` attribute/disabled state) — see
+  // Enforced here (not just the UI's `max` attribute/disabled state) - see
   // MAX_ORDER_USD's doc comment. Checked before any network call so a
   // fat-fingered amount fails immediately, not after a geo lookup.
   if (args.sizeUsd > MAX_ORDER_USD) {
@@ -412,7 +412,7 @@ export async function placeOrder(args: PlaceOrderArgs): Promise<OrderSubmitResul
     void trackEvent('geo_blocked', settings, { country: geo.country, stage: 'submit' })
     return { ok: false, error: 'geo_blocked' }
   }
-  // Unknown geo: same posture as connect. Defense-in-depth — the UI also
+  // Unknown geo: same posture as connect. Defense-in-depth - the UI also
   // gates this, but the submit path enforces independently.
   if (geo.unknown) {
     void trackEvent('geo_unknown', settings, { stage: 'submit', reason: geo.errorReason ?? 'unknown' })
@@ -490,7 +490,7 @@ export async function placeOrder(args: PlaceOrderArgs): Promise<OrderSubmitResul
   })
 
   // 3. Fire-and-forget poll for fill status. UI returns from this call
-  //    immediately on submit-success — the fill event is a downstream
+  //    immediately on submit-success - the fill event is a downstream
   //    KPI signal, not part of the synchronous order flow.
   if (result.orderId) {
     void (async () => {
@@ -506,13 +506,13 @@ export async function placeOrder(args: PlaceOrderArgs): Promise<OrderSubmitResul
 
 export interface SellOrderArgs {
   state: WalletState
-  /** Token being sold — the outcome token the position is held in. */
+  /** Token being sold - the outcome token the position is held in. */
   tokenId: string
   /** Shares to sell. A sell is denominated in what you hold, not in USD. */
   sizeShares: number
   /** LIMIT → resting limit price; MARKET → worst-acceptable FLOOR price (0..1). */
   price: number
-  /** Omit to let the CLOB SDK resolve the real flag — see OffscreenSellOrderArgs. */
+  /** Omit to let the CLOB SDK resolve the real flag - see OffscreenSellOrderArgs. */
   negRisk?: boolean
   tickSize?: string
   minOrderSize?: number
@@ -524,7 +524,7 @@ export interface SellOrderArgs {
  *
  * Deliberately NOT geo-gated, for the same reason cancelOrder isn't: closing a
  * position only ever reduces exposure. Refusing to let someone out of a trade
- * because a region lookup failed is the wrong failure direction — the geo gate
+ * because a region lookup failed is the wrong failure direction - the geo gate
  * exists to stop new exposure being opened.
  *
  * MAX_ORDER_USD still applies, measured on the proceeds, so a fat-fingered
@@ -535,7 +535,7 @@ export async function sellOrder(args: SellOrderArgs): Promise<OrderSubmitResult>
     return { ok: false, error: 'invalid_size' }
   }
   // A sell is already denominated in shares, so the CLOB minimum applies
-  // directly — no USD conversion, unlike the buy path.
+  // directly - no USD conversion, unlike the buy path.
   const minShares = minOrderShares(args.minOrderSize)
   if (args.sizeShares < minShares) {
     return { ok: false, error: `order_below_min_size:${minShares}` }
@@ -604,7 +604,7 @@ export async function sellOrder(args: SellOrderArgs): Promise<OrderSubmitResult>
 }
 
 /**
- * Cancel a previously-placed resting order. No geo gate — cancelling only
+ * Cancel a previously-placed resting order. No geo gate - cancelling only
  * ever reduces risk, never places new exposure.
  */
 export async function cancelOrder(
@@ -655,7 +655,7 @@ export interface OrderbookLevel {
   size: number
 }
 
-/** How many levels of depth to surface past best bid/ask — enough for a glance, not a full ladder. */
+/** How many levels of depth to surface past best bid/ask - enough for a glance, not a full ladder. */
 const DEPTH_LEVELS = 5
 
 export interface OrderbookSnapshot {
@@ -708,7 +708,7 @@ export async function getOrderbookSnapshot(
         if (remaining <= 0) break
       }
       if (remaining > 0) {
-        // Not enough depth — flag with worst-ask + 100% slippage so the UI
+        // Not enough depth - flag with worst-ask + 100% slippage so the UI
         // can warn loudly. Use the deepest available level (last ask), or
         // bestAsk as a safety fallback if asks somehow became empty mid-walk.
         const worstAsk = asks[asks.length - 1]?.price ?? bestAsk

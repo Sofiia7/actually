@@ -14,7 +14,7 @@ export interface OrderTarget {
 /**
  * The only place an outcome ('Yes'/'No') maps to a `tokenId`. Callers (MCP
  * tools, extension trade flow) must never accept a raw tokenId from outside
- * this function for an order — otherwise a caller can claim "No" while
+ * this function for an order - otherwise a caller can claim "No" while
  * supplying the YES token, and the mismatch is invisible until the wrong
  * side fills. negRisk/tickSize are market properties, not order intent, so
  * they ride along here rather than being separately caller-supplied (which
@@ -26,7 +26,7 @@ export interface OrderTarget {
  * applies no such filter. Without this check, findOutcomeIndex's silent
  * positional fallback (no 'Yes'/'No' label found → index 0/1) would sign a
  * real order against whatever outcome happens to sit at that index on a
- * market like ["Over","Under"] — never validated against caller intent.
+ * market like ["Over","Under"] - never validated against caller intent.
  */
 export function resolveOrderToken(market: PolyMarket, outcome: Outcome): OrderTarget {
   if (!isBinaryOutcomes(market.outcomes)) {

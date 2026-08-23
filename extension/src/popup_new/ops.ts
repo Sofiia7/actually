@@ -1,5 +1,5 @@
 /**
- * UI-side ops adapter — sends heavy operations to the offscreen
+ * UI-side ops adapter - sends heavy operations to the offscreen
  * document via the service worker. Used by the popup.
  *
  * The popup must not call the heavy background/* modules directly: the
@@ -26,7 +26,7 @@ export async function runMatchViaOffscreen(article: ArticleData): Promise<{
   reason?: string
   /** Closest tradeable market when nothing cleared the floor. */
   nearest?: { question: string; slug: string; score: number }
-  /** Markets that were scoreable at all — 0 means an empty cache, which is a
+  /** Markets that were scoreable at all - 0 means an empty cache, which is a
    *  different failure from "checked everything and nothing fit". */
   scored?: number
 }> {
@@ -99,7 +99,7 @@ export async function startConnectViaOffscreen(): Promise<string> {
 }
 
 /** Omit `sessionId` to ask about whatever connect the offscreen document is
- * currently running — used when the popup was closed mid-connect and no
+ * currently running - used when the popup was closed mid-connect and no
  * longer has its own id. */
 export async function pollConnectViaOffscreen(sessionId?: string): Promise<{
   stage: 'pending' | 'awaiting_approval' | 'signing' | 'done' | 'error'
@@ -221,7 +221,7 @@ export async function orderbookSnapshotViaOffscreen(
   bids: Array<{ price: number; size: number }>
   asks: Array<{ price: number; size: number }>
   estimate: { effectivePrice: number; slippage: number } | null
-  /** Set when the lookup itself failed (e.g. 'wallet_not_restored') — distinct
+  /** Set when the lookup itself failed (e.g. 'wallet_not_restored') - distinct
    * from a successful lookup that legitimately found an empty book. */
   error?: string
 }> {
@@ -239,7 +239,7 @@ export async function orderbookSnapshotViaOffscreen(
 
 /**
  * Whether in-app redeem can work in this deployment (Worker has builder API
- * credentials). Anything other than a clear yes is a no — see
+ * credentials). Anything other than a clear yes is a no - see
  * background/builderStatus.ts.
  */
 export async function builderStatusViaOffscreen(): Promise<boolean> {

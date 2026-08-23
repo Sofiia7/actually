@@ -40,12 +40,21 @@ type WalletState = SerializableWalletState
 // =============================================================
 export interface TradeTabWiredProps {
   match: MatchResult | null
-  /** Headline of the page the match was run against — shown as match context. */
+  /** Headline of the page the match was run against - shown as match context. */
   articleHeadline?: string | null
-  /** 'page' (default) — a real, scored match from Check. 'history' — the user picked this market
+  /** 'page' (default) - a real, scored match from Check. 'history' - the user picked this market
    * directly from History, so there is no real confidence score to show. */
   matchSource?: 'page' | 'history'
   settings: SettingsT
+  /**
+   * Whether the check log holds anything at all.
+   *
+   * `match` is this popup's own state and dies with it, so on a fresh open it
+   * is null even for someone with a full History tab. Saying "no story checked
+   * yet" to that person contradicts the tab next door.
+   */
+  hasEarlierChecks?: boolean
+  onOpenHistory?: () => void
   onPickMatch: () => void
   onOpenSettings: () => void
   onMatchOpenedExternally: (market: PolyMarket) => void
@@ -76,6 +85,8 @@ export const TradeTabWired: React.FC<TradeTabWiredProps> = ({
   articleHeadline,
   matchSource = 'page',
   settings,
+  hasEarlierChecks = false,
+  onOpenHistory,
   onPickMatch,
   onOpenSettings,
   onMatchOpenedExternally,
@@ -85,7 +96,7 @@ export const TradeTabWired: React.FC<TradeTabWiredProps> = ({
   const [loaded, setLoaded] = useState(false)
   const [connect, setConnect] = useState<ConnectStage>({ kind: 'idle' })
 
-  // Portfolio (positions + open orders) — previously the only way to see
+  // Portfolio (positions + open orders) - previously the only way to see
   // either was leaving the extension for polymarket.com directly.
   const [positions, setPositions] = useState<Position[]>([])
   const [openOrders, setOpenOrders] = useState<OpenOrderSummary[]>([])
@@ -95,14 +106,14 @@ export const TradeTabWired: React.FC<TradeTabWiredProps> = ({
   const [cancelError, setCancelError] = useState<string | null>(null)
 
   // Bumped on every new startConnect() call and on Cancel/unmount. A running
-  // connect loop checks this before every state update it makes — without
+  // connect loop checks this before every state update it makes - without
   // it, Connect → Cancel → Connect again leaves the FIRST loop still
   // polling in the background, and it can clobber the second attempt's live
   // QR/wallet state with its own (stale) result once it eventually resolves.
   const connectGenRef = useRef(0)
   useEffect(() => () => { connectGenRef.current++ }, [])
 
-  // Restore wallet + geo on mount — both are independent offscreen RPCs,
+  // Restore wallet + geo on mount - both are independent offscreen RPCs,
   // so fire them in parallel and unblock UI as soon as both resolve.
   useEffect(() => {
     let cancelled = false
@@ -117,10 +128,10 @@ export const TradeTabWired: React.FC<TradeTabWiredProps> = ({
       if (g) setGeo(g)
       setLoaded(true)
 
-      // No wallet on disk yet — but a connect may still be running in the
+      // No wallet on disk yet - but a connect may still be running in the
       // offscreen document from before this popup was (re)opened. Chrome
       // closes the popup on any focus loss, so the single most common way to
-      // approve a QR — switching to the wallet app — always destroys the
+      // approve a QR - switching to the wallet app - always destroys the
       // popup that started the flow. Without this the user came back to a
       // plain "Connect wallet" screen, with the real connect still waiting on
       // a signature they had no way to see.
@@ -160,7 +171,7 @@ export const TradeTabWired: React.FC<TradeTabWiredProps> = ({
 
   // Bumped on every refreshPortfolio() call. wallet-connect, a cancel's
   // finally-block, the manual Refresh link, and a post-order refresh can all
-  // trigger overlapping calls with no inherent ordering — without this, a
+  // trigger overlapping calls with no inherent ordering - without this, a
   // slower EARLIER call resolving after a faster LATER one would clobber the
   // fresher state (e.g. resurrecting a just-cancelled order in the UI).
   const portfolioGenRef = useRef(0)
@@ -170,7 +181,7 @@ export const TradeTabWired: React.FC<TradeTabWiredProps> = ({
     const gen = ++portfolioGenRef.current
     setPortfolioLoading(true)
     try {
-      // The log is read alongside the positions purely to order them — see
+      // The log is read alongside the positions purely to order them - see
       // orderPositionsByRecentActivity. Its failure must not take the
       // portfolio down with it: an unreadable log means "no recency data",
       // which is exactly what an empty one already means.
@@ -179,16 +190,16 @@ export const TradeTabWired: React.FC<TradeTabWiredProps> = ({
         getOpenOrdersViaOffscreen(),
         getTradeLog().catch(() => []),
       ])
-      if (portfolioGenRef.current !== gen) return // superseded by a newer refresh — don't clobber its result
+      if (portfolioGenRef.current !== gen) return // superseded by a newer refresh - don't clobber its result
       // A fetch failure (rate limit, transient CLOB/data-api error, offscreen
-      // hiccup) must not read as "you have no positions" — keep whatever we
+      // hiccup) must not read as "you have no positions" - keep whatever we
       // last knew and surface the error instead of silently clearing it.
       const errors = [!pRes.ok ? pRes.error : null, !oRes.ok ? oRes.error : null].filter(Boolean) as string[]
       if (errors.some((e) => e === 'no_wallet')) {
         // The offscreen side says there is no usable session, while this
         // component is still rendering a full order ticket from the wallet it
         // restored on mount. That split is what produced a popup where every
-        // control was live but every action answered `no_wallet` — surface
+        // control was live but every action answered `no_wallet` - surface
         // the truth and fall back to the Connect panel instead.
         setWallet(null)
         setPortfolioError(null)
@@ -241,7 +252,7 @@ export const TradeTabWired: React.FC<TradeTabWiredProps> = ({
   // spun forever: the effect's own setConnect spreads into a fresh object, so
   // `connect` had a new identity on every pass, which re-ran the effect, which
   // re-encoded the QR, which set state again. While the QR screen was up the
-  // popup sat in an unbroken render loop — burning CPU and starving everything
+  // popup sat in an unbroken render loop - burning CPU and starving everything
   // else the popup was trying to do, including the poll that advances the
   // connect. The URI is the only input the encoding actually depends on.
   const connectUri = connect.kind === 'connecting' ? connect.uri : null
@@ -259,8 +270,8 @@ export const TradeTabWired: React.FC<TradeTabWiredProps> = ({
   /**
    * Drive one connect to completion.
    *
-   * `sessionId` is optional so a popup that was closed mid-connect — which
-   * Chrome does on any focus loss, including switching to the wallet app —
+   * `sessionId` is optional so a popup that was closed mid-connect - which
+   * Chrome does on any focus loss, including switching to the wallet app -
    * can rejoin the flow still running in the offscreen document instead of
    * abandoning it and starting a competing one.
    */
@@ -268,7 +279,7 @@ export const TradeTabWired: React.FC<TradeTabWiredProps> = ({
     const stale = () => connectGenRef.current !== gen
     try {
       // Poll until done. 5 minutes is enough for a user to unlock their
-      // wallet app, scan the QR, and approve — beyond that the popup is
+      // wallet app, scan the QR, and approve - beyond that the popup is
       // almost certainly closed/abandoned, and an active poll loop just
       // burns the offscreen document and the WC relay session.
       const deadline = Date.now() + 5 * 60 * 1000
@@ -336,8 +347,8 @@ export const TradeTabWired: React.FC<TradeTabWiredProps> = ({
     )
   }
 
-  // Block on a confirmed restricted country, and — when the build is
-  // fail-closed (prod default, see GEO_FAIL_OPEN) — also when the region
+  // Block on a confirmed restricted country, and - when the build is
+  // fail-closed (prod default, see GEO_FAIL_OPEN) - also when the region
   // couldn't be verified at all.
   const geoConfirmedBlock = geo != null && geo.blocked && !geo.unknown
   const geoUnknownBlock = geo != null && geo.unknown && !GEO_FAIL_OPEN
@@ -372,7 +383,7 @@ export const TradeTabWired: React.FC<TradeTabWiredProps> = ({
           color="rgba(35,45,70,.65)"
           style={{ textAlign: 'center', lineHeight: 1.4 }}
         >
-          No story checked yet.
+          {hasEarlierChecks ? 'Nothing checked in this session.' : 'No story checked yet.'}
         </Etched>
         <Etched
           size={12}
@@ -380,9 +391,19 @@ export const TradeTabWired: React.FC<TradeTabWiredProps> = ({
           color="rgba(35,45,70,.45)"
           style={{ textAlign: 'center' }}
         >
-          Run <b>Check</b> on a news page first — the matched market appears here for one-click trading.
+          {hasEarlierChecks ? (
+            <>
+              Your earlier checks are in <b>History</b> - open one to trade it, or run <b>Check</b> on
+              the page you are reading now.
+            </>
+          ) : (
+            <>Run <b>Check</b> on a news page first - the matched market appears here for one-click trading.</>
+          )}
         </Etched>
-        <div style={{ marginTop: 14, display: 'flex', justifyContent: 'center' }}>
+        <div style={{ marginTop: 14, display: 'flex', justifyContent: 'center', gap: 8 }}>
+          {hasEarlierChecks && onOpenHistory && (
+            <GlassButton size="md" onClick={onOpenHistory}>Open History</GlassButton>
+          )}
           <GlassButton size="md" onClick={onPickMatch}>Open Check</GlassButton>
         </div>
         {wallet && (
@@ -403,14 +424,14 @@ export const TradeTabWired: React.FC<TradeTabWiredProps> = ({
 
   if (connect.kind === 'connecting' && connect.signing && !connect.error) {
     // The QR is done with; the wallet is now holding a SECOND prompt (the
-    // CLOB-auth signature). Showing the QR here — as this used to — made an
+    // CLOB-auth signature). Showing the QR here - as this used to - made an
     // approved connect look like one that had never started.
     return (
       <Panel>
         <Etched size={13} weight={400}>Approve the signature in your wallet</Etched>
         <Etched size={11} weight={300} color="rgba(35,45,70,.6)" style={{ lineHeight: 1.45 }}>
           Wallet connected. It's now asking you to sign a one-time message that
-          proves you own the account — open your wallet app to approve it. This
+          proves you own the account - open your wallet app to approve it. This
           signs nothing on-chain and costs no gas.
         </Etched>
         <div style={{ display: 'flex', justifyContent: 'center', padding: 10 }}>
@@ -492,7 +513,7 @@ export const TradeTabWired: React.FC<TradeTabWiredProps> = ({
 }
 
 // =============================================================
-// Ready state — market preview + (connect OR order form)
+// Ready state - market preview + (connect OR order form)
 // =============================================================
 interface ReadyProps {
   match: MatchResult
@@ -545,7 +566,7 @@ const TradeReady: React.FC<ReadyProps> = ({
   // Market context card (question, %, "Open on Polymarket"). Position
   // depends on connect state: it leads while connected (context for the
   // order form below it), but takes a back seat to the Connect button
-  // while disconnected — otherwise it's the only prominent thing on the
+  // while disconnected - otherwise it's the only prominent thing on the
   // panel and "Open on Polymarket" reads as the primary action when it's
   // actually a secondary escape hatch (Check tab already offers the same
   // link).
@@ -603,8 +624,8 @@ const TradeReady: React.FC<ReadyProps> = ({
               below the order ticket (the tab is entered from a matched market,
               so the ticket keeps its place), but a user opening the popup to
               check on their own money should not have to scroll past a buy
-              form — let alone reconstruct their positions from the Check
-              history — to find it. */}
+              form - let alone reconstruct their positions from the Check
+              history - to find it. */}
           <PortfolioSummary
             positions={positions}
             openOrders={openOrders}
@@ -648,7 +669,7 @@ const TradeReady: React.FC<ReadyProps> = ({
 }
 
 // =============================================================
-// Connect panel — shown when no wallet session restored
+// Connect panel - shown when no wallet session restored
 // =============================================================
 const ConnectPanel: React.FC<{
   onConnect: () => void
@@ -661,7 +682,7 @@ const ConnectPanel: React.FC<{
     </Etched>
     <Etched size={11} weight={300} color="rgba(35,45,70,.5)">
       v1 supports existing Polymarket accounts (Safe wallet). New to Polymarket?
-      Sign in once at polymarket.com first — fresh deposit wallets aren't supported yet.
+      Sign in once at polymarket.com first - fresh deposit wallets aren't supported yet.
     </Etched>
     <GlassButton size="md" full onClick={onConnect}>Connect wallet</GlassButton>
     {!workerConfigured && (
@@ -673,7 +694,7 @@ const ConnectPanel: React.FC<{
 )
 
 // =============================================================
-// OrderFormWired — full v2 trade flow inside design chrome
+// OrderFormWired - full v2 trade flow inside design chrome
 // =============================================================
 interface OrderFormProps {
   match: MatchResult
@@ -705,17 +726,17 @@ const OrderFormWired: React.FC<OrderFormProps> = ({
   // session behind that lookup can be missing for a beat and then be fine
   // (restoreWallet already retries the hydration race on its own), so the one
   // thing the user must never be asked to do is work out the remedy
-  // themselves — give them the retry as a button.
+  // themselves - give them the retry as a button.
   const [bookAttempt, setBookAttempt] = useState(0)
   const [estimate, setEstimate] = useState<{ effectivePrice: number; slippage: number } | null>(null)
   const [submitting, setSubmitting] = useState(false)
   const [result, setResult] = useState<{ ok: boolean; msg: string; orderId?: string } | null>(null)
-  // Confirm step before the wallet signature prompt (ТЗ §6.5) — a misclick on
+  // Confirm step before the wallet signature prompt (ТЗ §6.5) - a misclick on
   // "Place order" opens this summary, not the wallet, so the user reviews
   // side/size/price/payout before committing to a signature.
   const [confirming, setConfirming] = useState(false)
 
-  // `order_form_opened` belongs at OrderForm mount — it measures intent.
+  // `order_form_opened` belongs at OrderForm mount - it measures intent.
   useEffect(() => {
     void trackEvent('order_form_opened', settings, { market_id_hash: shortHash(match.market.id) })
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -734,7 +755,7 @@ const OrderFormWired: React.FC<OrderFormProps> = ({
   const shares = activePrice ? om.sharesFor(sizeUsd, activePrice) : 0
 
   // Top-of-book for the selected side's token; prefill the limit price with the
-  // best ask each time the traded token changes (side flip / new match) — or
+  // best ask each time the traded token changes (side flip / new match) - or
   // when the user asks for another go after a failed lookup (bookAttempt).
   useEffect(() => {
     let cancelled = false
@@ -752,7 +773,7 @@ const OrderFormWired: React.FC<OrderFormProps> = ({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tokenId, bookAttempt])
 
-  // Depth-walk fill estimate — only meaningful for a MARKET (taker) order.
+  // Depth-walk fill estimate - only meaningful for a MARKET (taker) order.
   useEffect(() => {
     let cancelled = false
     setEstimate(null)
@@ -801,7 +822,7 @@ const OrderFormWired: React.FC<OrderFormProps> = ({
     // Synchronous re-entrancy guard, checked before any state update: the
     // button's own `disabled={submitDisabled}` (which includes `submitting`)
     // is the primary guard, but that relies on React re-rendering the DOM
-    // before a second click can land — not guaranteed for a very fast
+    // before a second click can land - not guaranteed for a very fast
     // double-click/double-tap. This closes that gap outright: a real-money
     // order button must never be double-submittable regardless of render
     // timing.
@@ -826,8 +847,8 @@ const OrderFormWired: React.FC<OrderFormProps> = ({
         ok: r.ok,
         msg: r.ok
           ? orderType === 'LIMIT'
-            ? `Limit order placed — ${effShares.toFixed(2)} shares of ${side === 'BUY_YES' ? 'Yes' : 'No'} at ${fmtC(price)}. It rests on the book until it fills.`
-            : `Order filled — ${effShares.toFixed(2)} shares of ${side === 'BUY_YES' ? 'Yes' : 'No'} for about $${sizeUsd.toFixed(2)}.`
+            ? `Limit order placed - ${effShares.toFixed(2)} shares of ${side === 'BUY_YES' ? 'Yes' : 'No'} at ${fmtC(price)}. It rests on the book until it fills.`
+            : `Order filled - ${effShares.toFixed(2)} shares of ${side === 'BUY_YES' ? 'Yes' : 'No'} for about $${sizeUsd.toFixed(2)}.`
           : `${humanError(r.error ?? 'unknown_error')}`,
         orderId: r.orderId,
       })
@@ -864,7 +885,7 @@ const OrderFormWired: React.FC<OrderFormProps> = ({
   }
 
 
-  const fmtC = (v: number | null | undefined) => (v == null ? '—' : `${(v * 100).toFixed(1)}¢`)
+  const fmtC = (v: number | null | undefined) => (v == null ? '-' : `${(v * 100).toFixed(1)}¢`)
   const tickN = parseFloat(tick)
 
   return (
@@ -923,7 +944,7 @@ const OrderFormWired: React.FC<OrderFormProps> = ({
       {/* price (limit) or cap note (market) */}
       {orderType === 'LIMIT' ? (
         <label style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-          <span className="label">Limit price (per share, 0–1)</span>
+          <span className="label">Limit price (per share, 0-1)</span>
           <input
             type="number"
             min={tick}
@@ -936,7 +957,7 @@ const OrderFormWired: React.FC<OrderFormProps> = ({
         </label>
       ) : (
         <div style={{ fontSize: 12, color: 'rgba(35,45,70,.7)' }}>
-          Market — fills now, capped at {fmtC(capPrice)} ({Math.round(CAP_PCT * 100)}% max).
+          Market - fills now, capped at {fmtC(capPrice)} ({Math.round(CAP_PCT * 100)}% max).
         </div>
       )}
 
@@ -959,7 +980,7 @@ const OrderFormWired: React.FC<OrderFormProps> = ({
         )}
         {!overOrderCap && belowMinSize && minUsd != null && (
           <span style={{ fontSize: 11, color: '#E24B4A' }}>
-            Polymarket's minimum is {minShares} shares — at {fmtC(activePrice)} that's ${minUsd.toFixed(2)}.
+            Polymarket's minimum is {minShares} shares - at {fmtC(activePrice)} that's ${minUsd.toFixed(2)}.
           </span>
         )}
       </label>
@@ -980,9 +1001,9 @@ const OrderFormWired: React.FC<OrderFormProps> = ({
           label={orderType === 'MARKET' ? 'Est. fill' : 'Limit price'}
           value={fmtC(orderType === 'MARKET' ? effPrice : Number.isFinite(limitPrice) ? limitPrice : null)}
         />
-        <Row label="Shares" value={effShares > 0 ? effShares.toFixed(2) : '—'} />
-        <Row label="Max payout" value={effShares > 0 ? `$${payout.toFixed(2)}` : '—'} />
-        <Row label="Return %" value={effShares > 0 ? `+${(ret * 100).toFixed(0)}%` : '—'} />
+        <Row label="Shares" value={effShares > 0 ? effShares.toFixed(2) : '-'} />
+        <Row label="Max payout" value={effShares > 0 ? `$${payout.toFixed(2)}` : '-'} />
+        <Row label="Return %" value={effShares > 0 ? `+${(ret * 100).toFixed(0)}%` : '-'} />
         {slippage != null && slippage > 0 && (
           <Row label="Slippage" value={`${(slippage * 100).toFixed(1)}%`} danger={slippage > WARN_SLIPPAGE} />
         )}
@@ -1002,12 +1023,12 @@ const OrderFormWired: React.FC<OrderFormProps> = ({
       )}
       {noLiquidity && book.error !== 'wallet_not_restored' && (
         <Etched size={11} weight={300} color="rgba(180,90,30,.85)">
-          No asks on the book right now — can't market-buy. Try a limit order.
+          No asks on the book right now - can't market-buy. Try a limit order.
         </Etched>
       )}
       {slippage != null && slippage > WARN_SLIPPAGE && (
         <Etched size={11} weight={300} color="rgba(180,90,30,.85)">
-          High slippage — orderbook is thin. Reduce size or use a limit order.
+          High slippage - orderbook is thin. Reduce size or use a limit order.
         </Etched>
       )}
 
@@ -1041,8 +1062,8 @@ const OrderFormWired: React.FC<OrderFormProps> = ({
           <Row label="Side" value={side === 'BUY_YES' ? 'BUY YES' : 'BUY NO'} />
           <Row label={orderType === 'MARKET' ? 'Est. fill' : 'Limit price'} value={fmtC(effPrice)} />
           <Row label="Amount" value={`$${sizeUsd.toFixed(2)}`} />
-          <Row label="Shares" value={effShares > 0 ? effShares.toFixed(2) : '—'} />
-          <Row label="Max payout" value={effShares > 0 ? `$${payout.toFixed(2)}` : '—'} />
+          <Row label="Shares" value={effShares > 0 ? effShares.toFixed(2) : '-'} />
+          <Row label="Max payout" value={effShares > 0 ? `$${payout.toFixed(2)}` : '-'} />
           {slippage != null && slippage > 0 && (
             <Row label="Slippage" value={`${(slippage * 100).toFixed(1)}%`} danger={slippage > WARN_SLIPPAGE} />
           )}
@@ -1067,7 +1088,7 @@ const OrderFormWired: React.FC<OrderFormProps> = ({
 
       {/* The outcome of a real-money action, stated at a size you can read
           without leaning in. This used to be one line of 12px grey-green text
-          reading "Order placed · 0x91a8322…" — indistinguishable from a
+          reading "Order placed · 0x91a8322…" - indistinguishable from a
           caption, and the least legible thing on screen at the exact moment
           the user most needs certainty.
 
@@ -1125,13 +1146,13 @@ const Row: React.FC<{ label: string; value: string; danger?: boolean }> = ({ lab
   </div>
 )
 
-// Match context (ТЗ §6.1) — article headline + match confidence, shown above
+// Match context (ТЗ §6.1) - article headline + match confidence, shown above
 // the market card so the user can sanity-check the match (and jump back to
 // Check to pick a different one). Always visible, wallet or not.
 //
 // `source` distinguishes a real scored match (from Check, on a live page)
 // from a market picked directly from History: the latter was never run
-// through the matcher, so there is no real confidence to report — printing
+// through the matcher, so there is no real confidence to report - printing
 // a fabricated "100% confidence" for a manual pick would misrepresent it as
 // a strong match rather than a deliberate user choice.
 const MatchContext: React.FC<{
@@ -1176,7 +1197,7 @@ const MatchContext: React.FC<{
       )}
       {source === 'page' && (
         <Etched size={11} weight={300} color="rgba(35,45,70,.55)">
-          Matched at {pct}% confidence{lowConfidence ? ' · low — double-check it fits' : ''}.
+          Matched at {pct}% confidence{lowConfidence ? ' · low - double-check it fits' : ''}.
         </Etched>
       )}
       {hasAlternatives && (
@@ -1192,7 +1213,7 @@ const MatchContext: React.FC<{
  * One-line state of the user's own money, pinned to the top of the connected
  * Trade tab: how many positions, what they're worth, how many resolved
  * markets are waiting to be claimed, and whether any orders are still resting.
- * Everything here is already fetched for the panel below — this is purely
+ * Everything here is already fetched for the panel below - this is purely
  * about it being visible without scrolling past a buy form.
  */
 const PortfolioSummary: React.FC<{
@@ -1228,7 +1249,7 @@ const PortfolioSummary: React.FC<{
         <Etched size={12} weight={300} color="rgba(35,45,70,.6)">Loading…</Etched>
       ) : empty ? (
         <Etched size={12} weight={300} color="rgba(35,45,70,.6)">
-          No open positions yet — your trades will show up here.
+          No open positions yet - your trades will show up here.
         </Etched>
       ) : (
         <>
@@ -1281,7 +1302,7 @@ const ErrorBanner: React.FC<{ children: React.ReactNode }> = ({ children }) => (
  *
  * BOTH branches must set background AND borderColor explicitly. The inactive
  * branch used to be `{}`, letting the pill fall through to `.glass-btn`'s own
- * rest style — which was pure white until de73548 re-tinted it cold blue.
+ * rest style - which was pure white until de73548 re-tinted it cold blue.
  * From that commit on, the *unselected* pill was the one wearing the accent
  * colour while the "active" white overlay vanished into the light panel, so
  * the ticket showed BUY NO / Market as picked while it was really signing
@@ -1310,24 +1331,24 @@ export function sidePillStyle(active: boolean): React.CSSProperties {
  * CLOB rejection reasons, now that submitSignedOrder actually forwards them
  * (it used to flatten every non-2xx into a bare `clob_rejected`). Matched on
  * substrings and case-insensitively because the exact wording comes from the
- * CLOB and has drifted between versions — an unmatched reason still falls
+ * CLOB and has drifted between versions - an unmatched reason still falls
  * through to the raw text below, which is strictly better than the old
  * "clob_rejected".
  */
 const CLOB_ERROR_HINTS: Array<[RegExp, string]> = [
   [/minimum (order )?size|min[_ ]size|order size.*(small|below)/i,
-    "Order is below Polymarket's minimum size for this market — raise the amount."],
+    "Order is below Polymarket's minimum size for this market - raise the amount."],
   [/not enough balance|insufficient (balance|funds)|allowance/i,
     'Not enough USDC in your Polymarket account (or the allowance is unset). Top up at polymarket.com, then retry.'],
   [/tick size|invalid price/i,
-    "Price isn't a valid tick for this market — adjust it and retry."],
+    "Price isn't a valid tick for this market - adjust it and retry."],
   [/not accepting orders|market not ready|market is closed|market closed/i,
     "This market isn't accepting orders right now."],
   [/fok order not filled|not filled/i,
-    "Couldn't fill the whole order at your cap price — the book moved. Try a limit order."],
+    "Couldn't fill the whole order at your cap price - the book moved. Try a limit order."],
   [/clob_http_401|unauthorized|expired credentials|invalid api key/i,
-    'Your Polymarket session expired — disconnect and reconnect the wallet.'],
-  [/clob_http_429|rate limit/i, 'Polymarket is rate-limiting requests — wait a moment and retry.'],
+    'Your Polymarket session expired - disconnect and reconnect the wallet.'],
+  [/clob_http_429|rate limit/i, 'Polymarket is rate-limiting requests - wait a moment and retry.'],
 ]
 
 function humanError(raw: string): string {
@@ -1335,10 +1356,10 @@ function humanError(raw: string): string {
     return "Your wallet never returned the signature. Open the wallet app, make sure there's no pending request waiting, and connect again."
   }
   if (raw.includes('wc_no_polygon_account')) {
-    return 'Your wallet connected, but not on Polygon — Polymarket needs it. Switch the wallet to the Polygon network, then connect again.'
+    return 'Your wallet connected, but not on Polygon - Polymarket needs it. Switch the wallet to the Polygon network, then connect again.'
   }
   if (raw.includes('wc_method_not_granted')) {
-    return "Your wallet connected but didn't grant permission to sign messages, so the account can't be verified. Reconnect and approve the full request — if your wallet lists permissions, allow signing."
+    return "Your wallet connected but didn't grant permission to sign messages, so the account can't be verified. Reconnect and approve the full request - if your wallet lists permissions, allow signing."
   }
   for (const [pattern, message] of CLOB_ERROR_HINTS) {
     if (pattern.test(raw)) return message
@@ -1346,9 +1367,9 @@ function humanError(raw: string): string {
   if (raw.includes('wc_project_id_missing')) return 'WalletConnect project ID not configured.'
   if (raw.includes('builder_code_not_configured')) return 'Builder code missing in build.'
   if (raw.includes('geo_blocked')) return 'Trading is not available in your region.'
-  if (raw.includes('geo_unavailable')) return "Couldn't verify your region — trading is paused. Check your connection and try again."
+  if (raw.includes('geo_unavailable')) return "Couldn't verify your region - trading is paused. Check your connection and try again."
   if (raw.includes('worker_not_configured')) return 'Set Worker URL and secret in Settings first.'
-  if (raw.includes('funder_not_found')) return 'No Polymarket account found for this wallet. v1 works with existing Polymarket accounts (Safe wallets). New to Polymarket? Sign in once at polymarket.com, then reconnect — fresh deposit wallets (POLY_1271) are coming soon.'
+  if (raw.includes('funder_not_found')) return 'No Polymarket account found for this wallet. v1 works with existing Polymarket accounts (Safe wallets). New to Polymarket? Sign in once at polymarket.com, then reconnect - fresh deposit wallets (POLY_1271) are coming soon.'
   if (raw.includes('funder_lookup_failed')) return "Couldn't reach Polymarket to look up your account. Check your connection and try again."
   return raw.replace(/^Error: /, '')
 }

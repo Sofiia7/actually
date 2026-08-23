@@ -21,7 +21,8 @@
     "smoke": "node scripts/smoke.mjs",
     "e2e": "node scripts/e2e-smoke.mjs",
     "lint": "tsc --noEmit",
-    "deploy": "npm run build && wrangler deploy --config worker/wrangler.toml"
+    "deploy": "npm run build && wrangler deploy --config worker/wrangler.toml",
+    "lint:dashes": "node scripts/check-dashes.mjs"
   },
   "dependencies": {
     "@actually/core": "*",

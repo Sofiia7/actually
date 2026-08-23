@@ -77,7 +77,7 @@ describe('findOutcomeIndex', () => {
     expect(findOutcomeIndex('["Yes","No"]', 'No')).toBe(1)
   })
 
-  it('returns 1 when Yes is second — the trap case', () => {
+  it('returns 1 when Yes is second - the trap case', () => {
     expect(findOutcomeIndex('["No","Yes"]', 'Yes')).toBe(1)
     expect(findOutcomeIndex('["No","Yes"]', 'No')).toBe(0)
   })
@@ -221,7 +221,7 @@ describe('shortHash', () => {
   })
 })
 
-describe('findOutcomeIndex — YES/NO token mapping', () => {
+describe('findOutcomeIndex - YES/NO token mapping', () => {
   // Regression coverage for the Sprint 2 bug: live price was being fetched
   // for clobTokenIds[0] regardless of outcome order, so markets with
   // outcomes=["No","Yes"] would display the NO probability under the YES

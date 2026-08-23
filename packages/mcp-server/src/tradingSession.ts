@@ -42,7 +42,7 @@ export function makeTradingSession(privateKey: string): TradingSession {
         const bootstrapClient = await makeClient({ signer })
         return deriveCredentials(bootstrapClient)
       })().catch((err: unknown) => {
-        // Only a FAILED derivation clears the cache — see placeOrder's
+        // Only a FAILED derivation clears the cache - see placeOrder's
         // original rationale (a transient CLOB hiccup shouldn't poison every
         // later call). A successful derivation stays cached forever.
         credsPromise = null

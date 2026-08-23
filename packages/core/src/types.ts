@@ -28,13 +28,13 @@ export interface PolyMarket {
   /**
    * Minimum price tick for orders, as a decimal string (e.g. "0.01" or
    * "0.001"). When absent callers fall back to `negRisk ? '0.001' : '0.01'`,
-   * but Gamma provides this directly on most markets — using the real
+   * but Gamma provides this directly on most markets - using the real
    * value prevents CLOB from rejecting orders with `invalid_tick`.
    */
   tickSize?: string
   /**
    * Minimum order size in SHARES (Gamma's `orderMinSize`, mirroring CLOB's
-   * `minimum_order_size`). Absent on records that predate this field —
+   * `minimum_order_size`). Absent on records that predate this field -
    * callers fall back to DEFAULT_MIN_ORDER_SHARES (see ./orderSize).
    */
   minOrderSize?: number
@@ -61,7 +61,7 @@ export type MatchColor = 'blue' | 'yellow' | 'red'
 
 /** Envelope served by the worker's `GET /market-cache` and produced by the precompute script. */
 export interface MarketCacheBlob {
-  /** Embedding model identity — MUST match LOCAL_MODEL_ID or callers must reject the blob. */
+  /** Embedding model identity - MUST match LOCAL_MODEL_ID or callers must reject the blob. */
   model: string
   builtAt: number
   markets: CachedMarket[]

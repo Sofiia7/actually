@@ -4,7 +4,7 @@ const { wcRequestMock } = vi.hoisted(() => ({ wcRequestMock: vi.fn(async () => '
 vi.mock('./wallet', () => ({ wcRequest: wcRequestMock }))
 
 // Pin the Worker settings. redeem builds its relayer auth from them (the
-// Worker signs the builder headers — see redeem.ts), and the real getSettings
+// Worker signs the builder headers - see redeem.ts), and the real getSettings
 // falls back to DEFAULT_WORKER_URL, which Vite bakes from .env.local. That
 // made these tests pass on a maintainer's machine and fail in CI, where no
 // such file exists: a test whose result depends on an untracked local file is
@@ -48,7 +48,7 @@ const resolved: Position = {
 beforeEach(() => {
   vi.clearAllMocks()
   // The real wait() (pollUntilState) resolves the transaction ONLY on
-  // STATE_MINED/STATE_CONFIRMED — and resolves UNDEFINED both for an on-chain
+  // STATE_MINED/STATE_CONFIRMED - and resolves UNDEFINED both for an on-chain
   // failure and for a poll timeout. The mocks mirror that contract.
   waitMock.mockResolvedValue({ state: 'STATE_MINED', transactionID: '0xtx1234567890' })
   getTransactionMock.mockResolvedValue([{ state: 'STATE_MINED', transactionID: '0xtx1234567890' }])
@@ -60,7 +60,7 @@ beforeEach(() => {
   })
 })
 
-describe('makeWcProvider — only signing goes to the wallet', () => {
+describe('makeWcProvider - only signing goes to the wallet', () => {
   it('answers account and chain locally without waking the wallet', async () => {
     const p = makeWcProvider('topic-1', '0xabc')
     expect(await p.request({ method: 'eth_accounts' })).toEqual(['0xabc'])
@@ -77,7 +77,7 @@ describe('makeWcProvider — only signing goes to the wallet', () => {
   it('refuses chain reads outright rather than letting them hang', async () => {
     // The relayer reads through its OWN client. Anything reaching here is a
     // mistake, and a WalletConnect session would reject it as outside the
-    // granted namespace anyway — fail where the cause is visible.
+    // granted namespace anyway - fail where the cause is visible.
     const p = makeWcProvider('topic-1', '0xabc')
     await expect(p.request({ method: 'eth_estimateGas' })).rejects.toThrow(
       'wc_provider_unsupported_method:eth_estimateGas',
@@ -152,7 +152,7 @@ describe('redeemPosition', () => {
   // wait() resolving UNDEFINED is how the real SDK reports both an on-chain
   // failure and a poll timeout. Reading it as success (via a fallback to the
   // submission-time state) once turned every failed redeem into a green
-  // "Redeemed" toast — these pin the honest behavior.
+  // "Redeemed" toast - these pin the honest behavior.
   const argsBase = {
     topic: 't',
     address: '0x00000000000000000000000000000000000000ab',
@@ -169,7 +169,7 @@ describe('redeemPosition', () => {
     expect(r.transactionId).toBe('0xtx1234567890')
   })
 
-  it('reports a poll timeout as unknown — never as success, never as a definite failure', async () => {
+  it('reports a poll timeout as unknown - never as success, never as a definite failure', async () => {
     waitMock.mockResolvedValue(undefined)
     getTransactionMock.mockResolvedValue([{ state: 'STATE_EXECUTED', transactionID: '0xtx1234567890' }])
     const r = await redeemPosition(argsBase)
@@ -196,10 +196,10 @@ describe('redeemPosition', () => {
   })
 })
 
-describe('redeemPosition — relayer auth comes from the Worker', () => {
+describe('redeemPosition - relayer auth comes from the Worker', () => {
   it('refuses before signing when no Worker is configured', async () => {
     // Without a Worker there is nothing to sign the builder headers, so the
-    // relayer would 401 — after the wallet had already signed.
+    // relayer would 401 - after the wallet had already signed.
     vi.resetModules()
     vi.doMock('./settings', () => ({ getSettings: async () => ({ workerUrl: '', workerSecret: '' }) }))
     const { redeemPosition: fresh } = await import('./redeem')

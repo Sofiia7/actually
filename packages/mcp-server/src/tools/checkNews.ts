@@ -18,7 +18,7 @@ export interface CheckNewsOutput {
   hasMarket: boolean
   market?: CheckNewsMarket
   /**
-   * Objective market YES price — never a synthesized "implied probability"
+   * Objective market YES price - never a synthesized "implied probability"
    * from tone. Sourced from the precomputed /market-cache blob, which can be
    * up to ~2h stale (cron precompute cadence); call get_market for a live price.
    */
@@ -30,7 +30,7 @@ export interface CheckNewsOutput {
   /**
    * On a miss: the market this came CLOSEST to, and how many were compared.
    *
-   * A bare `no_market_above_floor` tells an agent nothing it can act on — it
+   * A bare `no_market_above_floor` tells an agent nothing it can act on - it
    * cannot distinguish "Polymarket has nothing on this subject" from "the
    * cached shelf is a fixed size and the relevant market is below the cut".
    * Those call for opposite next moves, so the tool now says which it was.
@@ -53,7 +53,7 @@ export interface CheckNewsDeps {
 }
 
 // Errors from deps.store/deps.embedder (network failures, model load
-// failures, etc.) propagate uncaught — the MCP tool-registration layer is
+// failures, etc.) propagate uncaught - the MCP tool-registration layer is
 // responsible for catching and converting to a tool-error response.
 export async function checkNews(deps: CheckNewsDeps, input: CheckNewsInput): Promise<CheckNewsOutput> {
   const text = input.text.trim()
@@ -91,7 +91,7 @@ export async function checkNews(deps: CheckNewsDeps, input: CheckNewsInput): Pro
     marketProbabilityYes: match.probability,
     confidence: match.confidence,
     lowConfidence: match.lowConfidence,
-    // Trim further than findMatch's own cap of 4 — keeps the agent's context
+    // Trim further than findMatch's own cap of 4 - keeps the agent's context
     // small; findMatch already ranked these by relevance.
     alternatives: match.alternatives.slice(0, 3).map((m) => ({ marketId: m.id, question: m.question })),
   }

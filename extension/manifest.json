@@ -1,6 +1,6 @@
 {
   "manifest_version": 3,
-  "name": "Actually \u2014 What Markets Really Think",
+  "name": "Actually - What Markets Really Think",
   "version": "1.0.0",
   "description": "Click to see real market odds on any news story. Powered by Polymarket.",
   "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAnp25IbsVTzbTvWJq+8uwv9JYkRw/oJcr4SQMDlgXr0bBuhyPPajH9OrTlhpWWGaz/OHhf/3SdKo9jdKYh9PEU0E1qBBH2aJii9IlNmWckEf7xeIbu0f9ceTNw0NjLH1CvcyBVKV+2raZQb/bYoEk+R1Dyntc6Y7lmH+MD3emvUEh9GVZ0h5PuvzMZL5T2iLBGByvJ9wfVfNESc73HUJaTj50BabNgd2y2azImVLQdQJxLBLQBBVGbk+jRUbBfQuPHtWCqGceuPCyLkjYJM5GS15OCTLOx7mIB2szGIIwVOv0jjh9NTUif6UGYP2H4ZDYA/pwaA49wjNjRepkRWV/mwIDAQAB",
@@ -29,7 +29,7 @@
       "48": "public/icon-48.png",
       "128": "public/icon-128.png"
     },
-    "default_title": "Actually \u2014 what markets really think"
+    "default_title": "Actually - what markets really think"
   },
   "commands": {
     "_execute_action": {

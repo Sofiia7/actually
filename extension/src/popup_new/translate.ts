@@ -6,7 +6,7 @@
  * vocabulary holds 86 Cyrillic tokens out of 30522, so a Russian headline
  * embeds to noise. Measured against the live thresholds, a Russian headline
  * scores 0.01-0.24 against the market it is actually about (floor is 0.35),
- * while the same headline translated scores 0.53-0.71 — comfortably
+ * while the same headline translated scores 0.53-0.71 - comfortably
  * CONFIDENT. Translating the article is therefore worth far more than
  * swapping in a multilingual embedder, and costs nothing at runtime.
  *
@@ -99,8 +99,8 @@ class TranslationTimeout extends Error {}
 /**
  * One translator per language for the life of the popup.
  *
- * `create()` is not free even once the pack is on disk — it spins up a model
- * session — and the popup runs a check per click, so rebuilding it every time
+ * `create()` is not free even once the pack is on disk - it spins up a model
+ * session - and the popup runs a check per click, so rebuilding it every time
  * charges the user for the same setup repeatedly. A failed build is evicted so
  * the next check retries rather than inheriting a dead promise.
  */
@@ -188,8 +188,8 @@ function normalizeLang(raw: string | null | undefined): string {
 /**
  * Which language the article is in.
  *
- * The page's own `<html lang>` is the cheapest and most reliable signal —
- * rbc.ru declares `ru`, spiegel.de declares `de` — so it wins, with one
+ * The page's own `<html lang>` is the cheapest and most reliable signal -
+ * rbc.ru declares `ru`, spiegel.de declares `de` - so it wins, with one
  * exception: a page that claims English while its headline is in Cyrillic is
  * wrong about itself, and that combination is common enough on mirrors and
  * embeds to be worth overriding.
@@ -207,7 +207,7 @@ export async function resolveSourceLanguage(
       const detected = normalizeLang(await detector.detect(`${article.headline} ${article.bodyText}`.trim()))
       if (detected) return detected
     } catch {
-      /* detector is best-effort — fall through to the script heuristic */
+      /* detector is best-effort - fall through to the script heuristic */
     }
   }
 

@@ -7,7 +7,7 @@ export interface ArticleData {
   url: string
   domain: string
   /**
-   * The page's declared language (`<html lang>`), verbatim — 'ru', 'de-DE', ''.
+   * The page's declared language (`<html lang>`), verbatim - 'ru', 'de-DE', ''.
    * Read by popup_new/translate.ts to decide whether the article has to be
    * translated into English before it can be matched against market questions.
    */
@@ -31,11 +31,11 @@ export interface Settings {
   searchFallbackEnabled: boolean
   /**
    * The user turned the search offer down on a no-match screen. Stops the
-   * offer reappearing on every subsequent miss — declining once is an answer,
+   * offer reappearing on every subsequent miss - declining once is an answer,
    * and re-asking would make it a nag.
    */
   searchFallbackOfferDismissed: boolean
-  // Wallet state — managed by trade flow, not user-editable directly.
+  // Wallet state - managed by trade flow, not user-editable directly.
   // All optional until the user connects via WalletConnect v2.
   wcSessionTopic?: string
   walletAddress?: string  // EOA from WC session
@@ -46,7 +46,7 @@ export interface Settings {
 }
 
 /**
- * One entry in the local activity log — what the user actually did, as
+ * One entry in the local activity log - what the user actually did, as
  * opposed to what they looked at (HistoryItem). Written for buys, sells and
  * redeems alike, on success AND on failure, because "did my sell go through?"
  * is exactly the question that has no other answer once the position is gone
@@ -61,7 +61,7 @@ export interface TradeLogItem {
   question: string
   /** Market slug for the Polymarket link, when known. */
   marketSlug?: string
-  /** 'Yes' / 'No' — which outcome token the trade was on. */
+  /** 'Yes' / 'No' - which outcome token the trade was on. */
   outcome?: string
   orderType?: 'LIMIT' | 'MARKET'
   /** BUY: USD notional. SELL: proceeds estimate. REDEEM: unset. */
@@ -123,7 +123,7 @@ export interface OpenOrderSummary {
   originalSize: string
   sizeMatched: string
   status: string
-  /** e.g. "Yes"/"No" — lets the UI show which outcome an order is on, not just its price/size. */
+  /** e.g. "Yes"/"No" - lets the UI show which outcome an order is on, not just its price/size. */
   outcome: string
 }
 
@@ -141,11 +141,11 @@ export interface Position {
   slug: string
   /** True once the market has resolved and this position can be redeemed. */
   redeemable: boolean
-  /** 0 or 1 — which binary outcome slot these tokens occupy. Required to build
+  /** 0 or 1 - which binary outcome slot these tokens occupy. Required to build
    * a neg-risk redeem, which takes explicit per-slot amounts. */
   outcomeIndex: number
   /** Neg-risk markets redeem through a different contract with a different
-   * calling convention entirely — see @actually/core's buildRedeemTransaction. */
+   * calling convention entirely - see @actually/core's buildRedeemTransaction. */
   negativeRisk: boolean
 }
 

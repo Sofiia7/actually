@@ -16,11 +16,11 @@ export interface OrderbookSnapshot {
   estimateBuy: (sizeShares: number) => { effectivePrice: number; slippage: number } | null
 }
 
-/** Pure book-level math — no fetch, no signer. Shared by the extension's
+/** Pure book-level math - no fetch, no signer. Shared by the extension's
  * wallet-bound orderbook path and the MCP server's unauthenticated one. */
 export function parseOrderbook(book: RawOrderbook): OrderbookSnapshot {
   // A malformed level (non-numeric price/size from a flaky upstream response)
-  // would otherwise poison sort/spread/estimateBuy with NaN — which
+  // would otherwise poison sort/spread/estimateBuy with NaN - which
   // JSON.stringify silently renders as `null`, indistinguishable from "no
   // orderbook data" to a caller. Drop the level instead of propagating NaN.
   const asks = (book.asks ?? [])

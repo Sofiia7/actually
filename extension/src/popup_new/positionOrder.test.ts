@@ -67,7 +67,7 @@ describe('orderPositionsByRecentActivity', () => {
     expect(slugs(orderPositionsByRecentActivity(positions, log))).toEqual(['old-buy-new-sell', 'one-recent-buy'])
   })
 
-  it('counts failed attempts — a redeem that just 401ed is exactly what the user came back to look at', () => {
+  it('counts failed attempts - a redeem that just 401ed is exactly what the user came back to look at', () => {
     const positions = [pos({ slug: 'quiet' }), pos({ slug: 'just-failed' })]
     const log = [
       entry({ timestamp: 9_000, kind: 'REDEEM', status: 'failed', marketSlug: 'just-failed', outcome: 'Yes' }),
@@ -76,7 +76,7 @@ describe('orderPositionsByRecentActivity', () => {
     expect(slugs(orderPositionsByRecentActivity(positions, log))).toEqual(['just-failed', 'quiet'])
   })
 
-  it('keeps Yes and No on the same market apart — selling one must not re-date the other', () => {
+  it('keeps Yes and No on the same market apart - selling one must not re-date the other', () => {
     const positions = [
       pos({ slug: 'same-market', outcome: 'Yes', tokenId: 'yes' }),
       pos({ slug: 'same-market', outcome: 'No', tokenId: 'no' }),
@@ -86,7 +86,7 @@ describe('orderPositionsByRecentActivity', () => {
   })
 
   it('falls back to the market question when the log entry has no slug', () => {
-    // marketSlug is documented as "when known" — entries written before the
+    // marketSlug is documented as "when known" - entries written before the
     // slug was resolved would otherwise never match anything.
     const positions = [pos({ slug: 'a', title: 'Older' }), pos({ slug: 'b', title: 'Logged by question' })]
     const log = [entry({ timestamp: 6_000, question: 'Logged by question', outcome: 'Yes' })]
@@ -101,7 +101,7 @@ describe('orderPositionsByRecentActivity', () => {
     expect(slugs(orderPositionsByRecentActivity(positions, log))).toEqual(['logged', 'big-unknown', 'small-unknown'])
   })
 
-  it('does not let a shared question date an unrelated market — Polymarket recycles titles across recurring events', () => {
+  it('does not let a shared question date an unrelated market - Polymarket recycles titles across recurring events', () => {
     // "Ethereum Up or Down" runs every five minutes under the same question
     // and a different slug. A question-keyed match on an entry that HAS a
     // slug would date every round of it from whichever one was traded.
@@ -114,7 +114,7 @@ describe('orderPositionsByRecentActivity', () => {
     expect(slugs(ordered)).toEqual(['eth-updown-0905', 'eth-updown-0900'])
   })
 
-  it('is a no-op on an empty log — a fresh install must still see its positions', () => {
+  it('is a no-op on an empty log - a fresh install must still see its positions', () => {
     const positions = [pos({ slug: 'x' }), pos({ slug: 'y' })]
     expect(slugs(orderPositionsByRecentActivity(positions, []))).toEqual(['x', 'y'])
   })

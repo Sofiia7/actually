@@ -16,7 +16,7 @@ const FLOOR_PCT = 0.02
 /**
  * Price grid this ticket assumes. Positions come from the data API with no
  * Gamma record attached, so the real tick is unknown here (the SDK resolves
- * it for the order itself — see this component's doc comment). 0.001 is
+ * it for the order itself - see this component's doc comment). 0.001 is
  * Polymarket's finest grid and is what the previous inline `* 1000` rounding
  * already assumed; naming it just makes the assumption visible.
  */
@@ -28,7 +28,7 @@ export interface SellTicketProps {
    * Called on a successful sell, with the message to show. The ticket closes
    * itself at that point, so it CANNOT own that message: setting it locally
    * and then unmounting means the user watches the ticket vanish and sees no
-   * confirmation at all — indistinguishable from nothing having happened.
+   * confirmation at all - indistinguishable from nothing having happened.
    * The panel outlives the ticket, so the panel says so.
    */
   onDone: (message: string) => void
@@ -38,7 +38,7 @@ export interface SellTicketProps {
 /**
  * Close (or part-close) one position.
  *
- * A sell is denominated in SHARES, not USD — you sell what you hold — which is
+ * A sell is denominated in SHARES, not USD - you sell what you hold - which is
  * the main way this differs from the buy ticket. Tick size and neg-risk are
  * deliberately not sent: positions come from the data API with no Gamma
  * record attached, so the CLOB SDK resolves the real values itself rather than
@@ -70,10 +70,10 @@ export const SellTicket: React.FC<SellTicketProps> = ({ position, onDone, onCanc
 
   const shares = parseFloat(sharesInput)
   const limitPrice = parseFloat(priceInput)
-  // A market sell can't fill BELOW this floor — the mirror of a buy's cap.
+  // A market sell can't fill BELOW this floor - the mirror of a buy's cap.
   const floorPrice = book.bestBid != null ? marketFloorPrice(book.bestBid, FLOOR_PCT, SELL_TICK) : null
   // What the floor really costs, which is not FLOOR_PCT whenever the tick is
-  // coarser than the band — see marketFloorPrice. Printing the nominal 2%
+  // coarser than the band - see marketFloorPrice. Printing the nominal 2%
   // there would be a promise the grid cannot keep.
   const slippage = book.bestBid != null && floorPrice != null ? floorSlippage(book.bestBid, floorPrice) : null
   // A bid already sitting on the minimum tick leaves nowhere to floor to, so
@@ -89,7 +89,7 @@ export const SellTicket: React.FC<SellTicketProps> = ({ position, onDone, onCanc
   const tooMany = Number.isFinite(shares) && shares > heldShares
   const positionUnsellable = heldShares < minShares
   // Distinguish "the book lookup itself failed" from "an honestly empty book"
-  // — the former used to render as "No bids", sending the user chasing a
+  // - the former used to render as "No bids", sending the user chasing a
   // liquidity problem when the actual problem was e.g. an expired wallet
   // session.
   const bookFailed = book.error != null
@@ -123,7 +123,7 @@ export const SellTicket: React.FC<SellTicketProps> = ({ position, onDone, onCanc
         tokenId: position.tokenId,
         sizeShares: shares,
         price: activePrice,
-        // negRisk deliberately omitted — the SDK resolves the real flag from
+        // negRisk deliberately omitted - the SDK resolves the real flag from
         // the CLOB. Sending `false` here (as this once did) forced the normal
         // exchange contract and got every neg-risk sell rejected.
         orderType,
@@ -142,15 +142,15 @@ export const SellTicket: React.FC<SellTicketProps> = ({ position, onDone, onCanc
         error: r.ok ? undefined : humanSellError(r.error ?? 'unknown_error', minShares),
       })
       if (r.ok) {
-        // A LIMIT sell has NOT sold anything yet — it rests until someone
+        // A LIMIT sell has NOT sold anything yet - it rests until someone
         // takes it. Saying "Sold" for both is the same lie commit 8a0e4e5
         // set out to remove; keep the two outcomes worded apart.
         const ref = r.orderId ? ` · ${shortRef(r.orderId)}` : ''
         onDone(
           orderType === 'LIMIT'
-            ? `Limit sell placed${ref} — ${shares} shares of ${position.outcome} at ${fmtC(activePrice)}. ` +
+            ? `Limit sell placed${ref} - ${shares} shares of ${position.outcome} at ${fmtC(activePrice)}. ` +
               'It rests on the book until it fills; saved to History.'
-            : `Sold ${shares} shares of ${position.outcome} for about $${proceeds.toFixed(2)}${ref} — ` +
+            : `Sold ${shares} shares of ${position.outcome} for about $${proceeds.toFixed(2)}${ref} - ` +
               'saved to History; positions can take a few seconds to catch up.',
         )
       } else {
@@ -201,7 +201,7 @@ export const SellTicket: React.FC<SellTicketProps> = ({ position, onDone, onCanc
 
       {orderType === 'LIMIT' ? (
         <label style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
-          <span className="label">Limit price (per share, 0–1)</span>
+          <span className="label">Limit price (per share, 0-1)</span>
           <input
             type="number"
             min={0}
@@ -214,21 +214,21 @@ export const SellTicket: React.FC<SellTicketProps> = ({ position, onDone, onCanc
         </label>
       ) : (
         <Etched size={11} weight={300} color="rgba(35,45,70,.7)">
-          Market — sells now, floored at {fmtC(floorPrice)}
+          Market - sells now, floored at {fmtC(floorPrice)}
           {slippage != null && ` (${(slippage * 100).toFixed(slippage < 0.1 ? 1 : 0)}% max slippage)`}. Bid{' '}
           {fmtC(book.bestBid)}.
           {noRoomBelowBid &&
-            " This bid is already at the lowest tick, so the sell has to take the whole size at that price — a limit order is the safer route."}
+            " This bid is already at the lowest tick, so the sell has to take the whole size at that price - a limit order is the safer route."}
         </Etched>
       )}
 
       <Etched size={11.5} weight={400} color="rgba(35,45,70,.8)">
-        Estimated proceeds: {proceeds > 0 ? `$${proceeds.toFixed(2)}` : '—'}
+        Estimated proceeds: {proceeds > 0 ? `$${proceeds.toFixed(2)}` : '-'}
       </Etched>
 
       {positionUnsellable && (
         <Etched size={11} weight={300} color="rgba(160,40,40,.9)">
-          This position is {heldShares} shares — under Polymarket's {minShares}-share minimum, so it can't be sold.
+          This position is {heldShares} shares - under Polymarket's {minShares}-share minimum, so it can't be sold.
           It can only be redeemed once the market resolves.
         </Etched>
       )}
@@ -244,7 +244,7 @@ export const SellTicket: React.FC<SellTicketProps> = ({ position, onDone, onCanc
       )}
       {noBid && (
         <Etched size={11} weight={300} color="rgba(160,40,40,.9)">
-          No bids on the book right now — nobody to sell to. Try a limit order.
+          No bids on the book right now - nobody to sell to. Try a limit order.
         </Etched>
       )}
       {bookFailed && (
@@ -259,7 +259,7 @@ export const SellTicket: React.FC<SellTicketProps> = ({ position, onDone, onCanc
       {overCap && (
         <Etched size={11} weight={300} color="rgba(160,40,40,.9)">
           Sells are capped at ${MAX_ORDER_USD} per order, same as buys
-          {maxSharesAtPrice != null ? ` — up to ${maxSharesAtPrice} shares at this price` : ''}. Sell in parts.
+          {maxSharesAtPrice != null ? ` - up to ${maxSharesAtPrice} shares at this price` : ''}. Sell in parts.
         </Etched>
       )}
 
@@ -273,7 +273,7 @@ export const SellTicket: React.FC<SellTicketProps> = ({ position, onDone, onCanc
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
           <Etched size={11.5} weight={400}>
-            Sell {shares} shares at {fmtC(activePrice)} — about ${proceeds.toFixed(2)}?
+            Sell {shares} shares at {fmtC(activePrice)} - about ${proceeds.toFixed(2)}?
           </Etched>
           <div style={{ display: 'flex', gap: 6 }}>
             <GlassButton size="sm" full disabled={submitting} onClick={() => setConfirming(false)}>
@@ -295,13 +295,13 @@ export const SellTicket: React.FC<SellTicketProps> = ({ position, onDone, onCanc
   )
 }
 
-/** Shares, truncated to 2dp — the CLOB rejects more precision than it quotes,
+/** Shares, truncated to 2dp - the CLOB rejects more precision than it quotes,
  * and "sell everything" must never round UP past what is actually held. */
 function floorShares(size: number): number {
   return Math.floor(size * 100) / 100
 }
 
-const fmtC = (v: number | null | undefined) => (v == null ? '—' : `${(v * 100).toFixed(1)}¢`)
+const fmtC = (v: number | null | undefined) => (v == null ? '-' : `${(v * 100).toFixed(1)}¢`)
 
 function pill(active: boolean): React.CSSProperties {
   return active
@@ -314,16 +314,16 @@ export function humanSellError(raw: string, minShares: number): string {
     return `Below Polymarket's ${minShares}-share minimum.`
   }
   if (/not enough balance|insufficient|allowance/i.test(raw)) {
-    return "Polymarket says you don't hold enough of this token — refresh your positions."
+    return "Polymarket says you don't hold enough of this token - refresh your positions."
   }
   if (/not filled|fok/i.test(raw)) {
-    return "Couldn't fill the whole sell at your floor price — the book moved. Try a limit order."
+    return "Couldn't fill the whole sell at your floor price - the book moved. Try a limit order."
   }
   if (/tick size|invalid price/i.test(raw)) {
     return "That price isn't a valid tick for this market."
   }
-  if (/no_wallet/i.test(raw)) return 'Wallet session expired — reconnect and try again.'
+  if (/no_wallet/i.test(raw)) return 'Wallet session expired - reconnect and try again.'
   const cap = raw.match(/order_exceeds_max_usd:(\d+)/)
-  if (cap) return `Over the $${cap[1]} per-order cap — sell in smaller parts.`
+  if (cap) return `Over the $${cap[1]} per-order cap - sell in smaller parts.`
   return raw
 }

@@ -6,7 +6,7 @@
  *   npm run models:fetch
  *
  * Mirrors fetch-fonts.mjs's pattern (fetch into public/, bundled by Vite's
- * publicDir copy-through) but the output is NOT committed to git — unlike
+ * publicDir copy-through) but the output is NOT committed to git - unlike
  * the ~10KB font, this is ~33MB, too large to carry in normal git history.
  * public/models/ and public/onnx/ are gitignored; run this script (or let CI
  * run it, see .github/workflows/ci.yml) before every build.
@@ -17,7 +17,7 @@
  * `onnx/model_quantized.onnx` (default `quantized: true`).
  *
  * WASM files match onnxruntime-web's single-threaded path (the extension
- * forces `numThreads = 1` — service workers/offscreen docs don't get
+ * forces `numThreads = 1` - service workers/offscreen docs don't get
  * cross-origin-isolation, so threaded/SIMD-threaded WASM can't be used
  * anyway): only the non-threaded `ort-wasm.wasm` (scalar fallback) and
  * `ort-wasm-simd.wasm` (SIMD, used by default when the browser supports it)
@@ -25,8 +25,8 @@
  *
  * Pinned to an exact commit (not `main`, a mutable ref) with each file's
  * SHA-256 verified after download. `main` silently serving different bytes
- * on a future run — whether from an upstream repo edit or a compromised
- * mirror — would otherwise bake an unverified, unreviewed binary blob (the
+ * on a future run - whether from an upstream repo edit or a compromised
+ * mirror - would otherwise bake an unverified, unreviewed binary blob (the
  * ONNX model) straight into the shipped extension with no one noticing.
  * Hashes verified against both `main` and this commit at the time they were
  * pinned (2026-07-20). To intentionally update the model: bump
@@ -44,7 +44,7 @@ const HERE = dirname(fileURLToPath(import.meta.url))
 const require = createRequire(import.meta.url)
 
 // Read the pinned revision out of @actually/core rather than hardcoding a
-// second copy here — this script can't `import` core's TS source directly
+// second copy here - this script can't `import` core's TS source directly
 // (it's a plain Node script, no TS loader), but a regex read of the one
 // line that matters keeps the two values from silently drifting apart the
 // way two independent literals eventually do.
@@ -84,7 +84,7 @@ async function verifyHash(name, buf) {
     console.error(`FAILED hash mismatch for ${name}`)
     console.error(`  expected: ${expected}`)
     console.error(`  actual:   ${actual}`)
-    console.error('Either the pinned model revision changed unexpectedly, or EXPECTED_SHA256 is stale — see this file\'s header comment.')
+    console.error('Either the pinned model revision changed unexpectedly, or EXPECTED_SHA256 is stale - see this file\'s header comment.')
     process.exit(1)
   }
 }
@@ -112,7 +112,7 @@ for (const f of MODEL_FILES) {
 await fetchFile(`${HF_BASE}/${ONNX_FILE}`, resolve(MODEL_OUT_DIR, ONNX_FILE), ONNX_FILE)
 
 // onnxruntime-web's WASM binaries are copied from the installed npm package
-// (pinned by @xenova/transformers' dependency range), not fetched remotely —
+// (pinned by @xenova/transformers' dependency range), not fetched remotely -
 // they ship in the package itself, no network round-trip needed or wanted.
 const onnxPkgDir = dirname(require.resolve('onnxruntime-web/package.json'))
 await mkdir(ONNX_OUT_DIR, { recursive: true })

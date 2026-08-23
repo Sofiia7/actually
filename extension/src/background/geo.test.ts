@@ -43,7 +43,7 @@ describe('getGeoStatus', () => {
 
   it('blocks anyway when the worker misreports a country on our own bundled list as not blocked', async () => {
     // Defense-in-depth: BLOCKED_COUNTRIES is a client-side floor, not just
-    // documentation — a worker bug or stale deploy that wrongly clears
+    // documentation - a worker bug or stale deploy that wrongly clears
     // `blocked` for a known-restricted country must not be trusted alone.
     globalThis.fetch = vi.fn(async () =>
       new Response(JSON.stringify({ country: 'US', blocked: false }), { status: 200 }),
@@ -114,12 +114,12 @@ describe('getGeoStatus', () => {
       await getGeoStatus('https://w.example', 'sec')
       expect((fetchMock as unknown as { mock: { calls: unknown[] } }).mock.calls.length).toBe(1)
 
-      // Still within TTL — reuses the cached verdict.
+      // Still within TTL - reuses the cached verdict.
       await vi.advanceTimersByTimeAsync(60_000)
       await getGeoStatus('https://w.example', 'sec')
       expect((fetchMock as unknown as { mock: { calls: unknown[] } }).mock.calls.length).toBe(1)
 
-      // Past TTL — a session-long-open popup (or an offscreen doc kept alive
+      // Past TTL - a session-long-open popup (or an offscreen doc kept alive
       // across popup opens) must re-verify rather than trust a verdict from
       // before a location/VPN change.
       await vi.advanceTimersByTimeAsync(5 * 60_000)

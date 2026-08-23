@@ -23,15 +23,15 @@ function fakeKV() {
  * the atomicity regression test below:
  *
  * 1. Real Durable Object storage reads/writes are genuine async I/O with
- *    real latency — the same latency that made the OLD KV-based rateLimit()
+ *    real latency - the same latency that made the OLD KV-based rateLimit()
  *    racy (env.RATE_LIMITS.get() then .put() were two real network round
  *    trips, with a real yield gap between them). `handleIncrement` below
  *    inserts an explicit `await` between its read and its write to
  *    reproduce that same yield gap, instead of silently completing
  *    synchronously (which would make this fake "accidentally atomic" for
  *    reasons that have nothing to do with the actual fix).
- * 2. Cloudflare's real guarantee — a single Durable Object instance
- *    processes one request to completion before starting the next — is
+ * 2. Cloudflare's real guarantee - a single Durable Object instance
+ *    processes one request to completion before starting the next - is
  *    modeled with a promise-chain queue keyed by instance name. That queue
  *    is the thing actually being tested: remove it and the yield gap in (1)
  *    lets concurrent calls interleave and over-admit past the limit, the
@@ -44,11 +44,11 @@ function fakeRateLimiterDO() {
   async function handleIncrement(name: string, windowMs: number, limit: number, amount: number) {
     const now = Date.now()
     const windowStart = Math.floor(now / windowMs) * windowMs
-    await Promise.resolve() // yield — models the storage read's I/O latency
+    await Promise.resolve() // yield - models the storage read's I/O latency
     const existing = stores.get(name)
     const bucket = existing && existing.windowStart === windowStart ? existing : { windowStart, count: 0 }
     if (bucket.count + amount > limit) return { allowed: false, count: bucket.count }
-    await Promise.resolve() // yield — models the storage write's I/O latency
+    await Promise.resolve() // yield - models the storage write's I/O latency
     bucket.count += amount
     stores.set(name, bucket)
     return { allowed: true, count: bucket.count }
@@ -101,7 +101,7 @@ function req(path: string, o: ReqOpts = {}): Request {
   if (o.auth !== null) h.set('X-Actually-Auth', o.auth ?? 'secret')
   if (o.country) h.set('CF-IPCountry', o.country)
   const request = new Request(`https://w.example${path}`, { method: o.method ?? 'GET', headers: h, body: o.body })
-  // Region code is NOT a header Cloudflare sends to Workers — it only rides on
+  // Region code is NOT a header Cloudflare sends to Workers - it only rides on
   // the runtime-attached `request.cf` object (IncomingRequestCfProperties).
   // Standard Request has no `cf` slot, so we attach one here the same way the
   // real Workers runtime does, to catch regressions like reading it as a header.
@@ -161,7 +161,7 @@ describe('health + auth', () => {
 
   it('allows a request with no Origin header when the shared secret is valid (server-side clients)', async () => {
     // Origin is a browser-enforced signal: pages can't forge it, but any
-    // non-browser attacker can trivially SET it — so rejecting its absence
+    // non-browser attacker can trivially SET it - so rejecting its absence
     // (tried 2026-07-08, deployed 2026-07-14) stopped no real attacker while
     // breaking both legitimate server-side clients in prod: the market-cache
     // cron builder and the MCP server, neither of which is a browser. The
@@ -229,7 +229,7 @@ describe('/geo', () => {
   })
 
   it('regression: a CF-Region-Code HTTP header (not real Cloudflare behavior) must NOT be trusted', async () => {
-    // Cloudflare never sends region as a request header to Workers — only via
+    // Cloudflare never sends region as a request header to Workers - only via
     // request.cf.regionCode. This guards against re-introducing the header-based
     // read, which would silently never block Ontario in production.
     const res = await call('/geo', baseEnv(), {
@@ -246,7 +246,7 @@ describe('/geo', () => {
     const res = await call('/geo', baseEnv(), { country: 'T1' })
     const body = (await res.json()) as { country: string; blocked: boolean }
     expect(body.country).toBe('')
-    expect(body.blocked).toBe(false) // not "blocked" either — the client treats empty country as unknown/fail-closed
+    expect(body.blocked).toBe(false) // not "blocked" either - the client treats empty country as unknown/fail-closed
   })
 
   it('reports an ungeolocatable request (XX) as no confirmed country', async () => {
@@ -302,7 +302,7 @@ describe('rate limiting', () => {
   })
 
   it('atomicity: concurrent requests never exceed the limit (regression for the old KV race)', async () => {
-    // Sequential calls (above) never exercised concurrency at all — each
+    // Sequential calls (above) never exercised concurrency at all - each
     // `await call(...)` fully resolved before the next started, so the old
     // KV-based rateLimit()'s get-then-put race never had a chance to fire in
     // that test. Firing every call before awaiting any of them is what
@@ -334,7 +334,7 @@ describe('/embeddings input limits', () => {
   })
 
   it('413 on an oversized body streamed with NO Content-Length header at all (regression for the header-trust bug)', async () => {
-    // Simulates chunked transfer / any client that omits Content-Length —
+    // Simulates chunked transfer / any client that omits Content-Length -
     // the old check trusted `parseInt(header ?? '0')`, which reads a missing
     // header as 0 and lets an arbitrarily large streamed body straight
     // through to req.json(). The fix must cap on bytes actually read.
@@ -603,7 +603,7 @@ describe('builder signing (remote signer for Polymarket relayer)', () => {
 
     // Polymarket issues URL-SAFE base64 secrets ('-' and '_' in the
     // alphabet). The SDK decodes them with Node's lenient Buffer.from;
-    // plain atob() throws — which is how every live /builder-sign call
+    // plain atob() throws - which is how every live /builder-sign call
     // 500'd on a perfectly valid secret (2026-08-18). Pin equality on
     // exactly that alphabet, and on a secret with sloppy-paste whitespace.
     const urlSafeSecret = 'q-_Zx-9_AbC123-_'
@@ -660,13 +660,13 @@ describe('builder signing (remote signer for Polymarket relayer)', () => {
     const env = baseEnv(CREDS)
     const body = JSON.stringify({ method: 'POST', path: '/submit' })
     expect((await call('/builder-sign', env, { method: 'POST', body, auth: 'wrong' })).status).toBe(401)
-    // A foreign Origin is rejected as 401 (bad_origin) — same treatment as a
+    // A foreign Origin is rejected as 401 (bad_origin) - same treatment as a
     // bad secret; see checkAuth's note on why Origin is checked only when
     // present.
     expect((await call('/builder-sign', env, { method: 'POST', body, origin: 'https://evil.example' })).status).toBe(401)
   })
 
-  it('reports 503 — not a broken signature — when no credentials are set', async () => {
+  it('reports 503 - not a broken signature - when no credentials are set', async () => {
     const res = await call('/builder-sign', baseEnv(), {
       method: 'POST',
       body: JSON.stringify({ method: 'POST', path: '/submit' }),
@@ -683,7 +683,7 @@ describe('builder signing (remote signer for Polymarket relayer)', () => {
 
   it('serves the static relayer-key headers when that is the scheme configured', async () => {
     // Polymarket's settings UI currently hands out relayer API keys (key +
-    // owning address, no HMAC) — the second auth scheme POST /submit accepts.
+    // owning address, no HMAC) - the second auth scheme POST /submit accepts.
     const env = baseEnv(RELAYER_CREDS)
     const res = await call('/builder-sign', env, {
       method: 'POST',
@@ -752,7 +752,7 @@ describe('Authorization: Bearer (the remote-signer envelope)', () => {
   })
 })
 
-describe('/search — the long-tail lookup', () => {
+describe('/search - the long-tail lookup', () => {
   afterEach(() => vi.unstubAllGlobals())
 
   /** Gamma's public-search answers with EVENTS wrapping their markets. */
@@ -773,7 +773,7 @@ describe('/search — the long-tail lookup', () => {
     expect(out[0].events).toEqual([{ slug: 'trump-dc-guard' }])
   })
 
-  it('drops resolved markets — search indexes them, the user cannot trade them', async () => {
+  it('drops resolved markets - search indexes them, the user cannot trade them', async () => {
     stubSearch({
       events: [{ slug: 'e', markets: [
         { id: '1', question: 'Already settled', closed: true },
@@ -821,7 +821,7 @@ describe('CORS preflight must allow the header the signing SDK actually sends', 
     // mode sends the token that way and no other, Authorization is not
     // CORS-safelisted, so Chrome blocked the offscreen document's fetch to
     // /builder-sign before it left the browser. The SDK then submitted to
-    // relayer-v2 with no builder headers and got a correct 401 — which the
+    // relayer-v2 with no builder headers and got a correct 401 - which the
     // popup reported as Polymarket refusing us over a missing builder key,
     // while that key sat on the Worker signing 200s for every non-browser
     // caller. Every layer was individually "fine".
@@ -843,7 +843,7 @@ describe('CORS preflight must allow the header the signing SDK actually sends', 
   })
 })
 
-describe('/privacy — the one page that must work without a credential', () => {
+describe('/privacy - the one page that must work without a credential', () => {
   it('serves the policy as HTML with no auth header at all', async () => {
     // The Chrome Web Store requires a live URL, and reviewers arrive with no
     // credential. Gating this behind checkAuth would have made the listing
@@ -861,7 +861,7 @@ describe('/privacy — the one page that must work without a credential', () => 
     expect(res.status).toBe(200)
   })
 
-  it('answers HEAD without a body — link checkers use it', async () => {
+  it('answers HEAD without a body - link checkers use it', async () => {
     const res = await call('/privacy', baseEnv(), { method: 'HEAD', auth: null })
     expect(res.status).toBe(200)
     expect(await res.text()).toBe('')

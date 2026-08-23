@@ -24,7 +24,7 @@ describe('polymarketSearchUrl', () => {
     expect(q).not.toContain('they')
   })
 
-  it('caps the query — a whole headline pasted into a search box matches nothing', () => {
+  it('caps the query - a whole headline pasted into a search box matches nothing', () => {
     const url = polymarketSearchUrl('one two three four five six seven eight nine ten eleven twelve')
     const q = decodeURIComponent(new URL(url).searchParams.get('q') ?? '')
     expect(q.split(' ')).toHaveLength(6)

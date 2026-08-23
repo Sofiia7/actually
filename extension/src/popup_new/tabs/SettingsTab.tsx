@@ -6,7 +6,7 @@ import { NeutralToggle } from '../components/NeutralToggle';
 import { LinkAction } from '../components/LinkAction';
 
 // =============================================================
-// SettingsTab — props
+// SettingsTab - props
 // =============================================================
 export interface SettingsValues {
   provider: string;
@@ -18,10 +18,10 @@ export interface SettingsValues {
   cacheAge?: string;
   version: string;
   contract: string;
-  /** Optional advanced fields — when present, render Worker URL/secret inputs. */
+  /** Optional advanced fields - when present, render Worker URL/secret inputs. */
   workerUrl?: string;
   workerSecret?: string;
-  /** True when the build did not bake a default Worker — forces Advanced open. */
+  /** True when the build did not bake a default Worker - forces Advanced open. */
   forceAdvanced?: boolean;
 }
 
@@ -30,14 +30,14 @@ export interface SettingsTabProps {
   onChange: (patch: Partial<SettingsValues>) => void;
   onTestConnection: () => void;
   onRefreshCache: () => void;
-  /** Optional slot rendered below Privacy — used to host the wallet
+  /** Optional slot rendered below Privacy - used to host the wallet
    *  connect status / disconnect button. */
   walletSlot?: React.ReactNode;
   /** Optional test-connection result text/status. */
   testStatus?: string;
 }
 
-// Kept aligned with what the extension actually supports — see
+// Kept aligned with what the extension actually supports - see
 // EmbeddingProvider in src/shared/types.ts.
 const PROVIDERS = [
   'Local (free, runs on your device)',
@@ -197,7 +197,7 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
               Share anonymous usage stats
             </Etched>
             <Etched size={11} weight={300} color="rgba(35,45,70,.5)">
-              No personal data — helps us measure usefulness.
+              No personal data - helps us measure usefulness.
             </Etched>
           </div>
           <NeutralToggle
@@ -277,7 +277,7 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
  * closes the popup (and its console) on focus loss, the offscreen document's
  * console is buried behind chrome://extensions → Inspect views, and no
  * external tool can attach to another extension's pages at all. So a failure
- * could only ever be described by its symptom — which is exactly how the same
+ * could only ever be described by its symptom - which is exactly how the same
  * bug got "fixed" more than once without being found. This makes the last
  * attempt readable and copyable in two clicks.
  */

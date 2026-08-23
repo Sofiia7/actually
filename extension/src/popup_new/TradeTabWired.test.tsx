@@ -91,12 +91,12 @@ beforeEach(() => {
   opsm.pollConnectViaOffscreen.mockResolvedValue({ stage: 'error', error: 'unknown_session' })
 })
 
-describe('TradeTabWired — wallet gating', () => {
+describe('TradeTabWired - wallet gating', () => {
   it('without a wallet: shows Connect and hides analytics', async () => {
     opsm.restoreWalletViaOffscreen.mockResolvedValue(null)
     render(<TradeTabWired {...props} />)
     expect(await screen.findByText(/Connect wallet/i)).toBeInTheDocument()
-    // Analytics are wallet-gated — must NOT render in the no-wallet state.
+    // Analytics are wallet-gated - must NOT render in the no-wallet state.
     expect(screen.queryByText('Orderbook')).toBeNull()
     expect(screen.queryByText(/7-day trend/i)).toBeNull()
   })
@@ -111,7 +111,7 @@ describe('TradeTabWired — wallet gating', () => {
   })
 })
 
-describe('TradeTabWired — selection is legible', () => {
+describe('TradeTabWired - selection is legible', () => {
   // Regression guard for the inverted toggle: `sidePillStyle(false)` used to
   // return {}, so the UNSELECTED pill inherited .glass-btn's blue accent while
   // the "selected" white overlay disappeared into the panel. The ticket then
@@ -127,7 +127,7 @@ describe('TradeTabWired — selection is legible', () => {
     const other = screen.getByRole('button', { name: otherName })
     expect(selected).toHaveAttribute('aria-pressed', 'true')
     expect(other).toHaveAttribute('aria-pressed', 'false')
-    // Neither pill may fall through to the stylesheet's default look — that
+    // Neither pill may fall through to the stylesheet's default look - that
     // fall-through is what let a later restyle of .glass-btn invert the pair.
     expect(pillBg(selected)).not.toBe('')
     expect(pillBg(other)).not.toBe('')
@@ -141,7 +141,7 @@ describe('TradeTabWired — selection is legible', () => {
     render(<TradeTabWired {...props} />)
     await screen.findByText('Orderbook')
 
-    // Default is LIMIT — and the form below agrees.
+    // Default is LIMIT - and the form below agrees.
     expect(screen.getByText(/Limit price \(per share/i)).toBeInTheDocument()
     expectSelection('Limit', 'Market')
 
@@ -172,9 +172,9 @@ describe('TradeTabWired — selection is legible', () => {
   })
 })
 
-describe('TradeTabWired — a connect survives the popup closing', () => {
+describe('TradeTabWired - a connect survives the popup closing', () => {
   it('rejoins an in-flight connect on reopen instead of showing Connect again', async () => {
-    // Chrome closes the popup on any focus loss — including the user
+    // Chrome closes the popup on any focus loss - including the user
     // switching to their wallet app to approve. The connect keeps running in
     // the offscreen document, but the popup used to come back with no way to
     // ask about it: a plain "Connect wallet" screen while the real flow sat
@@ -207,7 +207,7 @@ describe('TradeTabWired — a connect survives the popup closing', () => {
 
     render(<TradeTabWired {...props} />)
 
-    // Not the raw code — the thing to actually do about it.
+    // Not the raw code - the thing to actually do about it.
     expect(await screen.findByText(/Switch the wallet to the Polygon network/i)).toBeInTheDocument()
   })
 
@@ -245,12 +245,12 @@ describe('TradeTabWired — a connect survives the popup closing', () => {
   })
 })
 
-describe('TradeTabWired — dead session must not look live', () => {
+describe('TradeTabWired - dead session must not look live', () => {
   it('falls back to Connect when the offscreen side reports no_wallet', async () => {
     // The popup restores a wallet on mount and renders the whole ticket from
     // it, while every offscreen op re-derives the session independently. When
     // those disagreed, the result was a fully live-looking order form where
-    // each action answered `no_wallet` — the "подключила, а не работает
+    // each action answered `no_wallet` - the "подключила, а не работает
     // ничего" state.
     opsm.restoreWalletViaOffscreen.mockResolvedValue(wallet)
     opsm.getPositionsViaOffscreen.mockResolvedValue({ ok: false, error: 'no_wallet' })
@@ -282,7 +282,7 @@ describe('TradeTabWired — dead session must not look live', () => {
   })
 })
 
-describe('TradeTabWired — positions are ordered by what the user just did', () => {
+describe('TradeTabWired - positions are ordered by what the user just did', () => {
   const position = (over: Partial<Position>): Position => ({
     tokenId: 'tok',
     conditionId: 'cond',
@@ -328,14 +328,14 @@ describe('TradeTabWired — positions are ordered by what the user just did', ()
   })
 })
 
-describe('TradeTabWired — minimum order size', () => {
+describe('TradeTabWired - minimum order size', () => {
   it('blocks a below-minimum order before it costs a wallet signature', async () => {
     opsm.restoreWalletViaOffscreen.mockResolvedValue(wallet)
     render(<TradeTabWired {...props} />)
     await screen.findByText('Orderbook')
     await waitFor(() => expect(screen.getByRole('button', { name: /Place limit order/i })).toBeEnabled())
 
-    // $1 at the prefilled 42¢ ask buys 2.38 shares — under CLOB's 5-share
+    // $1 at the prefilled 42¢ ask buys 2.38 shares - under CLOB's 5-share
     // floor, which is exactly the order that came back as `clob_rejected`.
     const amount = screen.getByLabelText(/Amount \(USD/i)
     fireEvent.change(amount, { target: { value: '1' } })
@@ -363,7 +363,7 @@ describe('TradeTabWired — minimum order size', () => {
   })
 })
 
-describe('TradeTabWired — order ticket', () => {
+describe('TradeTabWired - order ticket', () => {
   it('toggles between Limit and Market', async () => {
     opsm.restoreWalletViaOffscreen.mockResolvedValue(wallet)
     render(<TradeTabWired {...props} />)
@@ -402,7 +402,7 @@ describe('TradeTabWired — order ticket', () => {
     await waitFor(() => expect(screen.getByRole('button', { name: /Place limit order/i })).toBeEnabled())
     await userEvent.click(screen.getByRole('button', { name: /Place limit order/i }))
     const signButton = screen.getByRole('button', { name: /Sign in wallet/i })
-    // Two synchronous click events, no await between them — the worst-case
+    // Two synchronous click events, no await between them - the worst-case
     // race a real fast double-click/double-tap can produce, before React
     // has any chance to re-render the button as disabled.
     fireEvent.click(signButton)
@@ -429,7 +429,7 @@ describe('TradeTabWired — order ticket', () => {
   })
 })
 
-describe('TradeTabWired — connect loop race', () => {
+describe('TradeTabWired - connect loop race', () => {
   it('a stale connect loop (after Cancel + reconnect) does not clobber the newer attempt\'s state', async () => {
     opsm.restoreWalletViaOffscreen.mockResolvedValue(null)
     opsm.getPositionsViaOffscreen.mockResolvedValue({ ok: true, positions: [] })
@@ -440,14 +440,14 @@ describe('TradeTabWired — connect loop race', () => {
     opsm.startConnectViaOffscreen.mockImplementation(async () => sessionIds[startCalls++])
 
     // Session s1 (the one the user cancels) stays pending until the test
-    // explicitly resolves it — modeling it still being in flight when the
+    // explicitly resolves it - modeling it still being in flight when the
     // user cancels and starts a fresh connect attempt.
     let resolveStaleS1Poll: ((v: { stage: string; error?: string }) => void) | undefined
     const staleS1PollPromise = new Promise<{ stage: string; error?: string }>((resolve) => {
       resolveStaleS1Poll = resolve
     })
     opsm.pollConnectViaOffscreen.mockImplementation(async (sessionId?: string) => {
-      // The mount-time probe carries no sessionId — answer it with "nothing
+      // The mount-time probe carries no sessionId - answer it with "nothing
       // in flight" so this test still starts from the Connect screen.
       if (sessionId === undefined) return { stage: 'error', error: 'unknown_session' }
       if (sessionId === 's1') return staleS1PollPromise
@@ -459,9 +459,9 @@ describe('TradeTabWired — connect loop race', () => {
     await screen.findByText(/preparing…/i) // s1's loop is now blocked awaiting the poll
 
     await userEvent.click(screen.getByText('Cancel'))
-    await userEvent.click(await screen.findByText(/Connect wallet/i)) // starts s2 — a new generation
+    await userEvent.click(await screen.findByText(/Connect wallet/i)) // starts s2 - a new generation
 
-    // s2 resolves immediately to 'done' — the wallet should connect.
+    // s2 resolves immediately to 'done' - the wallet should connect.
     await screen.findByText('Orderbook')
 
     // NOW let the orphaned s1 loop finally resolve with an error. Without
@@ -475,7 +475,7 @@ describe('TradeTabWired — connect loop race', () => {
   })
 })
 
-describe('TradeTabWired — portfolio refresh race', () => {
+describe('TradeTabWired - portfolio refresh race', () => {
   it('a slow cancel-triggered refresh does not clobber a faster concurrent manual Refresh', async () => {
     opsm.restoreWalletViaOffscreen.mockResolvedValue(wallet)
     const openOrder = {
@@ -494,7 +494,7 @@ describe('TradeTabWired — portfolio refresh race', () => {
     // Call 1 (initial mount refresh): resolves immediately with the order present.
     opsm.getOpenOrdersViaOffscreen.mockResolvedValueOnce({ ok: true, orders: [openOrder] })
     // Call 2 (triggered by Cancel's `finally` block): stays pending until
-    // explicitly resolved — models eventual-consistency lag where the
+    // explicitly resolved - models eventual-consistency lag where the
     // CLOB/data-api hasn't indexed the cancellation yet, so it still
     // reports the order as open.
     let resolveStaleRefresh: ((v: { ok: boolean; orders: unknown[] }) => void) | undefined
@@ -511,7 +511,7 @@ describe('TradeTabWired — portfolio refresh race', () => {
     const cancelLink = await screen.findByText('Cancel')
     await userEvent.click(cancelLink) // resolves fast, then kicks off call 2 (pending)
 
-    // Manual refresh while call 2 is still in flight — resolves faster (call 3).
+    // Manual refresh while call 2 is still in flight - resolves faster (call 3).
     const refreshLink = await screen.findByText(/^Refresh/i)
     await userEvent.click(refreshLink)
     await waitFor(() => expect(screen.getByText(/No open positions or resting orders/i)).toBeInTheDocument())
@@ -527,7 +527,7 @@ describe('TradeTabWired — portfolio refresh race', () => {
   })
 })
 
-describe('TradeTabWired — portfolio & cancel errors', () => {
+describe('TradeTabWired - portfolio & cancel errors', () => {
   it('shows a "couldn\'t refresh" error instead of silently rendering an empty portfolio', async () => {
     opsm.restoreWalletViaOffscreen.mockResolvedValue(wallet)
     opsm.getPositionsViaOffscreen.mockResolvedValue({ ok: false, error: 'rate_limited' })
@@ -540,7 +540,7 @@ describe('TradeTabWired — portfolio & cancel errors', () => {
   it('surfaces a rejected cancel instead of discarding the result', async () => {
     opsm.restoreWalletViaOffscreen.mockResolvedValue(wallet)
     // Explicit, since mockClear() in beforeEach doesn't reset a prior test's
-    // mockResolvedValue — this test needs a successful positions fetch so
+    // mockResolvedValue - this test needs a successful positions fetch so
     // the portfolio error banner from the previous test doesn't leak in.
     opsm.getPositionsViaOffscreen.mockResolvedValue({ ok: true, positions: [] })
     opsm.getOpenOrdersViaOffscreen.mockResolvedValue({
@@ -568,7 +568,7 @@ describe('TradeTabWired — portfolio & cancel errors', () => {
   })
 })
 
-describe('TradeTabWired — cancel double-click race', () => {
+describe('TradeTabWired - cancel double-click race', () => {
   it('a rapid double-click on "Cancel" only issues one cancel request (re-entrancy guard)', async () => {
     opsm.restoreWalletViaOffscreen.mockResolvedValue(wallet)
     opsm.getPositionsViaOffscreen.mockResolvedValue({ ok: true, positions: [] })
@@ -590,7 +590,7 @@ describe('TradeTabWired — cancel double-click race', () => {
   })
 })
 
-describe('TradeTabWired — match context (ТЗ §6.1)', () => {
+describe('TradeTabWired - match context (ТЗ §6.1)', () => {
   it('shows the article headline as context when provided', async () => {
     opsm.restoreWalletViaOffscreen.mockResolvedValue(null)
     render(<TradeTabWired {...props} articleHeadline="Iran enriches uranium to 60%" />)

@@ -24,7 +24,7 @@ const ARTICLES=[
 ]
 
 // Markets matching these regexes are word-association "games" rather than real
-// outcome markets — they always dominate political news matches with high
+// outcome markets - they always dominate political news matches with high
 // surface similarity but offer no real signal.
 const NOISE_PATTERNS = [
   /\bwill\b.+\bsay\b\s*["']/i,

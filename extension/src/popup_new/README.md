@@ -1,4 +1,4 @@
-# Actually — Popup (matte ice glass)
+# Actually - Popup (matte ice glass)
 
 Drop-in React/TSX implementation of the popup design.
 
@@ -55,16 +55,16 @@ import { Popup } from './Popup';
 <Popup />
 ```
 
-Popup is fixed-width 360px. Mount it anywhere — it positions itself absolutely from its container's top/right by default; pass `style` to override.
+Popup is fixed-width 360px. Mount it anywhere - it positions itself absolutely from its container's top/right by default; pass `style` to override.
 
 ## Design tokens
 
 The palette lives in `colors.ts` as 5 RGB stops (deep-blue → blue → white →
-red → deep-red, midpoint at 50%). Don't add greens, peaches or ambers —
+red → deep-red, midpoint at 50%). Don't add greens, peaches or ambers -
 the system is intentionally two-tone with white at the neutral point.
 
 `frostRgb(pct)` is the cursor-trail tint (cold-blue / warm-red / white).
-Currently the trail itself is uncolored — `--frost-rgb` is plumbed through
+Currently the trail itself is uncolored - `--frost-rgb` is plumbed through
 so you can re-enable temperature tint later if you want.
 
 ## Per-tab state contracts
@@ -91,7 +91,7 @@ type HistoryState =
 
 ## What's NOT included
 
-- Real data fetching / Worker calls — pass results via props
+- Real data fetching / Worker calls - pass results via props
 - Persistence (settings live in local state for the demo only)
 - Trade execution wiring
-- i18n — strings are hard-coded English
+- i18n - strings are hard-coded English

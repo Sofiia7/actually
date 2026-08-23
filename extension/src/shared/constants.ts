@@ -64,7 +64,7 @@ export const MAX_TRADE_LOG_ITEMS = 100
  *
  * FALSE today, and deliberately so: Polymarket's relayer requires builder
  * auth headers (POLY_BUILDER_*) on POST /submit, generated from builder API
- * credentials — a different credential from the builder CODE this build
+ * credentials - a different credential from the builder CODE this build
  * bakes in. Verified against the live endpoint 2026-08-17: an
  * unauthenticated submit returns 401 {"error":"invalid authorization"}.
  *
@@ -75,7 +75,7 @@ export const MAX_TRADE_LOG_ITEMS = 100
  * polymarket.com, where the same payout is one click and no signature.
  *
  * Flip to true once the Worker signs builder headers on the extension's
- * behalf (the credential must NOT be baked into the client — it would be
+ * behalf (the credential must NOT be baked into the client - it would be
  * public). background/redeem.ts is already written and tested for that day.
  */
 export const IN_APP_REDEEM_ENABLED = false
@@ -87,7 +87,7 @@ export const ALARM_NAMES = {
 
 /**
  * Our app-wide builderCode, baked at build time via Vite. Used by trade.ts
- * when constructing CLOB orders. Read-only for the user — shown for
+ * when constructing CLOB orders. Read-only for the user - shown for
  * transparency in Settings → About, but not editable.
  *
  * Set BUILDER_CODE in the build env (.env / CI) to your bytes32 from
@@ -119,7 +119,7 @@ export const GEO_FAIL_OPEN: boolean = (() => {
 
 /**
  * Default Worker URL + secret, baked at build time. Lets the normie flow work
- * with zero setup — users never have to paste anything into Settings. Power
+ * with zero setup - users never have to paste anything into Settings. Power
  * users can still override via Settings (kept under "Advanced" toggle).
  *
  * For production CWS builds, set VITE_WORKER_URL and VITE_WORKER_SECRET in
@@ -137,7 +137,7 @@ export const DEFAULT_SETTINGS: Settings = {
   workerUrl: DEFAULT_WORKER_URL,
   workerSecret: DEFAULT_WORKER_SECRET,
   // Opt-in, not opt-out (changed 2026-07-20). Product works identically
-  // either way — nothing here gates on telemetry — and events are tied to a
+  // either way - nothing here gates on telemetry - and events are tied to a
   // persistent per-install id alongside trading behavior (wallet_connect_*,
   // order_*), which warrants asking first rather than tracking by default
   // and hoping users find Settings → "share anonymous stats" to turn it off.
@@ -155,14 +155,14 @@ export const POLYMARKET_BASE_URL = 'https://polymarket.com/event'
 
 /**
  * Hard backstop on a single order's USD notional, enforced in trade.ts's
- * placeOrder() (not just the UI — a belt-and-suspenders check, same spirit
+ * placeOrder() (not just the UI - a belt-and-suspenders check, same spirit
  * as the mcp-server's own MAX_ORDER_USD). A fat-fingered amount (typing
  * "10000" instead of "100") still has to clear the wallet's own signing
  * confirmation, but that confirmation doesn't reliably surface the USD
  * notional in a way a user would actually notice mid-click. Mirrors the
  * mcp-server's default of $100 for consistency across the product; there is
  * deliberately no in-app toggle to raise it (same reasoning as the
- * server-side control) — an operator who needs a higher ceiling edits this
+ * server-side control) - an operator who needs a higher ceiling edits this
  * constant and rebuilds.
  */
 export const MAX_ORDER_USD = 100

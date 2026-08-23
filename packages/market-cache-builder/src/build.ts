@@ -2,20 +2,20 @@
  * Precompute the market cache: fetch active Polymarket markets, embed each
  * question with the local MiniLM model, and PUT the result to the worker's
  * /market-cache endpoint. Run on a cron cadence (~30 min, matching the
- * extension's own CACHE_TTL_MINUTES) on infrastructure we control — this
+ * extension's own CACHE_TTL_MINUTES) on infrastructure we control - this
  * does NOT run inside the Cloudflare Worker (Workers can't run ONNX).
  *
  * Required env:
  *   WORKER_URL                 e.g. https://actually-api.example.workers.dev
  *   WORKER_SHARED_SECRET       same public-by-design secret the extension uses
- *   MARKET_CACHE_WRITE_SECRET  private — never baked into any client (not
+ *   MARKET_CACHE_WRITE_SECRET  private - never baked into any client (not
  *                              required in --dry-run mode, since nothing is PUT)
  *
  * Usage:
  *   npm run build-cache -w @actually/market-cache-builder
  *   npm run build-cache -w @actually/market-cache-builder -- --dry-run
  *     (writes the blob to ./market-cache-blob.json instead of PUTing to the
- *     worker — for inspecting output without touching the live cache)
+ *     worker - for inspecting output without touching the live cache)
  */
 import { writeFileSync } from 'node:fs'
 import { fetchActiveMarkets, LOCAL_MODEL_ID, LOCAL_MODEL_REVISION, MAX_MARKETS_CACHE } from '@actually/core'
@@ -33,7 +33,7 @@ function requireEnv(name: string): string {
 /**
  * Retries a transient failure (HuggingFace 429s under cron-job load being the
  * one actually observed in prod) with a short backoff. Model loading is a
- * one-shot network fetch with no retry of its own in transformers.js — a
+ * one-shot network fetch with no retry of its own in transformers.js - a
  * single rate-limit response otherwise fails the entire cron run.
  */
 async function withRetry<T>(fn: () => Promise<T>, attempts = 3, baseDelayMs = 2000): Promise<T> {
@@ -54,7 +54,7 @@ async function withRetry<T>(fn: () => Promise<T>, attempts = 3, baseDelayMs = 20
 }
 
 async function main() {
-  // Step tracker — a single catch below logs which stage failed, so an
+  // Step tracker - a single catch below logs which stage failed, so an
   // unattended cron job's log has one self-sufficient diagnostic line
   // instead of a bare, context-free stack trace.
   let step = 'init'
@@ -73,17 +73,17 @@ async function main() {
     step = 'load_model'
     const { pipeline, env } = await import('@xenova/transformers')
     env.allowLocalModels = false
-    // transformers.js's own default cacheDir is NOT cwd-relative — env.js
+    // transformers.js's own default cacheDir is NOT cwd-relative - env.js
     // derives it from `import.meta.url` of the library's OWN module file, so
     // it resolves to node_modules/@xenova/transformers/.cache/ regardless of
     // where this script runs from. The CI workflow's `actions/cache@v4` step
     // caches `packages/market-cache-builder/.cache` (a path nothing ever
-    // wrote to) while `npm ci` reinstalls fresh node_modules every run — so
+    // wrote to) while `npm ci` reinstalls fresh node_modules every run - so
     // the model was silently being re-downloaded from HuggingFace on every
     // single cron execution, not just on a cache-key change. Setting this
     // explicitly makes the actual cache location match what CI persists.
     env.cacheDir = './.cache'
-    // Pinned revision (not 'main', a mutable ref) — see LOCAL_MODEL_REVISION's
+    // Pinned revision (not 'main', a mutable ref) - see LOCAL_MODEL_REVISION's
     // doc comment in packages/core/src/constants.ts.
     const extractor = await withRetry(() =>
       pipeline('feature-extraction', LOCAL_MODEL_ID, { revision: LOCAL_MODEL_REVISION }),

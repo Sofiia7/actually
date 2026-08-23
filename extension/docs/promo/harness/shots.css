@@ -1,5 +1,5 @@
 /* ============================================================
-   CWS screenshot harness — shared styles
+   CWS screenshot harness - shared styles
    ------------------------------------------------------------
    Popup styles are a 1:1 static replication of the real popup:
      extension/src/popup_new/styles.css        (.label, .glass-btn,
@@ -9,7 +9,7 @@
    Self-contained: font + icon live next to this file. No CDNs.
    ============================================================ */
 
-/* Marck Script — one @font-face per subset, unicode-range values mirrored
+/* Marck Script - one @font-face per subset, unicode-range values mirrored
    from extension/src/popup_new/fonts.css (Google Fonts CSS2 response). */
 /* cyrillic */
 @font-face {
@@ -78,7 +78,7 @@ body.frame {
 /* ---------- Article page shell -------------------------------- */
 .page { position: absolute; top: 40px; left: 0; right: 0; bottom: 0; overflow: hidden; }
 
-/* ===== Publication A — The Capitol Dispatch (politics) ======== */
+/* ===== Publication A - The Capitol Dispatch (politics) ======== */
 .page.pub-a { background: #fbfaf7; }
 .mast-a { text-align: center; padding: 14px 0 10px; border-bottom: 3px double #22211e; margin: 0 40px; }
 .mast-a .name {
@@ -121,9 +121,9 @@ body.frame {
 .most-a ol { margin: 10px 0 0; padding: 0 0 0 26px; }
 .most-a li { font: 600 14.5px/1.4 Georgia, serif; color: #26241f; margin-bottom: 11px; }
 
-/* ===== Publication B — Meridian Business Daily (economy) ====== */
+/* ===== Publication B - Meridian Business Daily (economy) ====== */
 .page.pub-b { background: #f5f6f8; }
-/* Light masthead (was dark navy) — the popup's glass header sits on top of
+/* Light masthead (was dark navy) - the popup's glass header sits on top of
    this band on shots 3/4/6 and needs a light backdrop for contrast. */
 .mast-b {
   background: #fff; color: #0c1e3d; padding: 13px 44px;
@@ -153,7 +153,7 @@ body.frame {
 .art-b p { font: 400 16px/1.68 Georgia, serif; color: #1d2739; margin: 0 0 16px; }
 .rail-b { width: 430px; flex: 0 0 auto; }
 /* Light card on purpose: this widget sits behind the popup's glass on
-   shots 3/4/6 — a dark background here made the popup's top third
+   shots 3/4/6 - a dark background here made the popup's top third
    unreadable through the blur. */
 .monitor {
   border-radius: 8px; overflow: hidden; position: relative;
@@ -174,7 +174,7 @@ body.frame {
 .mini-b li span { display: block; font: 500 11px 'Segoe UI', sans-serif; color: #7b869c; margin-top: 3px; letter-spacing: .06em; }
 
 /* ============================================================
-   POPUP — 1:1 replication of extension/src/popup_new
+   POPUP - 1:1 replication of extension/src/popup_new
    ============================================================ */
 .popup {
   position: absolute; top: 48px; right: 14px; width: 360px; z-index: 10;
@@ -247,7 +247,7 @@ body.frame {
 }
 .icec { position: relative; z-index: 1; }
 
-/* ProbDot.tsx — colors inline per dot */
+/* ProbDot.tsx - colors inline per dot */
 .dot { border-radius: 50%; display: inline-block; flex: 0 0 auto; }
 
 /* GlassButton.tsx + styles.css .glass-btn (rest state) */

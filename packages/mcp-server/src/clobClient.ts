@@ -1,5 +1,5 @@
 /**
- * Polymarket CLOB v2 client — built around `@polymarket/clob-client-v2`.
+ * Polymarket CLOB v2 client - built around `@polymarket/clob-client-v2`.
  *
  * Mirrors extension/src/background/clob.ts's makeClient / signBuyOrder /
  * signMarketBuyOrder / submitSignedOrder, but parameterized on
@@ -8,7 +8,7 @@
  * mcp-server's own baked `BUILDER_CODE` (./config, Task 16) instead of the
  * extension's `import.meta.env`-derived one.
  *
- * There is no separate WalletConnect flow here — the signer's own EOA is all
+ * There is no separate WalletConnect flow here - the signer's own EOA is all
  * there is, so the Polymarket Safe (funder) address is derived locally via
  * `deriveSafeAddress` rather than looked up or passed in externally.
  */
@@ -84,7 +84,7 @@ export interface BuyOrderArgs {
   negRisk?: boolean
   /**
    * Explicit tick size from the Gamma market record (e.g. "0.01" or
-   * "0.001"). Optional — falls back to negRisk-based default below.
+   * "0.001"). Optional - falls back to negRisk-based default below.
    * Hardcoding the wrong tick gets the order rejected as `invalid_tick`,
    * so prefer to pass the real value.
    */
@@ -99,7 +99,7 @@ export interface BuyOrderArgs {
 export async function signBuyOrder(client: ClobClient, args: BuyOrderArgs): Promise<unknown> {
   if (!BUILDER_CODE) throw new Error('builder_code_not_configured')
   // SDK types tickSize as a closed union literal ('0.1' | '0.01' | ...). We
-  // accept the string from Gamma at runtime — if Gamma ever returns an
+  // accept the string from Gamma at runtime - if Gamma ever returns an
   // unsupported value the SDK rejects with a clear error. The cast here is
   // to the SDK's CreateOrderOptions shape since v2 marks the second param
   // as Partial<...>.
@@ -119,7 +119,7 @@ export interface MarketBuyOrderArgs {
   sizeUsd: number
   /**
    * Worst-acceptable price cap (0..1). Passed to the SDK as the marketable
-   * limit so a FOK can't fill above it — our slippage guard. Omit for an
+   * limit so a FOK can't fill above it - our slippage guard. Omit for an
    * uncapped market take.
    */
   capPrice?: number
@@ -158,7 +158,7 @@ export async function signMarketBuyOrder(client: ClobClient, args: MarketBuyOrde
  * Mirrors extension/src/background/clob.ts. Two distinct failure shapes have
  * to be read: a *logical* rejection comes back HTTP 200 as
  * `{ success: false, errorMsg }`, but a rejection the CLOB answers with a
- * non-2xx status never sets either field — we don't enable `throwOnError`, so
+ * non-2xx status never sets either field - we don't enable `throwOnError`, so
  * clob-client-v2's errorHandling() resolves it to `{ error, status }`.
  * Reading only `errorMsg` collapsed every one of those (below-minimum size,
  * insufficient balance/allowance, bad tick) into a bare "clob_rejected",
@@ -170,7 +170,7 @@ export async function submitSignedOrder(
   orderType: OrderType = OrderType.GTC,
 ): Promise<{ success: boolean; orderId?: string; error?: string }> {
   try {
-    // SDK type is `SignedOrder` — we passed it through `unknown` to keep the
+    // SDK type is `SignedOrder` - we passed it through `unknown` to keep the
     // sign/submit boundary explicit. Cast back here.
     const res = (await client.postOrder(
       signed as Parameters<ClobClient['postOrder']>[0],
@@ -178,7 +178,7 @@ export async function submitSignedOrder(
     )) as
       // `status` is typed `string` on the SDK's success shape (e.g. "matched"),
       // but the axios-error shape puts the numeric HTTP status in the same
-      // field — hence the union.
+      // field - hence the union.
       | { success?: boolean; errorMsg?: string; orderID?: string; error?: unknown; status?: number | string }
       | undefined
     if (!res) return { success: false, error: 'empty_response' }
@@ -199,7 +199,7 @@ function clobErrorText(res: {
   if (typeof res.errorMsg === 'string' && res.errorMsg.trim() !== '') return res.errorMsg
   if (typeof res.error === 'string' && res.error.trim() !== '') return res.error
   // Only stringify a STRUCTURED error that stringifies to something readable.
-  // An empty string or bare {} would otherwise surface as '""' / '{}' — worse
+  // An empty string or bare {} would otherwise surface as '""' / '{}' - worse
   // than the status fallback below.
   if (res.error !== undefined && res.error !== null && typeof res.error !== 'string') {
     const s = JSON.stringify(res.error)
@@ -220,7 +220,7 @@ export interface SellOrderArgs {
   tickSize?: string
 }
 
-/** Sign-only step for a resting (GTC) SELL — the position-closing mirror of signBuyOrder. */
+/** Sign-only step for a resting (GTC) SELL - the position-closing mirror of signBuyOrder. */
 export async function signSellOrder(client: ClobClient, args: SellOrderArgs): Promise<unknown> {
   if (!BUILDER_CODE) throw new Error('builder_code_not_configured')
   const opts = {
@@ -235,7 +235,7 @@ export async function signSellOrder(client: ClobClient, args: SellOrderArgs): Pr
 
 export interface MarketSellOrderArgs {
   tokenId: string
-  /** Shares to sell — the SDK's `amount` field means USD for BUY market orders but SHARES for SELL. */
+  /** Shares to sell - the SDK's `amount` field means USD for BUY market orders but SHARES for SELL. */
   sizeShares: number
   /** Worst-acceptable price floor (0..1) so a FOK can't fill below it. */
   capPrice?: number
@@ -243,7 +243,7 @@ export interface MarketSellOrderArgs {
   tickSize?: string
 }
 
-/** Sign-only step for a MARKET (FOK) SELL — the position-closing mirror of signMarketBuyOrder. */
+/** Sign-only step for a MARKET (FOK) SELL - the position-closing mirror of signMarketBuyOrder. */
 export async function signMarketSellOrder(client: ClobClient, args: MarketSellOrderArgs): Promise<unknown> {
   if (!BUILDER_CODE) throw new Error('builder_code_not_configured')
   const opts = {
@@ -267,7 +267,7 @@ export async function signMarketSellOrder(client: ClobClient, args: MarketSellOr
  * Cancel a single resting order by id. Mirrors extension/src/background/clob.ts.
  *
  * The SDK's `cancelOrder` never throws on its own for a non-2xx response (our
- * `makeClient` doesn't set `throwOnError`) — a rejected/HTTP-failed cancel
+ * `makeClient` doesn't set `throwOnError`) - a rejected/HTTP-failed cancel
  * resolves to `{ error, status }` (from clob-client-v2's axios error
  * handling), not an exception. And a *successful* cancel has no `success`
  * field at all: the real CLOB response shape is `{ canceled: string[],
@@ -290,7 +290,7 @@ export async function cancelOrder(client: ClobClient, orderId: string): Promise<
       return { success: true }
     }
     // Ambiguous response (neither confirmed canceled nor explicitly rejected)
-    // — fail closed rather than silently report success on an unrecognized shape.
+    // - fail closed rather than silently report success on an unrecognized shape.
     return { success: false, error: 'cancel_unconfirmed' }
   } catch (err) {
     return { success: false, error: String(err) }

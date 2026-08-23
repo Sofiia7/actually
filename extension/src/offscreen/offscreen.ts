@@ -1,10 +1,10 @@
 /**
- * Offscreen document — heavy-ops worker.
+ * Offscreen document - heavy-ops worker.
  *
  * Lives at chrome-extension://<id>/src/offscreen/offscreen.html, kept
  * alive by the Service Worker via chrome.offscreen API. Full Web API
  * (WASM, WSS, IndexedDB) is available here, unrestricted by news-site
- * CSP — which is critical for transformers.js and WalletConnect.
+ * CSP - which is critical for transformers.js and WalletConnect.
  *
  * All messages arriving at this document carry `target: 'offscreen'`
  * (the SW filters by that tag). Responses go back via sendResponse.
@@ -39,12 +39,12 @@ import { installStorageBridge } from './storage-bridge'
 import { runningInOffscreenDocument } from './context'
 
 /**
- * THIS GUARD IS LOAD-BEARING — see ./context.ts for the full explanation.
+ * THIS GUARD IS LOAD-BEARING - see ./context.ts for the full explanation.
  *
  * Short version: this module registers a global chrome.runtime.onMessage
  * listener at import time, and the bundler also puts its chunk in the popup
  * page and the service worker. Since `routeToOffscreen` forwards by broadcast,
- * every context holding this listener handled every request — so every
+ * every context holding this listener handled every request - so every
  * offscreen operation ran once per context. The rejoin guard in
  * OS_START_CONNECT could never catch that: `sessions` and `currentConnectId`
  * are module-level, so each context had its own empty copy.
@@ -81,7 +81,7 @@ const sessions = new Map<string, ConnectSession>()
  * sessionId.
  *
  * It loses it constantly: Chrome closes an extension popup on any focus loss,
- * including the user switching to their wallet app to approve — and the
+ * including the user switching to their wallet app to approve - and the
  * sessionId lived only in the popup's component state. The connect itself
  * keeps running here, so without this the popup came back with no way to ask
  * about it, showed "Connect wallet" as if nothing had happened, and a second
@@ -142,7 +142,7 @@ interface ForwardEnvelope {
   payload: OffscreenRequest
 }
 
-// See IS_OFFSCREEN_DOC above — registering this anywhere else makes every
+// See IS_OFFSCREEN_DOC above - registering this anywhere else makes every
 // offscreen operation run twice.
 if (IS_OFFSCREEN_DOC) {
   chrome.runtime.onMessage.addListener((env: unknown, _sender, sendResponse) => {
@@ -163,7 +163,7 @@ async function handle(msg: OffscreenRequest): Promise<OffscreenResponse> {
       return { type: 'OS_PONG' }
 
     case 'OS_RUN_MATCH': {
-      // Step tracker — surfaces which line threw if anything blows up,
+      // Step tracker - surfaces which line threw if anything blows up,
       // so users without DevTools can still report a useful error.
       let step = 'init'
       try {
@@ -191,7 +191,7 @@ async function handle(msg: OffscreenRequest): Promise<OffscreenResponse> {
           cacheNow = await getMarketCache()
         }
         step = 'find_match'
-        // Long-tail search, only with explicit consent — the query is built
+        // Long-tail search, only with explicit consent - the query is built
         // from the user's headline and leaves the device, which is precisely
         // what the local-embedding path promises never to do.
         const searchFallback = settings.searchFallbackEnabled
@@ -212,8 +212,8 @@ async function handle(msg: OffscreenRequest): Promise<OffscreenResponse> {
         })
         const match = attempt.match
         if (!match) {
-          // The counters stay — they are how an empty cache is told apart
-          // from a genuine miss — but they go to the console and telemetry,
+          // The counters stay - they are how an empty cache is told apart
+          // from a genuine miss - but they go to the console and telemetry,
           // NOT into the sentence the user reads. `nearest` is what the UI
           // needs: naming the market we came closest to explains the failure
           // in a way "embedded=789" never could.
@@ -231,7 +231,7 @@ async function handle(msg: OffscreenRequest): Promise<OffscreenResponse> {
             scored: attempt.scored,
           }
         }
-        // Live price refresh (non-fatal). Use the YES token explicitly —
+        // Live price refresh (non-fatal). Use the YES token explicitly -
         // Polymarket does not guarantee outcomes[0] is "Yes" (some markets
         // list "No" first), and clobTokenIds is parallel to outcomes. Hitting
         // [0] blindly can fetch and display the NO price as if it were YES.
@@ -299,12 +299,12 @@ async function handle(msg: OffscreenRequest): Promise<OffscreenResponse> {
     }
 
     case 'OS_DISCONNECT_WALLET': {
-      // Best-effort session lookup — if the WC client can't even initialize
+      // Best-effort session lookup - if the WC client can't even initialize
       // (relay unreachable, offline, corrupted WC storage), `w` stays null
       // but disconnectWallet() below still runs and wipes local storage.
       // Without this guard, a rehydrateWallet() throw would propagate out of
       // this handler entirely and the wipe the user asked for would never
-      // happen — see disconnectWallet's doc comment in trade.ts.
+      // happen - see disconnectWallet's doc comment in trade.ts.
       let w: WalletState | null = null
       try {
         w = await rehydrateWallet()
@@ -473,7 +473,7 @@ async function handle(msg: OffscreenRequest): Promise<OffscreenResponse> {
       }
       // CLOB prices-history takes an explicit window (startTs/endTs, unix
       // seconds) + `fidelity` (bucket minutes). Do NOT also pass `interval`
-      // — that's a relative range and conflicts with an explicit window.
+      // - that's a relative range and conflicts with an explicit window.
       const nowSec = Math.floor(Date.now() / 1000)
       const params = new URLSearchParams({
         market: msg.marketIdOrTokenId,
@@ -496,12 +496,12 @@ async function handle(msg: OffscreenRequest): Promise<OffscreenResponse> {
     case 'OS_ORDERBOOK_SNAPSHOT': {
       const w = await rehydrateWallet()
       // Distinct from a genuinely empty book (see OrderbookSnapshot's own
-      // shape below) — an OS_ERROR here lets the UI tell "we couldn't
+      // shape below) - an OS_ERROR here lets the UI tell "we couldn't
       // confirm your wallet session for this lookup" apart from "this
       // market really has no resting asks right now". Returning a
       // same-shaped-but-null book for both (the old behavior) made a
       // transient wallet-restore hiccup indistinguishable from real
-      // illiquidity — see restoreWallet()'s doc comment in trade.ts.
+      // illiquidity - see restoreWallet()'s doc comment in trade.ts.
       if (!w) return { type: 'OS_ERROR', error: 'wallet_not_restored' }
       const snap = await getOrderbookSnapshot(w, msg.tokenId)
       // Walk the book for a depth-based fill estimate when the UI passes the

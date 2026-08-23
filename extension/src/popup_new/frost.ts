@@ -1,11 +1,11 @@
 /**
- * Frost-on-glass texture generator (presentational only — no app logic, no
+ * Frost-on-glass texture generator (presentational only - no app logic, no
  * deps). Paints a static needle-crystal pattern once to a canvas and exposes
  * it as the CSS var `--frost-tex`. The `.frost-fill` layer (styles.css) renders
  * it; `GlassSurface` reveals it under the cursor.
  *
  * Ported to typed ESM from the vanilla `frost.js` drop. The auto-build/global
- * wrapper was removed — call buildFrostTexture() explicitly at popup startup
+ * wrapper was removed - call buildFrostTexture() explicitly at popup startup
  * (see src/popup/main.tsx). GlassSurface already does pointer tracking, so the
  * separate attachFrostTracking() helper from the drop is intentionally omitted.
  */
@@ -128,14 +128,14 @@ export function ensureFrostTexture(opts: FrostOptions = {}): void {
       return
     }
   } catch {
-    /* localStorage unavailable — fall through and generate */
+    /* localStorage unavailable - fall through and generate */
   }
   const url = buildFrostTexture(opts)
   if (url) {
     try {
       localStorage.setItem(FROST_CACHE_KEY, `url("${url}")`)
     } catch {
-      /* quota / unavailable — the texture is already applied, just not cached */
+      /* quota / unavailable - the texture is already applied, just not cached */
     }
   }
 }

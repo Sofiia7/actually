@@ -59,7 +59,7 @@ describe('checkNews', () => {
   })
 
   it('sets lowConfidence=true when the top match clears the floor but not the threshold', async () => {
-    // [0.6, 0.8, 0] is a unit vector; cosine against [1,0,0] is exactly 0.6 —
+    // [0.6, 0.8, 0] is a unit vector; cosine against [1,0,0] is exactly 0.6 -
     // above the 0.5 floor but below the 0.8 threshold (same fixture used in
     // @actually/core's matcher.test.ts to establish this exact boundary).
     const mkt = fakeMarket({ vec: [0.6, 0.8, 0] })
@@ -87,7 +87,7 @@ describe('checkNews', () => {
   })
 })
 
-describe('checkNews — a miss has to be actionable for an agent', () => {
+describe('checkNews - a miss has to be actionable for an agent', () => {
   const embedder = { embed: async () => new Float32Array([1, 0, 0]) }
 
   it('names what it came closest to, and how many it compared', async () => {

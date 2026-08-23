@@ -6,13 +6,13 @@
  *
  * We resolve the canonical URLs through the CSS2 stylesheet endpoint
  * (rather than hardcoding woff2 paths) so font version bumps don't
- * silently 404 us. The files are then bundled into the .crx — nothing
+ * silently 404 us. The files are then bundled into the .crx - nothing
  * fetched at runtime.
  *
  * IMPORTANT: Google's CSS2 response contains one @font-face block PER
  * SUBSET (cyrillic, latin, ...), each with its own woff2 URL and
  * unicode-range. Downloading only the first block ships a font that
- * covers only that subset's characters — this exact bug shipped a
+ * covers only that subset's characters - this exact bug shipped a
  * cyrillic-only Marck Script until 2026-08-02, so every Latin string in
  * the popup silently fell back to the system cursive font (Comic Sans
  * on Windows). All subsets must be fetched, and fonts.css must declare
@@ -69,7 +69,7 @@ if (subsets.length === 0) {
 if (!subsets.some((s) => s.label === 'latin')) {
   console.error(
     `Subsets returned (${subsets.map((s) => s.label).join(', ')}) do not ` +
-      'include "latin" — refusing to write a font set that cannot render ' +
+      'include "latin" - refusing to write a font set that cannot render ' +
       "the extension's own UI strings.",
   )
   process.exit(1)
@@ -90,7 +90,7 @@ for (const s of subsets) {
 
 console.log(`\nDone. Wrote ${subsets.length} subset files to public/fonts/.`)
 console.log(
-  'Keep src/popup_new/fonts.css in sync — one @font-face per subset:\n',
+  'Keep src/popup_new/fonts.css in sync - one @font-face per subset:\n',
 )
 for (const s of subsets) {
   console.log(`/* ${s.label} */

@@ -3,7 +3,7 @@
  *
  * Redeeming goes through Polymarket's relayer, which requires builder API
  * credentials. Those live on the Worker (see worker/index.ts's /builder-sign
- * — they must never ship inside the extension), so whether the feature works
+ * - they must never ship inside the extension), so whether the feature works
  * is a property of the deployment, not of the build. Asking the Worker means
  * the button appears the moment the credentials are configured, with no new
  * release.

@@ -4,7 +4,7 @@ export interface EtchedProps {
   children: React.ReactNode;
   size?: number;
   weight?: 200 | 300 | 400 | 500;
-  /** Kept for API compat — unused: the system UI font stack renders italic
+  /** Kept for API compat - unused: the system UI font stack renders italic
    *  fine, but nothing in this design currently calls for it. */
   italic?: boolean;
   family?: 'sans' | 'serif';
@@ -12,7 +12,7 @@ export interface EtchedProps {
   style?: React.CSSProperties;
 }
 
-/** Etched text — system UI font throughout, with a subtle white top
+/** Etched text - system UI font throughout, with a subtle white top
  *  highlight that suggests the glyphs are pressed into glass. `weight`
  *  is a real variable-weight axis on this font stack (unlike the prior
  *  single-style cursive), so it now actually renders. */

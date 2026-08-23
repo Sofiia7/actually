@@ -80,7 +80,7 @@ describe('the no-match screen offers the long-tail search where it matters', () 
   })
 
   it('says what turning it on sends, in the same breath as the button', () => {
-    // The click IS the consent, so the cost has to be legible at the click —
+    // The click IS the consent, so the cost has to be legible at the click -
     // not buried in a privacy policy the user is not reading right now.
     render(<CheckTab state={{ ...miss, offerSearch: true }} onStart={noop} onBack={noop} onEnableSearch={noop} />)
     expect(screen.getByText(/six words from the headline/i)).toBeInTheDocument()
@@ -99,7 +99,7 @@ describe('the no-match screen offers the long-tail search where it matters', () 
     expect(screen.queryByRole('button', { name: /Search Polymarket too/i })).not.toBeInTheDocument()
   })
 
-  it('lets the user decline — an offer that reappears forever is a nag', async () => {
+  it('lets the user decline - an offer that reappears forever is a nag', async () => {
     const onDismissSearchOffer = vi.fn()
     render(
       <CheckTab

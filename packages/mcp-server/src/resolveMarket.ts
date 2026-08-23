@@ -7,10 +7,10 @@ export interface ResolveMarketDeps {
 }
 
 /**
- * Single lookup path shared by get_market/place_order/sell_order — cache
+ * Single lookup path shared by get_market/place_order/sell_order - cache
  * first, Gamma fallback on miss. Centralizing this means a marketId a caller
  * got from check_news's alternatives (which aren't guaranteed to be in the
- * cache either — they come FROM the cache, so they always are, but a
+ * cache either - they come FROM the cache, so they always are, but a
  * user-supplied marketId from outside the flow might not be) resolves the
  * same way everywhere.
  */

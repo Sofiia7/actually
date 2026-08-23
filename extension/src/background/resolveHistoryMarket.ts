@@ -7,7 +7,7 @@ export type ResolveHistoryMarketResult =
   | { ok: false; error: 'not_found' | 'closed' }
 
 /**
- * Resolve a market by id for History's "trade this again" flow — cache first
+ * Resolve a market by id for History's "trade this again" flow - cache first
  * (fast, no network), then a direct Gamma fetch for a market that's since
  * fallen outside the cache's top-N-by-volume cut. Distinct from the Check
  * flow's matcher: there's no article text to score against here, the user

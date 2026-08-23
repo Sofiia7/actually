@@ -1,8 +1,8 @@
 // =============================================================
 // Probability color system. Two-tone with WHITE at midpoint:
-//   0%   = deep saturated blue  (cold market — won't happen)
+//   0%   = deep saturated blue  (cold market - won't happen)
 //  50%   = near-white             (uncertain)
-// 100%   = deep saturated red    (hot market — will happen)
+// 100%   = deep saturated red    (hot market - will happen)
 // No greens, peaches, ambers, creams. Just saturation.
 // =============================================================
 
@@ -46,7 +46,7 @@ export const toneDark = (pct: number, a = 1) => {
   return `rgba(${Math.round(c[0] * 0.45)},${Math.round(c[1] * 0.45)},${Math.round(c[2] * 0.45)},${a})`;
 };
 
-/** Tint hint for the cursor frost trail — currently unused (trail is
+/** Tint hint for the cursor frost trail - currently unused (trail is
  *  pure white), but plumbed through `--frost-rgb` so you can re-enable
  *  temperature-tinted frost without touching CSS. */
 export const frostRgb = (pct: number | null | undefined) => {
