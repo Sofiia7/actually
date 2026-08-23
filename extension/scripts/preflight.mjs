@@ -167,5 +167,68 @@ if (envLocal) {
   console.log('  (skipped .env.local-baked-config check — no .env.local present, e.g. CI)')
 }
 
+// --- service-worker isolation -----------------------------------------
+/**
+ * The MV3 service worker must not statically import page-only code.
+ *
+ * It has no DOM, and React DOM initializes on evaluation by calling
+ * `document.createElement('div').setAttribute('oninput', 'return;')`. When a
+ * bundler parks a shared module inside the popup or offscreen entry chunk and
+ * has the shared chunk import it back, the worker's own graph reaches that
+ * chunk, evaluates React, and dies with "Service worker registration failed.
+ * Status code: 15". Nothing else notices: the build succeeds, every unit test
+ * passes, and the popup just says "loading..." forever because the worker it
+ * is messaging never came up.
+ *
+ * That shipped once already, silently, in the vite 5 -> 8 (rolldown) upgrade.
+ * Hence a check on the artifact itself rather than on the config that is
+ * supposed to produce it.
+ */
+function serviceWorkerGraph() {
+  const entry = manifest.background?.service_worker
+  if (!entry) return null
+  const seen = new Set()
+  const visit = (file) => {
+    if (seen.has(file)) return
+    let src
+    try {
+      src = readFileSync(join(DIST, file), 'utf8')
+    } catch {
+      return
+    }
+    seen.add(file)
+    const re = /(?:^|[;\s}])(?:import|export)[^'"();]*?from\s*["']([^"']+)["']|(?:^|[;\s}])import\s*["']([^"']+)["']/g
+    let m
+    while ((m = re.exec(src))) {
+      const spec = m[1] ?? m[2]
+      if (!spec?.startsWith('.')) continue
+      const from = file.includes('/') ? file.slice(0, file.lastIndexOf('/')) : ''
+      visit(new URL(spec, `file:///${from}/`).pathname.replace(/^\//, ''))
+    }
+  }
+  visit(entry)
+  return seen
+}
+
+const swGraph = serviceWorkerGraph()
+if (!swGraph) {
+  bad('manifest has no background.service_worker — cannot verify worker isolation')
+} else {
+  const domOnly = [...swGraph].filter((f) => {
+    if (f.endsWith('service-worker-loader.js')) return false
+    const src = readFileSync(join(DIST, f), 'utf8')
+    return /__SECRET_INTERNALS|createRoot\b|react-dom/.test(src)
+  })
+  if (domOnly.length > 0) {
+    bad(
+      `service worker statically imports DOM/React code (${domOnly.join(', ')}) — ` +
+        'it will fail to register with "Status code: 15" and the popup will hang on "loading..."',
+    )
+  } else {
+    ok(`service worker graph is DOM-free (${swGraph.size} files)`)
+  }
+}
+
+
 console.log(failures ? `\nPRE-FLIGHT FAILED (${failures} issue${failures > 1 ? 's' : ''})` : '\nPRE-FLIGHT PASSED')
 process.exit(failures ? 1 : 0)

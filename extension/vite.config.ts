@@ -94,6 +94,38 @@ export default defineConfig(({ mode, command }) => {
         },
         output: {
           chunkFileNames: 'assets/[name]-[hash].js',
+          /**
+           * Keep React and @actually/core in chunks of their own, so the
+           * service worker cannot end up importing the popup.
+           *
+           * Left to itself, rolldown parks individual `@actually/core`
+           * modules (pricing.ts and friends) *inside* the popup entry chunk
+           * and then has the shared core barrel import them back out of it.
+           * That single edge drags the entire popup chunk — React DOM
+           * included — into the service worker's static graph. React DOM
+           * initializes on evaluation by calling
+           * `document.createElement('div').setAttribute('oninput','return;')`,
+           * there is no DOM in a worker, and Chrome reports the whole thing
+           * as "Service worker registration failed. Status code: 15". The
+           * popup then hangs on "loading..." forever, because the worker it
+           * is waiting on never came up.
+           *
+           * Naming the two groups explicitly removes the edge: core lives in
+           * one chunk with its own barrel, React lives in a chunk only the
+           * pages import. `minSize: 0` stops rolldown from merging either
+           * back into a neighbour on size grounds.
+           *
+           * This is not theoretical tidiness — it shipped broken in the
+           * vite 5 -> 8 (rolldown) upgrade and nothing caught it, so
+           * scripts/preflight.mjs now asserts the worker's graph is DOM-free
+           * on the built artifact.
+           */
+          codeSplitting: {
+            groups: [
+              { name: 'vendor-react', test: /node_modules[\\/](react|react-dom|scheduler)[\\/]/, minSize: 0 },
+              { name: 'core', test: /[\\/]packages[\\/]core[\\/]/, minSize: 0 },
+            ],
+          },
         },
       },
     },
