@@ -234,13 +234,18 @@ export async function translateArticle(
     if (availability === 'unavailable') return { kind: 'unsupported_pair', language }
     // 'downloadable' and 'downloading' both mean the user is about to wait on
     // a language pack that arrives once and is reused forever after.
-    if (availability !== 'available') deps.onDownloadStart?.(language)
+    const downloading = availability !== 'available'
+    if (downloading) deps.onDownloadStart?.(language)
 
     const translator = await withIdleTimeout(
       (bump) =>
         getTranslator(deps.translator!, pair, (fraction) => {
           bump()
-          deps.onDownloadProgress?.(language, fraction)
+          // Chrome emits a lone 100% event even when the pack is already on
+          // disk. Reporting that paints a download over a check where nothing
+          // was downloaded, which is how "downloading… 100%" ends up on screen
+          // instantly and reads as stuck.
+          if (downloading) deps.onDownloadProgress?.(language, fraction)
         }),
       idle,
       'preparing the translator',

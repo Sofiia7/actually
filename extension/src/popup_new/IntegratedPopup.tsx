@@ -362,6 +362,13 @@ export const IntegratedPopup: React.FC<IntegratedPopupProps> = ({
       setTranslationNote(translationNotice(translation))
       const matched = translation.kind === 'translated' ? translation.article : article
 
+      // Name the phase the popup is actually in. Without this the spinner kept
+      // whatever the translator last wrote under it — most confusingly
+      // "downloading the Russian translator… 100%", left standing for the whole
+      // market lookup, which reads as a download stuck at 100% rather than a
+      // finished one.
+      setCheckState({ kind: 'loading', note: 'looking for a market…' })
+
       const res = await runMatchViaOffscreen(matched)
       if (res.match) {
         setLastMatch(res.match)
@@ -377,7 +384,22 @@ export const IntegratedPopup: React.FC<IntegratedPopupProps> = ({
         } else if (res.reason === 'no_keys') {
           setCheckState({ kind: 'error', message: 'Worker not configured. Open Settings to set the API endpoint.' })
         } else if (res.reason?.startsWith('cache_refresh_failed')) {
-          setCheckState({ kind: 'error', message: `Couldn't load markets: ${res.reason.replace('cache_refresh_failed:', '')}` })
+          // "TypeError: Failed to fetch" is what a dropped connection looks
+          // like from inside fetch(). As a headline it reads like a bug in the
+          // extension; the cause is almost always the network, and the fix is
+          // the button right below. The raw text stays as the second line for
+          // anyone who needs it.
+          const raw = res.reason.replace('cache_refresh_failed:', '').trim()
+          const networkish = /failed to fetch|networkerror|load failed|err_/i.test(raw)
+          setCheckState({
+            kind: 'error',
+            message: networkish
+              ? "Couldn't reach the market list."
+              : `Couldn't load markets: ${raw}`,
+            detail: networkish
+              ? `The market data lives behind the extension's Worker and the request did not get through. Check your connection and try again. (${raw})`
+              : undefined,
+          })
         } else if (res.reason?.startsWith('match_error')) {
           setCheckState({ kind: 'error', message: res.reason.replace('match_error:', 'Match error: ') })
         } else if (res.reason?.startsWith('below_floor')) {

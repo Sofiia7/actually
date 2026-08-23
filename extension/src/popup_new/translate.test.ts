@@ -253,6 +253,24 @@ describe('translateArticle', () => {
     expect(seen).toEqual([0.25, 1])
   })
 
+  // Chrome fires a single 100% progress event even when the pack is already on
+  // disk and nothing is being fetched. Passing that through paints
+  // "downloading… 100%" over a check where no download happened at all.
+  it('stays quiet about progress when there was nothing to download', async () => {
+    const onDownloadProgress = vi.fn()
+    await translateArticle(RU, {
+      translator: fakeTranslator({
+        availability: async () => 'available',
+        create: async (_pair, onProgress) => {
+          onProgress?.(1)
+          return { translate: async (t: string) => t }
+        },
+      }),
+      onDownloadProgress,
+    })
+    expect(onDownloadProgress).not.toHaveBeenCalled()
+  })
+
   it('reuses one translator per language instead of building it per check', async () => {
     const create = vi.fn(async () => ({ translate: async (t: string) => t }))
     const deps = { translator: fakeTranslator({ create }) }

@@ -101,6 +101,62 @@ describe('refreshMarketCache — local provider (precomputed Worker cache)', () 
     expect(calledUrls.some((u) => u.includes('/markets'))).toBe(true)
   })
 
+  // The blob is ~7 MB. One dropped connection used to cost the user minutes:
+  // the fallback embeds hundreds of markets through WASM on their device, and
+  // it needs the network too, so a blip that would have healed on a second
+  // try surfaced as "Couldn't load markets: TypeError: Failed to fetch".
+  it('retries a dropped connection instead of falling back to on-device embedding', async () => {
+    let attempts = 0
+    const fetchSpy = vi.fn(async (url: string) => {
+      if (String(url).endsWith('/market-cache')) {
+        attempts++
+        if (attempts === 1) throw new TypeError('Failed to fetch')
+        return new Response(JSON.stringify(blob([market('m1')])), { status: 200 })
+      }
+      return new Response(JSON.stringify([]), { status: 200 })
+    })
+    vi.stubGlobal('fetch', fetchSpy)
+
+    const result = await refreshMarketCache('local', 'https://w.example', 'secret')
+
+    expect(result.added).toBe(1)
+    expect(attempts).toBe(2)
+    const calledUrls = fetchSpy.mock.calls.map((c) => String(c[0]))
+    expect(calledUrls.some((u) => u.includes('/markets'))).toBe(false)
+  })
+
+  it('does not retry a rejected secret — a wrong key stays wrong', async () => {
+    let attempts = 0
+    const fetchSpy = vi.fn(async (url: string) => {
+      if (String(url).endsWith('/market-cache')) {
+        attempts++
+        return new Response('unauthorized', { status: 401 })
+      }
+      return new Response(JSON.stringify([]), { status: 200 })
+    })
+    vi.stubGlobal('fetch', fetchSpy)
+
+    await refreshMarketCache('local', 'https://w.example', 'secret')
+
+    expect(attempts).toBe(1)
+  })
+
+  it('does not retry a model mismatch — a second identical request cannot answer differently', async () => {
+    let attempts = 0
+    const fetchSpy = vi.fn(async (url: string) => {
+      if (String(url).endsWith('/market-cache')) {
+        attempts++
+        return new Response(JSON.stringify(blob([market('m1')], 'Xenova/some-other-model')), { status: 200 })
+      }
+      return new Response(JSON.stringify([]), { status: 200 })
+    })
+    vi.stubGlobal('fetch', fetchSpy)
+
+    await refreshMarketCache('local', 'https://w.example', 'secret')
+
+    expect(attempts).toBe(1)
+  })
+
   it('does not touch the precomputed endpoint at all for the openai provider', async () => {
     const fetchSpy = vi.fn(async (url: string) => {
       expect(String(url)).not.toContain('/market-cache')

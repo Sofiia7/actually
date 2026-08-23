@@ -58,6 +58,48 @@ export async function refreshMarketCache(
   return refreshByEmbedding(provider, workerUrl, workerSecret)
 }
 
+/** Attempts (first try + retries) for the precomputed blob. */
+const BLOB_FETCH_ATTEMPTS = 3
+const BLOB_RETRY_BASE_MS = 250
+
+/**
+ * Fetch the precomputed blob, retrying the failures that a second attempt can
+ * actually fix: a dropped connection and the server's own transient codes.
+ *
+ * Worth the retry because giving up is expensive. The blob is ~7 MB, and the
+ * fallback for not having it is embedding hundreds of markets through WASM on
+ * the user's device — minutes of work that also needs the same network, so a
+ * blip takes out both paths and the user reads "Couldn't load markets:
+ * TypeError: Failed to fetch" after a long wait.
+ *
+ * Deliberately NOT retried: 401/403 (a wrong secret stays wrong) and a model
+ * mismatch (the worker will serve the same blob next time). Retrying those
+ * only makes the user wait longer for the same answer.
+ */
+class PermanentFetchFailure extends Error {}
+
+async function fetchBlobWithRetry(workerUrl: string, workerSecret: string): Promise<Response> {
+  let lastErr: unknown
+  for (let attempt = 1; attempt <= BLOB_FETCH_ATTEMPTS; attempt++) {
+    try {
+      const res = await fetch(`${workerUrl}/market-cache`, {
+        headers: { 'X-Actually-Auth': workerSecret },
+      })
+      if (res.ok) return res
+      const message = `market-cache fetch failed: ${res.status}`
+      if (res.status !== 429 && res.status < 500) throw new PermanentFetchFailure(message)
+      lastErr = new Error(message)
+    } catch (err) {
+      // A permanent failure must escape the retry loop, not feed it.
+      if (err instanceof PermanentFetchFailure) throw new Error(err.message)
+      lastErr = err
+    }
+    if (attempt === BLOB_FETCH_ATTEMPTS) break
+    await new Promise((resolve) => setTimeout(resolve, BLOB_RETRY_BASE_MS * 2 ** (attempt - 1)))
+  }
+  throw lastErr instanceof Error ? lastErr : new Error(String(lastErr))
+}
+
 /**
  * Fast path: download the Worker's already-embedded market blob instead of
  * computing vectors on-device. The precompute script applies the identical
@@ -72,12 +114,7 @@ async function refreshFromPrecomputedCache(
   workerUrl: string,
   workerSecret: string,
 ): Promise<{ added: number; reused: number; removed: number }> {
-  const res = await fetch(`${workerUrl}/market-cache`, {
-    headers: { 'X-Actually-Auth': workerSecret },
-  })
-  if (!res.ok) {
-    throw new Error(`market-cache fetch failed: ${res.status}`)
-  }
+  const res = await fetchBlobWithRetry(workerUrl, workerSecret)
   const blob = (await res.json().catch((err) => {
     throw new Error(`market-cache response was not valid JSON: ${String(err)}`)
   })) as MarketCacheBlob
