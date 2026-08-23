@@ -21,6 +21,8 @@ The following never leaves your device:
 
 The embedding model (`Xenova/all-MiniLM-L12-v2`, ~33 MB) and its WASM runtime are bundled into the extension package at build time — nothing is downloaded from HuggingFace or any other CDN at install or runtime. The local-embedding path is fully offline from the first run.
 
+When the page is **not in English**, its headline and body excerpt are translated into English before matching, because every Polymarket question is written in English. The translation is done by **your browser's own built-in translator** (the `Translator` API, Chrome 138+ on desktop), which runs locally: the text is not sent anywhere, no key or account is involved, and no extra permission is requested. If your browser has no built-in translator, nothing is translated and nothing is sent - the check runs on the original text, and the popup says so instead of leaving you to guess why nothing matched.
+
 ## What is sent off your device
 
 Actually only sends data **when you act**.

@@ -6,6 +6,12 @@ export interface ArticleData {
   bodyText: string
   url: string
   domain: string
+  /**
+   * The page's declared language (`<html lang>`), verbatim — 'ru', 'de-DE', ''.
+   * Read by popup_new/translate.ts to decide whether the article has to be
+   * translated into English before it can be matched against market questions.
+   */
+  pageLang?: string
 }
 
 export type EmbeddingProvider = 'local' | 'openai'

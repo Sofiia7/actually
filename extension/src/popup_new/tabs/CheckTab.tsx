@@ -6,6 +6,7 @@ import { LinkAction } from '../components/LinkAction';
 import { GlassButton } from '../components/GlassButton';
 import { NeutralScanner } from '../components/NeutralScanner';
 import { rgbAt, rgba, toneDark } from '../colors';
+import type { TranslationNotice } from '../translate';
 
 // =============================================================
 // CheckTab — public state contract
@@ -22,7 +23,12 @@ export interface Market {
 
 export type CheckState =
   | { kind: 'idle' }
-  | { kind: 'loading' }
+  | {
+      kind: 'loading';
+      /** Replaces "reading article…" while something slower is happening —
+       *  a one-time language-pack download, for instance. */
+      note?: string;
+    }
   | { kind: 'empty' }
   | {
       kind: 'error';
@@ -58,7 +64,38 @@ export interface CheckTabProps {
   onTrade?: () => void;
   /** Click an alternate match — re-runs in CheckTab as the new featured. */
   onPickRelated?: (index: number) => void;
+  /**
+   * What happened to the article's text before it was matched: translated
+   * from another language, or why it could not be. Sits above the result
+   * because it changes how the result should be read — "no market matched"
+   * means something different when the page was never in English.
+   */
+  notice?: TranslationNotice | null;
 }
+
+const NoticeBanner: React.FC<{ notice: TranslationNotice }> = ({ notice }) => {
+  const warn = notice.tone === 'warn';
+  return (
+    <div
+      style={{
+        margin: '10px 14px 0',
+        padding: '9px 11px',
+        borderRadius: 9,
+        background: warn ? 'rgba(150,40,40,.07)' : 'rgba(255,255,255,.07)',
+        border: `1px solid ${warn ? 'rgba(150,40,40,.22)' : 'rgba(255,255,255,.24)'}`,
+      }}
+    >
+      <Etched
+        size={11.5}
+        weight={300}
+        color={warn ? 'rgba(150,40,40,.85)' : 'rgba(35,45,70,.6)'}
+        style={{ lineHeight: 1.45 }}
+      >
+        {notice.text}
+      </Etched>
+    </div>
+  );
+};
 
 // =============================================================
 // Featured + related market sub-components
@@ -230,7 +267,20 @@ const RelatedRow: React.FC<Market & { onClick?: () => void }> = ({ q, pct, onCli
 // =============================================================
 // CheckTab — state machine
 // =============================================================
-export const CheckTab: React.FC<CheckTabProps> = ({
+export const CheckTab: React.FC<CheckTabProps> = (props) => {
+  // Nothing has been checked yet on the idle screen, so there is nothing to
+  // explain — the banner would be reporting on a page the user never asked
+  // about.
+  if (props.state.kind === 'idle' || !props.notice) return <CheckTabBody {...props} />;
+  return (
+    <>
+      <NoticeBanner notice={props.notice} />
+      <CheckTabBody {...props} />
+    </>
+  );
+};
+
+const CheckTabBody: React.FC<CheckTabProps> = ({
   state,
   onStart,
   onBack,
@@ -279,8 +329,13 @@ export const CheckTab: React.FC<CheckTabProps> = ({
         }}
       >
         <NeutralScanner />
-        <Etched size={13} weight={300} color="rgba(35,45,70,.55)">
-          reading article…
+        <Etched
+          size={13}
+          weight={300}
+          color="rgba(35,45,70,.55)"
+          style={{ textAlign: 'center', lineHeight: 1.4 }}
+        >
+          {state.note ?? 'reading article…'}
         </Etched>
       </div>
     );

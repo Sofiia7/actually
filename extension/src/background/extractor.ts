@@ -90,5 +90,10 @@ export function extractFromPage(): ArticleData | null {
     bodyText,
     url: location.href,
     domain: location.hostname,
+    // What the page says it is written in. News sites are reliable about this
+    // ('ru' on rbc.ru, 'de' on spiegel.de), and it costs nothing to read —
+    // the popup uses it to decide whether the text needs translating before
+    // it can be matched against English market questions.
+    pageLang: document.documentElement.getAttribute('lang') ?? '',
   }
 }

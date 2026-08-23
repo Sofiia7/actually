@@ -61,6 +61,12 @@ No server-side model and no per-request inference cost: the article is embedded
  news article (any page)
         │  chrome.scripting (activeTab) — extractor.ts
         ▼
+ headline + trimmed body + <html lang>
+        │  popup — translate.ts (browser’s built-in Translator, local)
+        ▼
+ English text  (non-English pages only; English falls through untouched)
+        │
+        ▼
  headline ×HEADLINE_WEIGHT  +  trimmed body
         │  offscreen document (MV3) — WASM
         ▼
@@ -80,7 +86,7 @@ No server-side model and no per-request inference cost: the article is embedded
                                            WalletConnect → CLOB order (builderCode)
 ```
 
-Three design choices that aren't obvious from "just use embeddings":
+Four design choices that aren't obvious from "just use embeddings":
 
 - **Local-first model.** `Xenova/all-MiniLM-L12-v2` (384-dim) runs as WASM inside
   an MV3 *offscreen document* — service workers can't run it directly, so
@@ -94,6 +100,17 @@ Three design choices that aren't obvious from "just use embeddings":
   lets the *specific* noun win — e.g. "uranium" over a generic "Iran" market.
   Generic stems (countries, leader names, "price", "year") are down-weighted to
   `+0.01` so thematic generality can't dominate a sharper semantic match.
+- **Foreign-language pages are translated, not re-modelled.** Every market
+  question is English and MiniLM’s vocabulary holds 86 Cyrillic tokens out of
+  30522, so a Russian headline embeds to noise: measured against the live
+  cache it scores 0.01-0.24 on the market it is literally about, under a 0.35
+  floor. Translating the text first (Chrome’s built-in `Translator`, local, no
+  network, no bundle growth) puts the same headlines at 0.53-0.71, and leaves
+  the number and keyword bonuses working because the text reaching them is
+  English. A multilingual embedder would have cost ~80 MB of bundle, a full
+  cache rebuild and a threshold recalibration to reach the same place. When the
+  browser has no translator the check runs on the original text and the popup
+  says why (see `popup_new/translate.ts`).
 - **Confidence is measured on the raw semantic score**, not the boosted one — the
   volume and keyword bonuses only break ties and re-rank; they never inflate the
   confidence shown to the user or push a weak match past the floor.

@@ -36,6 +36,14 @@ import {
 } from './ops'
 import type { SerializableWalletState } from '../shared/messages'
 import type { ArticleData } from '../shared/types'
+import {
+  browserDetector,
+  browserTranslator,
+  languageName,
+  translateArticle,
+  translationNotice,
+  type TranslationNotice,
+} from './translate'
 
 // =============================================================
 // Provider / language ↔ design-string mapping
@@ -177,6 +185,10 @@ export const IntegratedPopup: React.FC<IntegratedPopupProps> = ({
   // directly). MatchContext must not present the latter as if it were the
   // former (see its own doc comment).
   const [lastMatchSource, setLastMatchSource] = useState<'page' | 'history'>('page')
+  // What happened to the article's language on the way into the matcher —
+  // translated, or why not. Cleared at the start of every check so it can
+  // never describe a page the user has already navigated away from.
+  const [translationNote, setTranslationNote] = useState<TranslationNotice | null>(null)
 
   // History tab state
   const [historyState, setHistoryState] = useState<HistoryState>({ kind: 'loading' })
@@ -309,6 +321,7 @@ export const IntegratedPopup: React.FC<IntegratedPopupProps> = ({
       return
     }
     setCheckState({ kind: 'loading' })
+    setTranslationNote(null)
     try {
       const article = await extractor()
       if (!article) {
@@ -317,7 +330,26 @@ export const IntegratedPopup: React.FC<IntegratedPopupProps> = ({
       }
       setLastArticleHeadline(article.headline)
       setLastMatchSource('page')
-      const res = await runMatchViaOffscreen(article)
+
+      // Every market question on Polymarket is English, and so is the local
+      // embedding model, so a foreign-language page has to be translated
+      // before it can be matched at all — an untranslated Russian headline
+      // scores below the floor against the market it is literally about.
+      // Chrome's built-in translator does this locally. When it can't, the
+      // check still runs on the original text and the notice says why.
+      const translation = await translateArticle(article, {
+        translator: browserTranslator(),
+        detector: browserDetector(),
+        onDownloadStart: (language) =>
+          setCheckState({
+            kind: 'loading',
+            note: `preparing the ${languageName(language)} translator, one time only…`,
+          }),
+      })
+      setTranslationNote(translationNotice(translation))
+      const matched = translation.kind === 'translated' ? translation.article : article
+
+      const res = await runMatchViaOffscreen(matched)
       if (res.match) {
         setLastMatch(res.match)
         const featured = toDesignMarket(res.match)
@@ -355,7 +387,10 @@ export const IntegratedPopup: React.FC<IntegratedPopupProps> = ({
                 ? `Closest of ${res.scored} open markets was “${truncate(nearest.question, 64)}”, and not close. ` +
                   'If Polymarket ran one on this exact story it has already resolved, and resolved markets are left out because they cannot be traded.'
                 : `Checked ${res.scored} open markets. If Polymarket ran one on this story it has already resolved, and resolved markets are left out because they cannot be traded.`,
-              searchUrl: polymarketSearchUrl(article.headline),
+              // The translated headline, when there is one: Polymarket's own
+              // search indexes English questions, so handing it the original
+              // Russian would send the user to a guaranteed-empty page.
+              searchUrl: polymarketSearchUrl(matched.headline),
               // The setting lives in Settings, which is where nobody looks.
               // Mention it at the only moment it is relevant — a check that
               // just came back empty — and only until the user answers.
@@ -482,8 +517,12 @@ export const IntegratedPopup: React.FC<IntegratedPopupProps> = ({
           {tab === 'Check' && (
             <CheckTab
               state={checkState}
+              notice={translationNote}
               onStart={startCheck}
-              onBack={() => setCheckState({ kind: 'idle' })}
+              onBack={() => {
+                setCheckState({ kind: 'idle' })
+                setTranslationNote(null)
+              }}
               onRetry={startCheck}
               onEnableSearch={() => void enableSearchAndRetry()}
               onDismissSearchOffer={() => void dismissSearchOffer()}
