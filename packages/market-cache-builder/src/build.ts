@@ -67,7 +67,12 @@ async function main() {
     step = 'fetch_markets'
     const fetchTarget = MAX_MARKETS_CACHE + 50
     console.log(`[market-cache-builder] fetching up to ${fetchTarget} markets from ${workerUrl}`)
-    const markets = await fetchActiveMarkets(workerUrl, workerSecret, fetchTarget)
+    // Retried for the same reason the model load is: Gamma answers a cron that
+    // pages through ~2000 markets with a 429 often enough to matter, and an
+    // unretried one fails the whole run (observed 2026-08-25, between two runs
+    // that succeeded either side of it). A failed run is not harmless - it
+    // leaves the served cache to go stale until the next one lands.
+    const markets = await withRetry(() => fetchActiveMarkets(workerUrl, workerSecret, fetchTarget))
     console.log(`[market-cache-builder] fetched ${markets.length} markets`)
 
     step = 'load_model'
