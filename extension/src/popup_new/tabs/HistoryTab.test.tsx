@@ -19,6 +19,55 @@ const trades: TradeRow[] = [
 ]
 
 /**
+ * A limit order that reached the exchange has not necessarily bought anything
+ * - it can sit on the book unfilled for as long as the price stays away. The
+ * log records "placed" for both cases, so calling every one of them "Bought"
+ * tells the user they own something they may not own, with no hint that there
+ * is an order out there still live and cancellable.
+ */
+describe('a resting limit order is not a purchase', () => {
+  const limitBuy: TradeRow = {
+    kind: 'BUY',
+    status: 'placed',
+    orderType: 'LIMIT',
+    q: 'Will X happen?',
+    detail: '$5.00 · No @ 91.0¢ · limit',
+    when: '1h ago',
+  }
+
+  it('says the order was placed rather than filled', () => {
+    render(<HistoryTab state={stories} onSelect={noop} onOpenArticle={noop} onClear={noop} trades={[limitBuy]} />)
+    expect(screen.getByText(/Buy placed/i)).toBeInTheDocument()
+    expect(screen.queryByText(/^Bought$/i)).not.toBeInTheDocument()
+  })
+
+  it('says where to see whether it filled, and where to cancel it', () => {
+    render(<HistoryTab state={stories} onSelect={noop} onOpenArticle={noop} onClear={noop} trades={[limitBuy]} />)
+    const hint = screen.getByText(/rests on the book/i)
+    expect(hint).toBeInTheDocument()
+    expect(hint.textContent).toMatch(/cancel/i)
+  })
+
+  it('keeps that hint out of the way when nothing is resting', () => {
+    const marketBuy: TradeRow = { ...limitBuy, orderType: 'MARKET' }
+    render(<HistoryTab state={stories} onSelect={noop} onOpenArticle={noop} onClear={noop} trades={[marketBuy]} />)
+    expect(screen.queryByText(/rests on the book/i)).not.toBeInTheDocument()
+  })
+
+  it('still says Bought for a market order, which fills on the spot', () => {
+    const marketBuy: TradeRow = { ...limitBuy, orderType: 'MARKET', detail: '$5.00 · No · market' }
+    render(<HistoryTab state={stories} onSelect={noop} onOpenArticle={noop} onClear={noop} trades={[marketBuy]} />)
+    expect(screen.getByText(/Bought/i)).toBeInTheDocument()
+  })
+
+  it('does not promise a fill that failed', () => {
+    const failed: TradeRow = { ...limitBuy, status: 'failed', error: 'not enough balance' }
+    render(<HistoryTab state={stories} onSelect={noop} onOpenArticle={noop} onClear={noop} trades={[failed]} />)
+    expect(screen.queryByText(/Buy placed/i)).not.toBeInTheDocument()
+  })
+})
+
+/**
  * The tab shows two different KINDS of record - things you did, and pages you
  * looked at - and used to leave the reader to work that out from the words
  * "Your trades" and "Recent matches" alone.

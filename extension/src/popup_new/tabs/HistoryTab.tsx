@@ -24,6 +24,12 @@ export type HistoryState =
 export interface TradeRow {
   kind: 'BUY' | 'SELL' | 'REDEEM';
   status: 'placed' | 'failed' | 'unknown';
+  /**
+   * How the order was sent. A LIMIT order that reached the exchange has not
+   * necessarily traded - it can rest on the book unfilled - so it must not be
+   * reported as a completed purchase.
+   */
+  orderType?: 'LIMIT' | 'MARKET';
   q: string;
   /** Pre-formatted detail line, e.g. "$2.00 · Yes @ 6.0¢ · limit". */
   detail: string;
@@ -131,7 +137,23 @@ const KIND_LABEL: Record<TradeRow['kind'], string> = {
   REDEEM: 'Redeemed',
 };
 
-const TradeRowView: React.FC<TradeRow> = ({ kind, status, q, detail, when, error, onOpen }) => {
+/** Placed on the book is not the same as done. */
+const RESTING_LABEL: Partial<Record<TradeRow['kind'], string>> = {
+  BUY: 'Buy placed',
+  SELL: 'Sell placed',
+};
+
+/** True while an order could still be sitting unfilled on the book. */
+function isResting(t: TradeRow): boolean {
+  return t.status === 'placed' && t.orderType === 'LIMIT' && t.kind !== 'REDEEM';
+}
+
+function tradeLabel(t: TradeRow): string {
+  return (isResting(t) && RESTING_LABEL[t.kind]) || KIND_LABEL[t.kind];
+}
+
+const TradeRowView: React.FC<TradeRow> = (row) => {
+  const { status, q, detail, when, error, onOpen } = row;
   const failed = status === 'failed';
   const unknown = status === 'unknown';
   const accent = failed
@@ -153,7 +175,7 @@ const TradeRowView: React.FC<TradeRow> = ({ kind, status, q, detail, when, error
     >
       <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, alignItems: 'baseline' }}>
         <Etched size={11} weight={500} color={accent}>
-          {KIND_LABEL[kind]}
+          {tradeLabel(row)}
           {failed ? ' · failed' : unknown ? ' · unconfirmed' : ''}
         </Etched>
         <span
@@ -247,6 +269,17 @@ export const HistoryTab: React.FC<HistoryTabProps> = ({
           <TradeRowView key={i} {...t} />
         ))}
       </div>
+      {trades.some(isResting) && (
+        <Etched
+          size={10.5}
+          weight={300}
+          color="rgba(35,45,70,.5)"
+          style={{ display: 'block', lineHeight: 1.4, padding: '7px 4px 0' }}
+        >
+          A limit order rests on the book until it fills. Trade shows whether it did, and cancels it
+          if it has not.
+        </Etched>
+      )}
     </div>
   );
 

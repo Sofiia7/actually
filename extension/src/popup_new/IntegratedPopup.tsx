@@ -101,6 +101,9 @@ function tradeToRow(t: TradeLogItem): TradeRow {
   return {
     kind: t.kind,
     status: t.status,
+    // Carried through so the row can say "placed" rather than "bought" for an
+    // order that may still be sitting on the book.
+    orderType: t.orderType,
     q: t.question,
     detail: bits.join(' · '),
     when: formatRelative(t.timestamp),
