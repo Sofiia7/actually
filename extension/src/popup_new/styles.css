@@ -119,7 +119,7 @@ select.thin-glass{
   opacity:0; transition:opacity .4s ease;
 }
 .frost-host--chrome:hover .frost-glow,
-.frost-host--chrome.is-tracking .frost-glow{ opacity:.12; }
+.frost-host--chrome.is-tracking .frost-glow{ opacity:.34; }
 
 @media (prefers-reduced-motion: reduce){
   .frost-needles{ transition: none; }
