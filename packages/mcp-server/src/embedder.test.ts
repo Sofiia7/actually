@@ -14,19 +14,20 @@ describe('LocalEmbedder laziness', () => {
     vi.doUnmock('@xenova/transformers')
   })
 
-  it('does not import @xenova/transformers merely by constructing the class', async () => {
-    const importSpy = vi.fn()
-    vi.doMock('@xenova/transformers', () => {
-      importSpy()
-      return {
-        pipeline: vi.fn(async () => async () => ({ data: new Float32Array([1, 0, 0]) })),
-        env: { allowLocalModels: true },
-      }
-    })
+  it('does not load the pipeline merely by constructing the class', async () => {
+    // Asserted against the class's OWN state, not against a module-mock spy.
+    //
+    // The spy version of this test was flaky twice (2026-08-18, and again in a
+    // full `npm test --workspaces` run) because it asserted on a GLOBAL fact -
+    // "nothing has imported @xenova/transformers" - which anything else
+    // sharing the module registry can falsify. Laziness is not a global fact;
+    // it is a property of this object, and `pipelinePromise` staying null is
+    // exactly that property. Reading it needs a cast because it is private,
+    // which is the honest cost of testing an internal guarantee directly
+    // instead of inferring it from a side effect.
     const { LocalEmbedder } = await import('./embedder')
-    new LocalEmbedder()
-    // Module construction alone must not have loaded the pipeline.
-    expect(importSpy).not.toHaveBeenCalled()
+    const embedder = new LocalEmbedder() as unknown as { pipelinePromise: unknown }
+    expect(embedder.pipelinePromise).toBeNull()
   })
 
   it('loads the pipeline on the first embed() call and reuses it on the second', async () => {
