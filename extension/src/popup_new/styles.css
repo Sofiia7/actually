@@ -99,10 +99,17 @@ select.thin-glass{
    cursor adds only a soft local brighten, no hard reveal circle. Colored
    IceCards keep the original cursor-reveal behavior above. */
 .frost-host--chrome .frost-needles{ -webkit-mask:none; mask:none; opacity:1; }
+/* The ending shape is farthest-side, NOT a percentage over 100%.
+   This was `130% 130%`, which puts the gradient's far end well outside the
+   panel: the visible area then only ever reaches about a third of the ramp,
+   every part of it lands at a similar faint alpha, and the result reads as an
+   even dusting rather than frost creeping in from the edges. Ending at the
+   farthest side spends the whole ramp inside the panel - clear glass in the
+   middle, solid frost at the rim. */
 .frost-host--chrome .frost-fill{
-  -webkit-mask: radial-gradient(130% 130% at 50% 50%, transparent 0%, rgba(0,0,0,.22) 45%, rgba(0,0,0,.7) 72%, #000 100%);
-          mask: radial-gradient(130% 130% at 50% 50%, transparent 0%, rgba(0,0,0,.22) 45%, rgba(0,0,0,.7) 72%, #000 100%);
-  opacity:.33;
+  -webkit-mask: radial-gradient(ellipse farthest-side at 50% 50%, transparent 0%, transparent 44%, rgba(0,0,0,.22) 66%, rgba(0,0,0,.62) 86%, #000 100%);
+          mask: radial-gradient(ellipse farthest-side at 50% 50%, transparent 0%, transparent 44%, rgba(0,0,0,.22) 66%, rgba(0,0,0,.62) 86%, #000 100%);
+  opacity:.36;
 }
 .frost-host--chrome .frost-glow{
   position:absolute; inset:0; border-radius:inherit; pointer-events:none;
