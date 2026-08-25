@@ -435,6 +435,17 @@ export const TradeTabWired: React.FC<TradeTabWiredProps> = ({
           proves you own the account - open your wallet app to approve it. This
           signs nothing on-chain and costs no gas.
         </Etched>
+        {/* An address Polymarket has never seen fails the derive call and falls
+            through to create, and each of those builds its own auth header, so
+            the wallet is asked twice. Verified in scripts/e2e-wallet.mjs, which
+            counts two eth_signTypedData_v4 requests on a fresh key. Wallets do
+            not always re-notify for the second one, so a user who approved the
+            first sits watching a spinner that is, from their side, stuck. */}
+        <Etched size={11} weight={300} color="rgba(35,45,70,.6)" style={{ lineHeight: 1.45 }}>
+          Connecting an account for the first time is asked <b>twice</b>. If the
+          screen is still waiting after you approve, open the wallet again - a
+          second request is probably sitting there.
+        </Etched>
         <div style={{ display: 'flex', justifyContent: 'center', padding: 10 }}>
           <NeutralScanner />
         </div>

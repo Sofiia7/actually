@@ -66,7 +66,77 @@ async function offscreenExists(): Promise<boolean> {
  * offscreen listener picks it up - avoids the rebroadcast race
  * where the SW would otherwise receive its own forward.
  */
-export async function routeToOffscreen<T = unknown>(msg: unknown): Promise<T> {
+/** Cleared whenever the document is (re)created or found missing. */
+let offscreenReady = false
+
+/** Test seam: forget that a document was ever confirmed listening. */
+export function _resetOffscreenReady(): void {
+  offscreenReady = false
+}
+
+const READY_TIMEOUT_MS = 10_000
+const READY_POLL_MS = 120
+
+function isMissingReceiver(err: unknown): boolean {
+  return /receiving end does not exist|could not establish connection/i.test(
+    err instanceof Error ? err.message : String(err),
+  )
+}
+
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms))
+
+/**
+ * Wait until the document is actually listening.
+ *
+ * `chrome.offscreen.createDocument` resolves when the document exists, not
+ * when the script inside it has evaluated and registered its message listener.
+ * Ours is a 2.4 MB bundle - transformers.js, WalletConnect, the CLOB client -
+ * so that gap is long enough to lose the first message through it, which comes
+ * back as Chrome's "Receiving end does not exist" and reads, upstream, as a
+ * connect that failed for no reason. OS_PING/OS_PONG was built for this and
+ * was never called by anything.
+ */
+async function waitForOffscreen(pollMs: number, timeoutMs: number): Promise<void> {
+  if (offscreenReady) return
+  const startedAt = Date.now()
+  for (;;) {
+    try {
+      const res = (await chrome.runtime.sendMessage({
+        __forward: true,
+        payload: { target: 'offscreen', type: 'OS_PING' },
+      })) as { type?: string } | undefined
+      if (res?.type === 'OS_PONG') {
+        offscreenReady = true
+        return
+      }
+    } catch (err) {
+      if (!isMissingReceiver(err)) throw err
+    }
+    if (Date.now() - startedAt > timeoutMs) {
+      throw new Error('offscreen_not_ready: the offscreen document never started listening')
+    }
+    await sleep(pollMs)
+  }
+}
+
+export async function routeToOffscreen<T = unknown>(
+  msg: unknown,
+  opts: { pollMs?: number; readyTimeoutMs?: number } = {},
+): Promise<T> {
+  const pollMs = opts.pollMs ?? READY_POLL_MS
+  const readyTimeoutMs = opts.readyTimeoutMs ?? READY_TIMEOUT_MS
   await ensureOffscreen()
-  return (await chrome.runtime.sendMessage({ __forward: true, payload: msg })) as T
+  await waitForOffscreen(pollMs, readyTimeoutMs)
+  try {
+    return (await chrome.runtime.sendMessage({ __forward: true, payload: msg })) as T
+  } catch (err) {
+    // Chrome tears an idle offscreen document down on its own schedule, so a
+    // document that answered a moment ago can be gone by the next message.
+    // Rebuild it and send once more before giving up on the user's click.
+    if (!isMissingReceiver(err)) throw err
+    offscreenReady = false
+    await ensureOffscreen()
+    await waitForOffscreen(pollMs, readyTimeoutMs)
+    return (await chrome.runtime.sendMessage({ __forward: true, payload: msg })) as T
+  }
 }
