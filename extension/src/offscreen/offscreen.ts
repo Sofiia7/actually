@@ -37,6 +37,7 @@ import { resolveHistoryMarket } from '../background/resolveHistoryMarket'
 import { redeemPosition } from '../background/redeem'
 import { fetchPositions } from '../background/positions'
 import { installStorageBridge } from './storage-bridge'
+import { installConsoleCapture } from './consoleCapture'
 import { runningInOffscreenDocument } from './context'
 
 /**
@@ -57,6 +58,11 @@ const IS_OFFSCREEN_DOC = runningInOffscreenDocument()
 // cache, history). No-op when the native API is present.
 if (IS_OFFSCREEN_DOC) {
   installStorageBridge()
+  // Before anything can log: WalletConnect writes plain objects to
+  // console.error, which Chrome's error list renders as "[object Object]".
+  // This expands them and keeps a copy in the connect log, where the user can
+  // actually reach it.
+  installConsoleCapture()
 }
 
 // ============================================================

@@ -9,6 +9,7 @@ const store: Record<string, unknown> = {}
 const chromeMock = {
   runtime: {
     getManifest: () => ({ version: '1.0.0-test' }),
+    getURL: (path = '') => `chrome-extension://test-extension-id/${path}`,
     sendMessage: vi.fn(async () => ({})),
     getContexts: vi.fn(async () => []),
     onMessage: { addListener: vi.fn() },
