@@ -23,7 +23,7 @@ export type HistoryState =
 /** One row of the activity log - see TradeLogItem for where it comes from. */
 export interface TradeRow {
   kind: 'BUY' | 'SELL' | 'REDEEM';
-  status: 'placed' | 'failed' | 'unknown';
+  status: 'placed' | 'failed' | 'unknown' | 'cancelled';
   /**
    * How the order was sent. A LIMIT order that reached the exchange has not
    * necessarily traded - it can rest on the book unfilled - so it must not be
@@ -36,6 +36,14 @@ export interface TradeRow {
   when: string;
   error?: string;
   onOpen?: () => void;
+  /**
+   * Cancel this order. Offered only while it could still be resting, and
+   * offered HERE, on the row the user is already looking at - the same order
+   * also appears in the Trade tab's open-order list, but finding it there
+   * means knowing that list exists and matching it up by price.
+   */
+  onCancel?: () => void;
+  cancelling?: boolean;
 }
 
 export interface HistoryTabProps {
@@ -153,14 +161,17 @@ function tradeLabel(t: TradeRow): string {
 }
 
 const TradeRowView: React.FC<TradeRow> = (row) => {
-  const { status, q, detail, when, error, onOpen } = row;
+  const { status, q, detail, when, error, onOpen, onCancel, cancelling } = row;
   const failed = status === 'failed';
   const unknown = status === 'unknown';
+  const cancelled = status === 'cancelled';
   const accent = failed
     ? 'rgba(160,40,40,.9)'
     : unknown
       ? 'rgba(150,105,20,.95)'
-      : 'rgba(30,110,60,.9)';
+      : cancelled
+        ? 'rgba(35,45,70,.55)'
+        : 'rgba(30,110,60,.9)';
   return (
     <div
       style={{
@@ -176,7 +187,7 @@ const TradeRowView: React.FC<TradeRow> = (row) => {
       <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, alignItems: 'baseline' }}>
         <Etched size={11} weight={500} color={accent}>
           {tradeLabel(row)}
-          {failed ? ' · failed' : unknown ? ' · unconfirmed' : ''}
+          {failed ? ' · failed' : unknown ? ' · unconfirmed' : cancelled ? ' · cancelled' : ''}
         </Etched>
         <span
           style={{
@@ -203,26 +214,45 @@ const TradeRowView: React.FC<TradeRow> = (row) => {
           {error}
         </Etched>
       )}
-      {onOpen && (
-        <button
-          type="button"
-          onClick={onOpen}
-          style={{
-            appearance: 'none',
-            background: 'none',
-            border: 'none',
-            padding: 0,
-            marginTop: 2,
-            alignSelf: 'flex-start',
-            cursor: 'pointer',
-            fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif",
-            fontSize: 11,
-            color: 'rgba(35,60,120,.85)',
-          }}
-        >
-          Open on Polymarket →
-        </button>
-      )}
+      <div style={{ display: 'flex', gap: 12, marginTop: 2, alignItems: 'baseline', flexWrap: 'wrap' }}>
+        {onOpen && (
+          <button
+            type="button"
+            onClick={onOpen}
+            style={{
+              appearance: 'none',
+              background: 'none',
+              border: 'none',
+              padding: 0,
+              cursor: 'pointer',
+              fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif",
+              fontSize: 11,
+              color: 'rgba(35,60,120,.85)',
+            }}
+          >
+            Open on Polymarket →
+          </button>
+        )}
+        {isResting(row) && onCancel && (
+          <button
+            type="button"
+            onClick={onCancel}
+            disabled={cancelling}
+            style={{
+              appearance: 'none',
+              background: 'none',
+              border: 'none',
+              padding: 0,
+              cursor: cancelling ? 'default' : 'pointer',
+              fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif",
+              fontSize: 11,
+              color: cancelling ? 'rgba(35,45,70,.45)' : 'rgba(150,50,50,.9)',
+            }}
+          >
+            {cancelling ? 'Cancelling…' : 'Cancel order'}
+          </button>
+        )}
+      </div>
     </div>
   );
 };

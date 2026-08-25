@@ -56,7 +56,9 @@ export interface TradeLogItem {
   id: string
   timestamp: number
   kind: 'BUY' | 'SELL' | 'REDEEM'
-  status: 'placed' | 'failed' | 'unknown'
+  /** 'cancelled' is only ever set later, when the user cancels a resting
+   *  order from the History tab. */
+  status: 'placed' | 'failed' | 'unknown' | 'cancelled'
   /** Market question, as shown at the time of the trade. */
   question: string
   /** Market slug for the Polymarket link, when known. */

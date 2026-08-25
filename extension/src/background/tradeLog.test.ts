@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { clearTradeLog, getTradeLog, logTrade } from './tradeLog'
+import { clearTradeLog, getTradeLog, logTrade, markTradeCancelled } from './tradeLog'
 import { MAX_TRADE_LOG_ITEMS } from '../shared/constants'
 
 beforeEach(async () => {
@@ -57,5 +57,26 @@ describe('tradeLog - the only local record that a trade happened', () => {
   it('tolerates a corrupted store rather than crashing the History tab', async () => {
     await chrome.storage.local.set({ tradeLog: 'not-an-array' })
     expect(await getTradeLog()).toEqual([])
+  })
+// The cancel button lives next to the order in History, so the row it just
+  // cancelled has to stop describing itself as live - otherwise the same
+  // button sits there offering to cancel an order that is already gone.
+  it('marks a cancelled order without disturbing the rest of the log', async () => {
+    await logTrade({ kind: 'BUY', status: 'placed', orderType: 'LIMIT', question: 'first' })
+    await logTrade({ kind: 'BUY', status: 'placed', orderType: 'LIMIT', question: 'second' })
+    const [newest, older] = await getTradeLog()
+
+    await markTradeCancelled(newest.id)
+
+    const after = await getTradeLog()
+    expect(after[0].status).toBe('cancelled')
+    expect(after[0].question).toBe('second')
+    expect(after[1]).toEqual(older)
+  })
+
+  it('ignores an id that is not in the log', async () => {
+    await logTrade({ kind: 'BUY', status: 'placed', question: 'q' })
+    await expect(markTradeCancelled('nope')).resolves.toBeUndefined()
+    expect((await getTradeLog())[0].status).toBe('placed')
   })
 })

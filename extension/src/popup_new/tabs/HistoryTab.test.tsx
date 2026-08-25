@@ -60,6 +60,65 @@ describe('a resting limit order is not a purchase', () => {
     expect(screen.getByText(/Bought/i)).toBeInTheDocument()
   })
 
+  // The row is where the user is looking when they decide to cancel. Sending
+  // them to another tab to find the same order in a different list is a
+  // navigation puzzle, not an interface.
+  it('offers to cancel the order right where the order is', async () => {
+    const onCancel = vi.fn()
+    render(
+      <HistoryTab
+        state={stories}
+        onSelect={noop}
+        onOpenArticle={noop}
+        onClear={noop}
+        trades={[{ ...limitBuy, onCancel }]}
+      />,
+    )
+    await userEvent.click(screen.getByRole('button', { name: /cancel order/i }))
+    expect(onCancel).toHaveBeenCalledTimes(1)
+  })
+
+  it('does not offer to cancel something that already filled or failed', () => {
+    const onCancel = vi.fn()
+    render(
+      <HistoryTab
+        state={stories}
+        onSelect={noop}
+        onOpenArticle={noop}
+        onClear={noop}
+        trades={[{ ...limitBuy, orderType: 'MARKET', onCancel }]}
+      />,
+    )
+    expect(screen.queryByRole('button', { name: /cancel order/i })).not.toBeInTheDocument()
+  })
+
+  it('stops offering to cancel an order that is already cancelled', () => {
+    render(
+      <HistoryTab
+        state={stories}
+        onSelect={noop}
+        onOpenArticle={noop}
+        onClear={noop}
+        trades={[{ ...limitBuy, status: 'cancelled', onCancel: vi.fn() }]}
+      />,
+    )
+    expect(screen.getByText(/cancelled/i)).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /cancel order/i })).not.toBeInTheDocument()
+  })
+
+  it('says it is working while the cancel is in flight', () => {
+    render(
+      <HistoryTab
+        state={stories}
+        onSelect={noop}
+        onOpenArticle={noop}
+        onClear={noop}
+        trades={[{ ...limitBuy, onCancel: vi.fn(), cancelling: true }]}
+      />,
+    )
+    expect(screen.getByText(/cancelling/i)).toBeInTheDocument()
+  })
+
   it('does not promise a fill that failed', () => {
     const failed: TradeRow = { ...limitBuy, status: 'failed', error: 'not enough balance' }
     render(<HistoryTab state={stories} onSelect={noop} onOpenArticle={noop} onClear={noop} trades={[failed]} />)

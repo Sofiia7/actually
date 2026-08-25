@@ -43,6 +43,33 @@ export async function logTrade(entry: Omit<TradeLogItem, 'id' | 'timestamp'>): P
   }
 }
 
+/**
+ * Record that a resting order was cancelled.
+ *
+ * The log is written once, when the order is sent, and never updated - which
+ * is fine for a fill (nothing here can observe one) but not for a cancel the
+ * user just performed from this very list. Leaving the row as "placed" leaves
+ * a Cancel button offering to cancel an order that is already gone.
+ *
+ * Best-effort like logTrade: the cancel itself already succeeded, and failing
+ * to write that down must not be reported as a failed cancel.
+ */
+export async function markTradeCancelled(id: string): Promise<void> {
+  try {
+    const items = await getTradeLog()
+    let touched = false
+    const next = items.map((item) => {
+      if (item.id !== id) return item
+      touched = true
+      return { ...item, status: 'cancelled' as const }
+    })
+    if (!touched) return
+    await chrome.storage.local.set({ [STORAGE_KEYS.tradeLog]: next })
+  } catch {
+    // See the doc comment above.
+  }
+}
+
 export async function clearTradeLog(): Promise<void> {
   await chrome.storage.local.set({ [STORAGE_KEYS.tradeLog]: [] })
 }

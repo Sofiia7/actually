@@ -26,9 +26,10 @@ import { extractActiveTabArticle } from '../popup/operations'
 import { getCacheStatus } from '../background/cache'
 import { trackEvent } from '../background/telemetry'
 import { buildMarketUrl, marketPageUrl, polymarketSearchUrl } from '../background/polymarket'
-import { clearTradeLog, getTradeLog } from '../background/tradeLog'
+import { clearTradeLog, getTradeLog, markTradeCancelled } from '../background/tradeLog'
 import { findOutcomeIndex, formatRelative } from '@actually/core'
 import {
+  cancelOrderViaOffscreen,
   disconnectWalletViaOffscreen,
   refreshCacheViaOffscreen,
   resolveHistoryMarketViaOffscreen,
@@ -206,6 +207,43 @@ export const IntegratedPopup: React.FC<IntegratedPopupProps> = ({
   // The user's own trades. Separate from historyItems: matches are things you
   // looked at, these are things you did - and they must survive "Clear history".
   const [tradeItems, setTradeItems] = useState<TradeLogItem[]>([])
+  // Which trade row is mid-cancel, and what went wrong on the ones that failed.
+  const [cancellingTradeId, setCancellingTradeId] = useState<string | null>(null)
+  const [cancelErrors, setCancelErrors] = useState<Record<string, string>>({})
+
+  /**
+   * Cancel a limit order straight from its History row.
+   *
+   * The order also sits in the Trade tab's open-order list, but a user looking
+   * at "Buy placed" here has no reason to know that, and matching the two up
+   * by price is a puzzle rather than an interface.
+   */
+  async function cancelRestingOrder(t: TradeLogItem) {
+    if (!t.ref || cancellingTradeId) return
+    setCancellingTradeId(t.id)
+    setCancelErrors((prev) => {
+      const next = { ...prev }
+      delete next[t.id]
+      return next
+    })
+    try {
+      const res = await cancelOrderViaOffscreen(t.ref)
+      if (res.ok) {
+        // Write the outcome down, or the row keeps offering to cancel an order
+        // that is already gone.
+        await markTradeCancelled(t.id)
+        if (settings) void trackEvent('order_cancelled', settings)
+      } else {
+        setCancelErrors((prev) => ({ ...prev, [t.id]: res.error ?? 'cancel_failed' }))
+        if (settings) void trackEvent('order_cancel_failed', settings)
+      }
+      setTradeItems(await getTradeLog())
+    } catch (err) {
+      setCancelErrors((prev) => ({ ...prev, [t.id]: describeError(err) }))
+    } finally {
+      setCancellingTradeId(null)
+    }
+  }
 
   // Settings tab state
   const [cache, setCache] = useState<{ count: number; lastUpdated: number }>({ count: 0, lastUpdated: 0 })
@@ -668,7 +706,16 @@ export const IntegratedPopup: React.FC<IntegratedPopupProps> = ({
                     setHistoryResolveError(null)
                   })()
                 }}
-                trades={tradeItems.map(tradeToRow)}
+                trades={tradeItems.map((t) => ({
+                  ...tradeToRow(t),
+                  // Cancel belongs on the row the user is reading, not in a
+                  // second list on another tab that they have to match up by
+                  // price. Only a resting order gets one, and only when we
+                  // kept its order id.
+                  onCancel: t.ref ? () => void cancelRestingOrder(t) : undefined,
+                  cancelling: cancellingTradeId === t.id,
+                  error: cancelErrors[t.id] ?? t.error,
+                }))}
                 onClearTrades={() => {
                   // Separate confirm from "Clear history": this is the only
                   // local record that a trade happened.
