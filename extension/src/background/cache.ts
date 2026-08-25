@@ -1,3 +1,4 @@
+import { describeError } from '../shared/describeError'
 import type { EmbeddingProvider } from '../shared/types'
 import { EMBED_PROGRESS_CHUNK, STORAGE_KEYS } from '../shared/constants'
 import { embedBatch } from './embeddings'
@@ -116,7 +117,7 @@ async function refreshFromPrecomputedCache(
 ): Promise<{ added: number; reused: number; removed: number }> {
   const res = await fetchBlobWithRetry(workerUrl, workerSecret)
   const blob = (await res.json().catch((err) => {
-    throw new Error(`market-cache response was not valid JSON: ${String(err)}`)
+    throw new Error(`market-cache response was not valid JSON: ${describeError(err)}`)
   })) as MarketCacheBlob
   if (blob.model !== LOCAL_MODEL_ID) {
     throw new Error(`market-cache model mismatch: worker served "${blob.model}", expected "${LOCAL_MODEL_ID}"`)

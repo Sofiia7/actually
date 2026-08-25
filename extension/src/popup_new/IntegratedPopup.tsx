@@ -1,3 +1,4 @@
+import { describeError } from '../shared/describeError'
 import React, { useEffect, useState } from 'react'
 import { GlassSurface } from './components/GlassSurface'
 import { Header } from './components/Header'
@@ -451,7 +452,7 @@ export const IntegratedPopup: React.FC<IntegratedPopupProps> = ({
         }
       }
     } catch (err) {
-      setCheckState({ kind: 'error', message: String(err) })
+      setCheckState({ kind: 'error', message: describeError(err) })
     }
   }
 
@@ -490,7 +491,7 @@ export const IntegratedPopup: React.FC<IntegratedPopupProps> = ({
       await refreshCacheViaOffscreen()
       await refreshCache()
     } catch (err) {
-      setTestStatus(`refresh failed: ${String(err)}`)
+      setTestStatus(`refresh failed: ${describeError(err)}`)
     }
   }
 

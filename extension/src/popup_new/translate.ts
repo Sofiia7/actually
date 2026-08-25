@@ -24,6 +24,7 @@
  *     is the honest failure: "no market matched" and "your browser cannot
  *     read this page" are different answers and used to look identical.
  */
+import { describeError } from '../shared/describeError'
 import type { ArticleData } from '../shared/types'
 
 /** Chrome's four availability states for a language pair. */
@@ -255,7 +256,7 @@ export async function translateArticle(
     const bodyText = article.bodyText ? await translate(article.bodyText) : article.bodyText
     return { kind: 'translated', language, article: { ...article, headline, bodyText } }
   } catch (err) {
-    return { kind: 'failed', language, error: err instanceof Error ? err.message : String(err) }
+    return { kind: 'failed', language, error: err instanceof Error ? err.message : describeError(err) }
   }
 }
 

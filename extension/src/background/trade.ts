@@ -15,6 +15,7 @@
  * delegates `PLACE_ORDER` back to the popup since CLOB+WC can't run in a
  * service worker.
  */
+import { describeError } from '../shared/describeError'
 import { OrderType, type ApiKeyCreds } from '@polymarket/clob-client-v2'
 import { deriveSafeAddress, isBelowMinOrderSize, minOrderShares, orderShares } from '@actually/core'
 import { BUILDER_CODE, GEO_FAIL_OPEN, MAX_ORDER_USD } from '../shared/constants'
@@ -458,7 +459,7 @@ export async function placeOrder(args: PlaceOrderArgs): Promise<OrderSubmitResul
     void trackEvent('order_failed', settings, {
       side: args.side,
       stage: 'sign',
-      reason: String(err),
+      reason: describeError(err),
     })
     return { ok: false, error: `sign_failed:${err}` }
   }
@@ -572,7 +573,7 @@ export async function sellOrder(args: SellOrderArgs): Promise<OrderSubmitResult>
           tickSize: args.tickSize,
         })
   } catch (err) {
-    void trackEvent('order_failed', settings, { side: 'SELL', stage: 'sign', reason: String(err) })
+    void trackEvent('order_failed', settings, { side: 'SELL', stage: 'sign', reason: describeError(err) })
     return { ok: false, error: `sign_failed:${err}` }
   }
 
@@ -638,7 +639,7 @@ export async function getOpenOrders(
     const orders = await listOpenOrders(client, marketId)
     return { ok: true, orders }
   } catch (err) {
-    return { ok: false, error: String(err) }
+    return { ok: false, error: describeError(err) }
   }
 }
 

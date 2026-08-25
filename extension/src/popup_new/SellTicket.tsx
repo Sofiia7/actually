@@ -1,3 +1,4 @@
+import { describeError } from '../shared/describeError'
 import React, { useEffect, useState } from 'react'
 import { Etched } from './components/Etched'
 import { GlassButton } from './components/GlassButton'
@@ -157,7 +158,7 @@ export const SellTicket: React.FC<SellTicketProps> = ({ position, onDone, onCanc
         setResult(`Failed: ${humanSellError(r.error ?? 'unknown_error', minShares)}`)
       }
     } catch (err) {
-      setResult(`Error: ${String(err)}`)
+      setResult(`Error: ${describeError(err)}`)
       void logTrade({
         kind: 'SELL',
         status: 'failed',
@@ -167,7 +168,7 @@ export const SellTicket: React.FC<SellTicketProps> = ({ position, onDone, onCanc
         orderType,
         shares,
         price: activePrice,
-        error: String(err),
+        error: describeError(err),
       })
     } finally {
       setSubmitting(false)

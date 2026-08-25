@@ -1,3 +1,4 @@
+import { describeError } from '../shared/describeError'
 import React, { useEffect, useRef, useState } from 'react'
 import QRCode from 'qrcode'
 import { IceCard } from './components/IceCard'
@@ -239,7 +240,7 @@ export const TradeTabWired: React.FC<TradeTabWiredProps> = ({
       const r = await cancelOrderViaOffscreen(orderId)
       setCancelError(r.ok ? null : r.error ?? 'unknown_error')
     } catch (err) {
-      setCancelError(String(err))
+      setCancelError(describeError(err))
     } finally {
       setCancellingId(null)
       void refreshPortfolio()
@@ -313,7 +314,7 @@ export const TradeTabWired: React.FC<TradeTabWiredProps> = ({
       }
     } catch (err) {
       if (!stale()) {
-        setConnect({ kind: 'connecting', uri: null, qrDataUrl: null, error: humanError(String(err)) })
+        setConnect({ kind: 'connecting', uri: null, qrDataUrl: null, error: humanError(describeError(err)) })
       }
     }
   }
@@ -326,7 +327,7 @@ export const TradeTabWired: React.FC<TradeTabWiredProps> = ({
       await pumpConnect(sessionId, gen)
     } catch (err) {
       if (connectGenRef.current === gen) {
-        setConnect({ kind: 'connecting', uri: null, qrDataUrl: null, error: humanError(String(err)) })
+        setConnect({ kind: 'connecting', uri: null, qrDataUrl: null, error: humanError(describeError(err)) })
       }
     }
   }
@@ -867,7 +868,7 @@ const OrderFormWired: React.FC<OrderFormProps> = ({
       })
       if (r.ok) onPortfolioChanged?.()
     } catch (err) {
-      setResult({ ok: false, msg: `Error: ${String(err)}` })
+      setResult({ ok: false, msg: `Error: ${describeError(err)}` })
       void logTrade({
         kind: 'BUY',
         status: 'failed',
@@ -877,7 +878,7 @@ const OrderFormWired: React.FC<OrderFormProps> = ({
         orderType,
         usd: sizeUsd,
         price: price ?? undefined,
-        error: String(err),
+        error: describeError(err),
       })
     } finally {
       setSubmitting(false)

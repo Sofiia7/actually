@@ -9,6 +9,7 @@
  * All messages arriving at this document carry `target: 'offscreen'`
  * (the SW filters by that tag). Responses go back via sendResponse.
  */
+import { describeError } from '../shared/describeError'
 import type { OffscreenRequest, OffscreenResponse, SerializableWalletState } from '../shared/messages'
 import { getSettings } from '../background/settings'
 import { isInAppRedeemAvailable } from '../background/builderStatus'
@@ -151,7 +152,7 @@ if (IS_OFFSCREEN_DOC) {
     const msg = e.payload
     if (!msg || (msg as { target?: string }).target !== 'offscreen') return false
     void handle(msg).then(sendResponse).catch((err) => {
-      sendResponse({ type: 'OS_ERROR', error: String(err) } satisfies OffscreenResponse)
+      sendResponse({ type: 'OS_ERROR', error: describeError(err) } satisfies OffscreenResponse)
     })
     return true // async
   })
@@ -185,7 +186,7 @@ async function handle(msg: OffscreenRequest): Promise<OffscreenResponse> {
             step = 'refresh_cache'
             await refreshMarketCache(settings.embeddingProvider, settings.workerUrl, settings.workerSecret)
           } catch (err) {
-            return { type: 'OS_MATCH_RESULT', match: null, reason: `cache_refresh_failed:${String(err)}` }
+            return { type: 'OS_MATCH_RESULT', match: null, reason: `cache_refresh_failed:${describeError(err)}` }
           }
           step = 'get_cache_after_refresh'
           cacheNow = await getMarketCache()
@@ -252,7 +253,7 @@ async function handle(msg: OffscreenRequest): Promise<OffscreenResponse> {
         void maybeRefreshStale(settings) // §12 non-blocking TTL refresh
         return { type: 'OS_MATCH_RESULT', match }
       } catch (err) {
-        return { type: 'OS_MATCH_RESULT', match: null, reason: `match_error[step=${step}]:${String(err)}` }
+        return { type: 'OS_MATCH_RESULT', match: null, reason: `match_error[step=${step}]:${describeError(err)}` }
       }
     }
 
@@ -342,7 +343,7 @@ async function handle(msg: OffscreenRequest): Promise<OffscreenResponse> {
             wallet: serializeWallet(result),
           })
         } catch (err) {
-          sessions.set(sessionId, { stage: 'error', error: String(err) })
+          sessions.set(sessionId, { stage: 'error', error: describeError(err) })
         }
       })()
       return { type: 'OS_CONNECT_STARTED', sessionId }
@@ -451,7 +452,7 @@ async function handle(msg: OffscreenRequest): Promise<OffscreenResponse> {
         const positions = await fetchPositions(w.safeAddress, settings.workerUrl, settings.workerSecret)
         return { type: 'OS_POSITIONS_RESULT', ok: true, positions }
       } catch (err) {
-        return { type: 'OS_POSITIONS_RESULT', ok: false, error: String(err) }
+        return { type: 'OS_POSITIONS_RESULT', ok: false, error: describeError(err) }
       }
     }
 

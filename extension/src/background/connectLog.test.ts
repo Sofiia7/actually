@@ -34,6 +34,14 @@ describe('redact', () => {
     expect(redact(new Error('boom'))).toContain('boom')
     expect(redact(undefined)).toBe('undefined')
   })
+
+  // WalletConnect rejects with a plain JSON-RPC object, and String() on one of
+  // those is "[object Object]". A connect log full of those is a log that
+  // records that something failed and deletes the reason - which is exactly
+  // what it did during a failed wallet connect.
+  it('reads a JSON-RPC rejection rather than logging [object Object]', () => {
+    expect(redact({ code: 5000, message: 'User rejected.' })).toBe('User rejected. (code 5000)')
+  })
 })
 
 describe('connect log', () => {

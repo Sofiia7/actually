@@ -10,6 +10,7 @@
  * Heavy lift - order construction + EIP-712 signing - is done inside the SDK
  * against the WCSigner we hand it (see ./wallet.ts).
  */
+import { describeError } from '../shared/describeError'
 import {
   ClobClient,
   Chain,
@@ -125,7 +126,7 @@ export async function deriveCredentials(
     try {
       creds = await fn.call(client)
     } catch (err) {
-      failures.push(`${name}:${err instanceof Error ? err.message : String(err)}`)
+      failures.push(`${name}:${err instanceof Error ? err.message : describeError(err)}`)
       continue
     }
     // A non-2xx resolves to an error object rather than throwing (we don't
@@ -347,7 +348,7 @@ export async function submitSignedOrder(
     if (res.success) return { success: true, orderId: res.orderID }
     return { success: false, error: clobErrorText(res) ?? 'clob_rejected' }
   } catch (err) {
-    return { success: false, error: String(err) }
+    return { success: false, error: describeError(err) }
   }
 }
 
@@ -402,7 +403,7 @@ export async function cancelOrder(
     // - fail closed rather than silently report success on an unrecognized shape.
     return { success: false, error: 'cancel_unconfirmed' }
   } catch (err) {
-    return { success: false, error: String(err) }
+    return { success: false, error: describeError(err) }
   }
 }
 

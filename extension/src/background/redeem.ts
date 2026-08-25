@@ -23,6 +23,7 @@
  * granted `personal_sign`. Nothing here needs eth_sendTransaction, so the
  * narrow set of methods our session requests is enough.
  */
+import { describeError } from '../shared/describeError'
 import { createWalletClient, custom } from 'viem'
 import { polygon } from 'viem/chains'
 import { RelayClient, RelayerTxType } from '@polymarket/builder-relayer-client'
@@ -111,7 +112,7 @@ export async function redeemPosition(args: RedeemArgs): Promise<RedeemResult> {
       })),
     )
   } catch (err) {
-    return { ok: false, error: `redeem_build_failed:${err instanceof Error ? err.message : String(err)}` }
+    return { ok: false, error: `redeem_build_failed:${err instanceof Error ? err.message : describeError(err)}` }
   }
 
   try {
@@ -182,7 +183,7 @@ export async function redeemPosition(args: RedeemArgs): Promise<RedeemResult> {
       return {
         ok: false,
         transactionId: submitted.transactionID,
-        error: `redeem_status_unknown:${err instanceof Error ? err.message : String(err)}`,
+        error: `redeem_status_unknown:${err instanceof Error ? err.message : describeError(err)}`,
       }
     }
     if (!mined) {

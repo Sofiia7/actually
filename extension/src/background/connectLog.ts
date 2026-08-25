@@ -17,6 +17,8 @@
  * Addresses are truncated. The WC pairing URI is never stored - it is a
  * live connection credential.
  */
+import { describeError } from '../shared/describeError'
+
 const KEY = 'connectLog'
 const MAX_ENTRIES = 60
 
@@ -29,7 +31,7 @@ export interface ConnectLogEntry {
 
 /** Redact anything that could be a secret or a full address. */
 export function redact(value: unknown): string {
-  let s = typeof value === 'string' ? value : String(value)
+  let s = typeof value === 'string' ? value : describeError(value)
   // Pairing URIs carry the symmetric key - never record one.
   s = s.replace(/wc:[^\s"']+/gi, 'wc:<uri redacted>')
   // 0x-addresses / hashes → first 6 + last 4.

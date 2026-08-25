@@ -1,3 +1,4 @@
+import { describeError } from '../../shared/describeError'
 import React, { useEffect, useRef, useState } from 'react'
 import { IceCard } from './IceCard'
 import { Etched } from './Etched'
@@ -171,7 +172,7 @@ export const PositionsPanel: React.FC<PositionsPanelProps> = ({
       )
     } catch (err) {
       setSellNotice({
-        text: String(err),
+        text: describeError(err),
         isError: true,
         slug: positions.find((p) => p.conditionId === conditionId)?.slug,
       })
@@ -179,7 +180,7 @@ export const PositionsPanel: React.FC<PositionsPanelProps> = ({
         kind: 'REDEEM',
         status: 'failed',
         question: positions.find((p) => p.conditionId === conditionId)?.title ?? 'Resolved market',
-        error: String(err),
+        error: describeError(err),
       })
     } finally {
       setRedeemingId(null)

@@ -18,6 +18,7 @@
  * the same via the `_execute_action` command (no listener needed when
  * default_popup is set).
  */
+import { describeError } from '../shared/describeError'
 import { ALARM_NAMES, CACHE_TTL_MINUTES, TELEMETRY_FLUSH_INTERVAL_MIN } from '../shared/constants'
 import { defaultThresholds } from '@actually/core'
 import type { RequestMessage, ResponseMessage } from '../shared/messages'
@@ -91,12 +92,12 @@ chrome.runtime.onMessage.addListener((msg: RequestMessage, _sender, sendResponse
   if (msg && (msg as { target?: string }).target === 'offscreen') {
     routeToOffscreen(msg)
       .then((res) => sendResponse(res))
-      .catch((err) => sendResponse({ type: 'OS_ERROR', error: String(err) }))
+      .catch((err) => sendResponse({ type: 'OS_ERROR', error: describeError(err) }))
     return true
   }
   handle(msg)
     .then((res) => sendResponse(res))
-    .catch((err) => sendResponse({ type: 'ERROR', error: String(err) } satisfies ResponseMessage))
+    .catch((err) => sendResponse({ type: 'ERROR', error: describeError(err) } satisfies ResponseMessage))
   return true
 })
 
@@ -167,7 +168,7 @@ async function testConnection(): Promise<TestKeysResult> {
     const res = await fetch(`${settings.workerUrl}/health`)
     out.worker = res.ok ? { ok: true } : { ok: false, error: `http_${res.status}` }
   } catch (err) {
-    out.worker = { ok: false, error: String(err) }
+    out.worker = { ok: false, error: describeError(err) }
   }
 
   if (settings.embeddingProvider === 'openai' && out.worker.ok) {
@@ -182,7 +183,7 @@ async function testConnection(): Promise<TestKeysResult> {
       })
       out.openai = res.ok ? { ok: true } : { ok: false, error: `http_${res.status}` }
     } catch (err) {
-      out.openai = { ok: false, error: String(err) }
+      out.openai = { ok: false, error: describeError(err) }
     }
   }
   return out
