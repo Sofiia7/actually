@@ -11,6 +11,7 @@
  * the SignClient on import - only on the first `getSignClient()` call from
  * the popup). The SW only uses the types.
  */
+import { describeError } from '../shared/describeError'
 import { SignClient } from '@walletconnect/sign-client'
 import { logConnect } from './connectLog'
 
@@ -70,6 +71,44 @@ export async function getSignClient(): Promise<WCSignClient> {
     })
   }
   return clientPromise
+}
+
+/** Test seam: forget the cached client so a case can supply its own. */
+export function _resetSignClient(): void {
+  clientPromise = null
+}
+
+/** How long a dropped relay socket gets to come back before we give up. */
+const RELAY_OPEN_TIMEOUT_MS = 10_000
+
+/**
+ * Make sure the relay socket is up before sending anything over it.
+ *
+ * A WalletConnect session outlives its transport. Leave the extension alone
+ * for a day and the session is still stored, still unexpired, still pointing
+ * at a WebSocket that closed hours ago. `client.request` into that socket does
+ * not fail - it produces nothing at all: the wallet never receives the
+ * request, the user is never prompted, and the caller waits on a promise that
+ * will never settle. That is indistinguishable, from the outside, from a user
+ * who approved a signature and saw nothing happen.
+ *
+ * `connected` and `transportOpen()` are the relayer's own API for exactly
+ * this, so this is a precondition being stated rather than a workaround.
+ */
+async function ensureRelayUp(client: WCSignClient, timeoutMs: number): Promise<void> {
+  const relayer = (client as unknown as { core?: { relayer?: { connected: boolean; transportOpen: () => Promise<void> } } })
+    .core?.relayer
+  // A client shape without a relayer (older SDK, a stub) is not something to
+  // fail on: the request path below is unchanged for it.
+  if (!relayer || relayer.connected) return
+  await logConnect('relay_reopening', 'socket was closed, reconnecting before the request')
+  try {
+    await withTimeout(relayer.transportOpen(), timeoutMs)
+  } catch (err) {
+    await logConnect('relay_unreachable', err)
+    throw new Error(`wc_relay_unreachable:${describeError(err)}`)
+  }
+  await logConnect('relay_reopened')
 }
 
 export interface ActiveSession {
@@ -278,6 +317,10 @@ export async function wcRequest(
   params: unknown,
 ): Promise<unknown> {
   const client = await getSignClient()
+  // Same reason as in signTypedData: the redeem path sends over this session
+  // too, and a socket that closed while the extension sat idle swallows the
+  // request without a word.
+  await ensureRelayUp(client, RELAY_OPEN_TIMEOUT_MS)
   return client.request({
     topic,
     chainId: POLYGON_CHAIN_ID,
@@ -292,8 +335,10 @@ export async function signTypedData(
   topic: string,
   address: string,
   typedData: unknown,
+  opts: { relayTimeoutMs?: number } = {},
 ): Promise<string> {
   const client = await getSignClient()
+  await ensureRelayUp(client, opts.relayTimeoutMs ?? RELAY_OPEN_TIMEOUT_MS)
   const sig = (await client.request({
     topic,
     chainId: POLYGON_CHAIN_ID,
