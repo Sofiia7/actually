@@ -12,7 +12,7 @@ Actually closes that gap. Open an article, click the toolbar icon, and the
 extension matches the text against live Polymarket markets and shows the
 market's own probability. No account, no wallet, no signup.
 
-![A German article matched to a Berlin election market](marketing/store/06-translated-de.png)
+![A news article matched to a live Polymarket market](docs/screenshots/matched-market.png)
 
 ## What it does
 
@@ -30,6 +30,8 @@ market's own probability. No account, no wallet, no signup.
   Cyrillic tokens out of 30522 - an untranslated Russian headline embeds to
   noise. Translated, the same headline scores 0.53-0.71 against the market it
   is actually about, against a 0.35 floor.
+
+  ![A German article matched to a Berlin election market](docs/screenshots/translated-german.png)
 - **Trades, optionally.** Connect any WalletConnect v2 wallet for limit and
   market orders, selling, cancelling resting orders, and a positions panel with
   cost basis and P&L. Keys and funds are never held by us.

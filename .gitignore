@@ -31,3 +31,14 @@ packages/market-cache-builder/.cache/
 .claude/
 .cursor/
 .deploy-secrets.local
+
+# Internal working documents - kept locally, never published. The repository
+# is public; these are the distribution playbook, grant drafts, agent working
+# notes and outreach texts, none of which belong in it.
+memory.md
+marketing/
+docs/superpowers/
+actually-growth-strategy.md
+actually-outreach-templates.md
+actually-launch-and-grants-checklist.md
+actually-tomorrow-checklist.md
