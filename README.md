@@ -39,6 +39,46 @@ market's own probability. No account, no wallet, no signup.
   Context Protocol: `check_news`, `get_market`, `place_order`, `sell_order`,
   `cancel_order`, `get_positions`.
 
+## Using the MCP server
+
+The MCP server is published, so it needs no clone and no build. Add it to any
+MCP client (Claude Desktop, Cursor, and anything else that speaks the
+protocol):
+
+```json
+{
+  "mcpServers": {
+    "actually": {
+      "command": "npx",
+      "args": ["actually-mcp-server"]
+    }
+  }
+}
+```
+
+That gives an agent the signal tools - `check_news` and `get_market` - with no
+key and no wallet. Ask it "what do markets think about this?" with a headline
+and it answers with the market's own price.
+
+Trading tools appear only if you supply a key of your own:
+
+```json
+"env": {
+  "POLYMARKET_PRIVATE_KEY": "0x...",
+  "ACTUALLY_MAX_ORDER_USD": "100",
+  "ACTUALLY_DAILY_LIMIT_USD": "500"
+}
+```
+
+Both caps are enforced server-side against a persisted spend ledger, so an
+agent cannot talk its way past them by claiming a different price.
+`redeem_position` needs a further explicit opt-in
+(`ACTUALLY_ENABLE_REDEEM=true`) because it submits a real on-chain transaction
+and is still in testing.
+
+Full documentation, including every environment variable and the reasoning
+behind the guards: [`packages/mcp-server/README.md`](packages/mcp-server/README.md).
+
 ## How it fits together
 
 ```
