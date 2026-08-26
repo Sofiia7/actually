@@ -1,0 +1,77 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "io.github.sofiia7/actually",
+  "description": "Maps news text to Polymarket prediction markets and returns the market's objective probability. Optional trading tools (place/sell/cancel/redeem) with per-order and daily spend caps.",
+  "websiteUrl": "https://github.com/Sofiia7/actually",
+  "version": "0.1.6",
+  "packages": [
+    {
+      "registryType": "npm",
+      "identifier": "actually-mcp-server",
+      "version": "0.1.6",
+      "transport": { "type": "stdio" },
+      "environmentVariables": [
+        {
+          "name": "POLYMARKET_PRIVATE_KEY",
+          "description": "Optional. Your own Polygon EOA private key. Enables the trading tools (place_order, sell_order, cancel_order, get_open_orders, get_positions). Omit to run signal-only, which needs no key and no wallet.",
+          "isRequired": false,
+          "isSecret": true,
+          "format": "string"
+        },
+        {
+          "name": "ACTUALLY_MAX_ORDER_USD",
+          "description": "Optional. Per-order USD cap for the trading tools (default 100). Enforced server-side against the market's own price, so a caller cannot understate an order to slip past it.",
+          "isRequired": false,
+          "isSecret": false,
+          "format": "number"
+        },
+        {
+          "name": "ACTUALLY_DAILY_LIMIT_USD",
+          "description": "Optional. Rolling UTC-day USD cap shared by place_order and sell_order (default 500). Held in a persisted ledger, so it survives restarts.",
+          "isRequired": false,
+          "isSecret": false,
+          "format": "number"
+        },
+        {
+          "name": "ACTUALLY_ENABLE_REDEEM",
+          "description": "Optional. Set to exactly 'true' to additionally register redeem_position. A second opt-in beyond the private key, because it submits a real on-chain transaction through Polymarket's relayer and is still in testing.",
+          "isRequired": false,
+          "isSecret": false,
+          "format": "string"
+        },
+        {
+          "name": "ACTUALLY_SEARCH_FALLBACK",
+          "description": "Optional. Set to exactly 'true' to let check_news fall back to Polymarket's own market search when nothing in the cached set matches. Off by default: the query is built from the caller's text and leaves the machine.",
+          "isRequired": false,
+          "isSecret": false,
+          "format": "string"
+        },
+        {
+          "name": "ACTUALLY_SPEND_STATE_PATH",
+          "description": "Optional. Where the spend ledger is stored (default ~/.actually-mcp-server/spend-guard.json).",
+          "isRequired": false,
+          "isSecret": false,
+          "format": "string"
+        },
+        {
+          "name": "ACTUALLY_WORKER_URL",
+          "description": "Optional. Only if you run your own Cloudflare Worker instead of the shared default.",
+          "isRequired": false,
+          "isSecret": false,
+          "format": "string"
+        },
+        {
+          "name": "ACTUALLY_WORKER_SECRET",
+          "description": "Optional. Shared secret for your own Worker. Not a private credential: the default one ships inside every client by design.",
+          "isRequired": false,
+          "isSecret": true,
+          "format": "string"
+        }
+      ]
+    }
+  ],
+  "repository": {
+    "url": "https://github.com/Sofiia7/actually",
+    "source": "github"
+  }
+}

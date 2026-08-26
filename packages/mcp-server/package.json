@@ -48,5 +48,13 @@
     "tsx": "^4.22.4",
     "typescript": "^5.4.5",
     "vitest": "^4.1.10"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Sofiia7/actually.git",
+    "directory": "packages/mcp-server"
+  },
+  "bugs": {
+    "url": "https://github.com/Sofiia7/actually/issues"
   }
 }
