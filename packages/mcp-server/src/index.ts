@@ -62,6 +62,8 @@ function resolveMarketOrThrow(marketId: string) {
 server.registerTool(
   'check_news',
   {
+    title: 'Check news text against prediction markets',
+    annotations: { readOnlyHint: true, openWorldHint: true },
     description:
       'Map a piece of news text to the relevant Polymarket market and return its ' +
       'objective YES probability. Does not classify whether the news is dramatized ' +
@@ -92,6 +94,8 @@ server.registerTool(
 server.registerTool(
   'get_market',
   {
+    title: "Get a market's price and orderbook",
+    annotations: { readOnlyHint: true, openWorldHint: true },
     description:
       'Look up a specific Polymarket market by id: details, live price, and an ' +
       'orderbook snapshot. Falls back to a direct Gamma lookup when the id is ' +
@@ -148,6 +152,8 @@ if (PRIVATE_KEY) {
   server.registerTool(
     'place_order',
     {
+      title: 'Place an order (spends your funds)',
+      annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: true },
       description:
         "Buy YES or NO shares in a Polymarket market using this server's configured " +
         "POLYMARKET_PRIVATE_KEY, with this server's builder code attached. The token " +
@@ -193,6 +199,8 @@ if (PRIVATE_KEY) {
   server.registerTool(
     'sell_order',
     {
+      title: 'Sell a position (moves your funds)',
+      annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: true },
       description:
         'Sell YES or NO shares you hold in a Polymarket market (close or reduce a ' +
         'position), signed with this server\'s configured POLYMARKET_PRIVATE_KEY. ' +
@@ -241,6 +249,8 @@ if (PRIVATE_KEY) {
   server.registerTool(
     'cancel_order',
     {
+      title: 'Cancel a resting order',
+      annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: true, openWorldHint: true },
       description: "Cancel one of this server's resting orders by order id.",
       inputSchema: { orderId: z.string().min(1) },
     },
@@ -253,6 +263,8 @@ if (PRIVATE_KEY) {
   server.registerTool(
     'get_open_orders',
     {
+      title: 'List your open orders',
+      annotations: { readOnlyHint: true, openWorldHint: true },
       description: "List this server's resting orders, optionally filtered to one market.",
       inputSchema: { marketId: z.string().optional() },
     },
@@ -265,6 +277,8 @@ if (PRIVATE_KEY) {
   server.registerTool(
     'get_positions',
     {
+      title: 'List your positions',
+      annotations: { readOnlyHint: true, openWorldHint: true },
       description:
         "List this server's current Polymarket positions with cost basis and unrealized P&L. " +
         'A `redeemable: true` position has resolved and is ready for redeem_position.',
@@ -289,6 +303,8 @@ if (PRIVATE_KEY) {
     server.registerTool(
       'redeem_position',
       {
+        title: 'Redeem a resolved position (on-chain)',
+        annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: true },
         description:
           'Claim payout for a resolved, winning position (get its conditionId from ' +
           'get_positions - only positions with redeemable:true can be redeemed). This ' +
