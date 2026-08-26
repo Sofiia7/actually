@@ -10,6 +10,7 @@
   "scripts": {
     "dev": "vite build --watch --mode development",
     "build": "tsc --noEmit && vite build",
+    "package:cws": "npm run build && node scripts/package-cws.mjs",
     "preview": "npm run build && wrangler dev --config worker/wrangler.toml",
     "test": "vitest run",
     "test:watch": "vitest",

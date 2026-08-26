@@ -79,6 +79,11 @@ and is still in testing.
 Full documentation, including every environment variable and the reasoning
 behind the guards: [`packages/mcp-server/README.md`](packages/mcp-server/README.md).
 
+Listed in the [official MCP registry](https://registry.modelcontextprotocol.io/v0/servers?search=io.github.Sofiia7/actually)
+as `io.github.Sofiia7/actually`, and on Glama:
+
+[![actually MCP server](https://glama.ai/mcp/servers/Sofiia7/actually/badges/card.svg)](https://glama.ai/mcp/servers/Sofiia7/actually)
+
 ## How it fits together
 
 ```
@@ -131,7 +136,8 @@ Full policy: https://actually-api.sofiaseremeteva.workers.dev/privacy
 ## Status
 
 The extension is built and passing its release gates; the Chrome Web Store
-submission is in progress. `actually-mcp-server` is published on npm.
+submission is in progress. `actually-mcp-server` is published on npm and listed
+in the official MCP registry.
 
 Redeeming a resolved position is **in testing**: builder authentication,
 neg-risk contract selection and the zero-balance guard are each verified
