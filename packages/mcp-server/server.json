@@ -1,15 +1,17 @@
 {
   "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
-  "name": "io.github.sofiia7/actually",
-  "description": "Maps news text to Polymarket prediction markets and returns the market's objective probability. Optional trading tools (place/sell/cancel/redeem) with per-order and daily spend caps.",
+  "name": "io.github.Sofiia7/actually",
+  "description": "Matches news to Polymarket markets and returns the market's probability. Optional capped trading.",
   "websiteUrl": "https://github.com/Sofiia7/actually",
-  "version": "0.1.6",
+  "version": "0.1.7",
   "packages": [
     {
       "registryType": "npm",
       "identifier": "actually-mcp-server",
-      "version": "0.1.6",
-      "transport": { "type": "stdio" },
+      "version": "0.1.7",
+      "transport": {
+        "type": "stdio"
+      },
       "environmentVariables": [
         {
           "name": "POLYMARKET_PRIVATE_KEY",
