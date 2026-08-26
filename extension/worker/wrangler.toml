@@ -34,13 +34,18 @@ binding = "MARKET_CACHE"
 id = "e1c0e2aa31b94900847aca14def4b261"
 
 [vars]
-# Non-secret defaults — override in CF dashboard or `wrangler secret put`.
+# Non-secret defaults - override in CF dashboard or `wrangler secret put`.
 #
 # ALLOWED_EXTENSION_ID
 #   Required for production. Set this to your Chrome extension ID (from
 #   chrome://extensions or the Web Store listing). Worker fails 503 without it
 #   unless WORKER_DEV_MODE=true. Comma-separated list supported.
-ALLOWED_EXTENSION_ID = "lljnfdfoieiodiiaglimlfjlebljdmhb"
+#   gckkk... is the Web Store id, derived from the item's own public key
+#   (Dashboard > Package > View public key), which manifest.json now carries
+#   so the unpacked build shares it. lljnf... is the id the old locally-
+#   generated key produced; it belongs to no build any more and can be
+#   dropped once every unpacked copy has been reloaded.
+ALLOWED_EXTENSION_ID = "gckkkfhpbklhnjhhpjhjfhamhbllkkcd,lljnfdfoieiodiiaglimlfjlebljdmhb"
 #
 # WORKER_DEV_MODE
 #   Set to "true" ONLY for local dev. Bypasses the requirement to have
