@@ -3,10 +3,10 @@ name: Market cache precompute
 # Substitutes for "your own always-on infra" mentioned in
 # packages/market-cache-builder/README.md - this project has no dedicated
 # server, so the precompute cron runs here instead. Cadence is every 2 hours
-# rather than the extension's 30-minute CACHE_TTL_MINUTES: this is a PRIVATE
-# repo, so GitHub Actions minutes are metered (2,000 free min/month on the
-# Free plan) - running every 30 min would burn ~3-4x that budget on this job
-# alone. Tighten the schedule (or move to real cron infra) if you upgrade
+# rather than the extension's 30-minute CACHE_TTL_MINUTES: Sofiia7/actually-extension
+# is a PRIVATE repo, so GitHub Actions minutes are metered (2,000 free min/month
+# on the Free plan) - running every 30 min would burn ~3-4x that budget on this
+# job alone. Tighten the schedule (or move to real cron infra) if you upgrade
 # your GitHub plan or need fresher data than a 2-hour-stale cache.
 on:
   schedule:
@@ -15,6 +15,12 @@ on:
 
 jobs:
   build-cache:
+    # Only the private repo holds the secrets below. The public mirror
+    # (Sofiia7/actually) runs the same schedule with none of them, so every
+    # firing there died at "missing required env var: WORKER_URL" - twelve red
+    # runs a day on the repo the MCP catalogs scrape, and Glama's quality score
+    # reads that as "CI is failing". Skipped beats failed.
+    if: github.repository == 'Sofiia7/actually-extension'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
