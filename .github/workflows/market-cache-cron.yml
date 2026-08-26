@@ -3,11 +3,11 @@ name: Market cache precompute
 # Substitutes for "your own always-on infra" mentioned in
 # packages/market-cache-builder/README.md - this project has no dedicated
 # server, so the precompute cron runs here instead. Cadence is every 2 hours
-# rather than the extension's 30-minute CACHE_TTL_MINUTES: Sofiia7/actually-extension
-# is a PRIVATE repo, so GitHub Actions minutes are metered (2,000 free min/month
-# on the Free plan) - running every 30 min would burn ~3-4x that budget on this
-# job alone. Tighten the schedule (or move to real cron infra) if you upgrade
-# your GitHub plan or need fresher data than a 2-hour-stale cache.
+# rather than the extension's 30-minute CACHE_TTL_MINUTES, which was set while
+# this lived in a private repo where Actions minutes are metered. Public repos
+# get unmetered minutes, so the cadence is now a choice about cache freshness
+# and load on Polymarket's API rather than a billing constraint - tighten it if
+# a 2-hour-stale cache stops being good enough.
 on:
   schedule:
     - cron: '17 */2 * * *' # odd minute to avoid the GH-wide top-of-hour pile-up
@@ -15,12 +15,13 @@ on:
 
 jobs:
   build-cache:
-    # Only the private repo holds the secrets below. The public mirror
-    # (Sofiia7/actually) runs the same schedule with none of them, so every
-    # firing there died at "missing required env var: WORKER_URL" - twelve red
-    # runs a day on the repo the MCP catalogs scrape, and Glama's quality score
-    # reads that as "CI is failing". Skipped beats failed.
-    if: github.repository == 'Sofiia7/actually-extension'
+    # This job writes the shared market cache, so exactly one repo may run it.
+    # The private Sofiia7/actually-extension held that role while it held the
+    # secrets; the cache is now built here, and that repo is archived. The gate
+    # stays because a fork or a restored copy inherits the schedule along with
+    # the file, and a second writer racing this one would be invisible until
+    # the cache started flickering between two builds.
+    if: github.repository == 'Sofiia7/actually'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
