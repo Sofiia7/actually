@@ -1,3 +1,13 @@
+> **DONE - this brief was executed and closed. Do not act on it again.**
+>
+> The snowflake art in `extension/public/icon-{16,48,128}.png` is the finished
+> icon, shipped in 3138688 and refined in 43f6def. Everything below describes the
+> state BEFORE that, when the icons really were a scaffold placeholder.
+>
+> On 2026-08-26 this stale framing caused the real icon to be overwritten by a
+> generated one, because the brief was read instead of the PNG it describes. If
+> you are about to replace the icon, open the file first.
+
 # Icon brief - replacing the placeholder
 
 `extension/public/icon-{16,48,128}.png` are currently a flat solid-blue
