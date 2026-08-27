@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "actually": {
+      "command": "npx",
+      "args": ["-y", "actually-mcp-server"]
+    }
+  }
+}

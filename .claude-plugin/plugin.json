@@ -1,0 +1,20 @@
+{
+  "name": "actually",
+  "displayName": "Actually - prediction markets",
+  "version": "0.1.7",
+  "description": "Look up what a Polymarket prediction market is pricing for a claim about the future, instead of guessing. Read-only by default; optional spend-capped trading with your own key.",
+  "author": {
+    "name": "Sofiia7",
+    "url": "https://github.com/Sofiia7"
+  },
+  "homepage": "https://github.com/Sofiia7/actually",
+  "repository": "https://github.com/Sofiia7/actually",
+  "license": "MIT",
+  "keywords": [
+    "polymarket",
+    "prediction-markets",
+    "probability",
+    "news",
+    "finance"
+  ]
+}
