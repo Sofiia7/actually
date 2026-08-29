@@ -80,7 +80,9 @@ Full documentation, including every environment variable and the reasoning
 behind the guards: [`packages/mcp-server/README.md`](packages/mcp-server/README.md).
 
 Listed in the [official MCP registry](https://registry.modelcontextprotocol.io/v0/servers?search=io.github.Sofiia7/actually)
-as `io.github.Sofiia7/actually`, and on Glama:
+as `io.github.Sofiia7/actually`, on mcpservers.org, and on Glama:
+
+[![Listed on mcpservers.org](https://mcpservers.org/badge.svg)](https://mcpservers.org/servers/sofiia7/actually)
 
 [![actually MCP server](https://glama.ai/mcp/servers/Sofiia7/actually/badges/card.svg)](https://glama.ai/mcp/servers/Sofiia7/actually)
 
