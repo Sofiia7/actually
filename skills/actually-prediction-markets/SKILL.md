@@ -46,9 +46,9 @@ read-only tools:
 }
 ```
 
-The first call takes about fifteen seconds while a local embedding model warms
-up. Later calls are fast. If a probe times out at five seconds it will look like
-a broken install; it is not.
+The first call takes about twenty seconds while the package downloads and a
+local embedding model warms up. Later calls are fast. If a probe times out at
+five seconds it will look like a broken install; it is not.
 
 ## Using it
 

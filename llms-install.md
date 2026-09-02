@@ -50,9 +50,10 @@ Ask the model to call `check_news` with any current headline. A correct
 response contains `hasMarket`, `confidence`, and a `market` object with a
 `question` and `probabilityYes`.
 
-**Allow at least 15 seconds for the first call.** The first run downloads and
-warms a local embedding model, and a probe that gives up after 5 seconds will
-see silence and look like a broken install. Later calls are fast.
+**Allow at least 30 seconds for the first call.** On a cold npm cache the first
+run downloads the package and warms a local embedding model; measured end to end
+it took about 22 seconds. A probe that gives up after 5 seconds will see silence
+and look like a broken install. Later calls are fast.
 
 ## Optional: trading
 
