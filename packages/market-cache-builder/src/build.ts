@@ -31,6 +31,16 @@ function requireEnv(name: string): string {
 }
 
 /**
+ * Wait between rate-limited attempts, both inside a page and between whole
+ * passes. A 429 means a per-minute quota is spent, so any wait shorter than
+ * the window retries into the same wall - the 2026-09-02 run failed after
+ * three attempts inside 37 seconds on the old 2s/4s backoff. Worst case now
+ * is roughly ten minutes before the run gives up, which a two-hourly cron on
+ * unmetered public-repo runners can afford.
+ */
+const RATE_LIMIT_WAIT_MS = 60_000
+
+/**
  * Retries a transient failure (HuggingFace 429s under cron-job load being the
  * one actually observed in prod) with a short backoff. Model loading is a
  * one-shot network fetch with no retry of its own in transformers.js - a
@@ -72,7 +82,16 @@ async function main() {
     // unretried one fails the whole run (observed 2026-08-25, between two runs
     // that succeeded either side of it). A failed run is not harmless - it
     // leaves the served cache to go stale until the next one lands.
-    const markets = await withRetry(() => fetchActiveMarkets(workerUrl, workerSecret, fetchTarget))
+    //
+    // Both waits are a minute rather than seconds: 2026-09-02 proved the old
+    // backoff retried inside the very window it was waiting out. The inner one
+    // retries just the rate-limited page, which is far cheaper than restarting
+    // a ~35s paging pass, so the outer retry is only the net under it.
+    const markets = await withRetry(
+      () => fetchActiveMarkets(workerUrl, workerSecret, fetchTarget, { rateLimitRetryMs: RATE_LIMIT_WAIT_MS }),
+      3,
+      RATE_LIMIT_WAIT_MS,
+    )
     console.log(`[market-cache-builder] fetched ${markets.length} markets`)
 
     step = 'load_model'

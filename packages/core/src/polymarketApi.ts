@@ -131,11 +131,71 @@ const GAMMA_MAX_OFFSET = 2000
  */
 const PAGE_DELAY_MS = 700
 
+/** Attempts per page, shared by the 5xx and the 429 path below. */
+const FETCH_ATTEMPTS = 3
+
+/**
+ * Ceiling on an honored `Retry-After`. The header is upstream input: without a
+ * cap, one absurd value parks an unattended cron run for hours.
+ */
+const RETRY_AFTER_CAP_MS = 120_000
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((r) => setTimeout(r, ms))
+}
+
+/**
+ * `Retry-After` as milliseconds - the header arrives either as a seconds count
+ * or as an HTTP date. Returns undefined when it is absent or unusable, which
+ * leaves the caller's own backoff in charge.
+ */
+function retryAfterMs(res: Response): number | undefined {
+  const raw = res.headers?.get('Retry-After')
+  if (!raw) return undefined
+  const seconds = Number(raw)
+  const ms = Number.isFinite(seconds) ? seconds * 1000 : Date.parse(raw) - Date.now()
+  if (!Number.isFinite(ms) || ms <= 0) return undefined
+  return Math.min(ms, RETRY_AFTER_CAP_MS)
+}
+
+/**
+ * First 200 characters of a failed response, folded onto one line, for the
+ * thrown error. A 429 is ambiguous by status alone: our own Worker's per-IP
+ * limiter answers `{"error":"rate_limited"}`, while Gamma's own throttle is
+ * proxied through verbatim - and separating those two in a cron log otherwise
+ * takes arithmetic over request timestamps (done by hand for the 2026-09-02
+ * run). Consuming the body is safe here because the caller throws immediately.
+ */
+async function bodySnippet(res: Response): Promise<string> {
+  try {
+    const oneLine = (await res.text()).replace(/\s+/g, ' ').trim()
+    return oneLine.length > 200 ? `${oneLine.slice(0, 200)}...` : oneLine
+  } catch {
+    return '<body unreadable>'
+  }
+}
+
+export interface FetchActiveMarketsOptions {
+  /**
+   * How long to wait before retrying a page that came back 429, in ms;
+   * 0 (the default) means it is not retried at all.
+   *
+   * A 429 means a per-minute quota is spent - ours or Gamma's - so the only
+   * wait that helps is one that outlives the window. That is right for the
+   * cron and wrong for the extension, whose fallback runs while a popup is
+   * open: hanging there for a minute is worse than falling back to on-device
+   * embedding. Hence opt-in rather than a default.
+   */
+  rateLimitRetryMs?: number
+}
+
 export async function fetchActiveMarkets(
   workerUrl: string,
   workerSecret: string,
   total = 300,
+  opts: FetchActiveMarketsOptions = {},
 ): Promise<PolyMarket[]> {
+  const rateLimitRetryMs = opts.rateLimitRetryMs ?? 0
   const out: PolyMarket[] = []
   const seenIds = new Set<string>()
 
@@ -151,18 +211,36 @@ export async function fetchActiveMarkets(
         order,
         ascending: 'false',
       })
-      // Gamma occasionally returns a transient 5xx; the Worker proxies it through.
-      // Retry a few times with backoff so one upstream blip doesn't abort the
-      // whole refresh. Non-5xx errors (4xx) are not retried.
+      // Two upstream failures reach us as a non-ok response, and they want
+      // opposite waits:
+      //   5xx - a blip; a sub-second retry usually clears it.
+      //   429 - a spent rate-limit window. Retrying inside that window fails
+      //         again by construction: the 2026-09-02 cron run burned all
+      //         three attempts in 37 seconds on 2s/4s backoffs, which is why
+      //         the wait is now the caller's to set (see the options type).
+      // Any other 4xx - bad params, bad secret - is not retried at all.
       let res: Response | undefined
-      for (let attempt = 0; attempt < 3; attempt++) {
+      for (let attempt = 0; attempt < FETCH_ATTEMPTS; attempt++) {
         res = await fetch(`${workerUrl}/markets?${params}`, {
           headers: authHeaders(workerSecret),
         })
-        if (res.ok || res.status < 500) break
-        await new Promise((r) => setTimeout(r, 400 * (attempt + 1)))
+        if (res.ok) break
+        if (attempt === FETCH_ATTEMPTS - 1) break
+        if (res.status >= 500) {
+          await sleep(400 * (attempt + 1))
+          continue
+        }
+        if (res.status === 429 && rateLimitRetryMs > 0) {
+          await sleep(retryAfterMs(res) ?? rateLimitRetryMs)
+          continue
+        }
+        break
       }
-      if (!res || !res.ok) throw new Error(`fetch_markets_failed:${res?.status ?? 'network'}`)
+      if (!res) throw new Error('fetch_markets_failed:network')
+      if (!res.ok) {
+        const body = await bodySnippet(res)
+        throw new Error(`fetch_markets_failed:${res.status}${body ? ` ${body}` : ''}`)
+      }
       const raw = (await res.json()) as RawGammaMarket[]
       if (raw.length === 0) return
       for (const m of raw) {

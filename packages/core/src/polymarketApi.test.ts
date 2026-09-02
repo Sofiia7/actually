@@ -199,6 +199,138 @@ describe('fetchActiveMarkets - the cache must not be "biggest markets only"', ()
   })
 })
 
+// ---------------------------------------------------------------
+// Rate limits: what a 429 on a page does to the run
+// ---------------------------------------------------------------
+
+/** A rate-limited page. `headers` lets a test hand back a Retry-After. */
+function rateLimited(body = '{"error":"rate_limited"}', headers: Record<string, string> = {}) {
+  return {
+    ok: false,
+    status: 429,
+    headers: { get: (k: string) => headers[k] ?? null },
+    text: async () => body,
+  } as unknown as Response
+}
+
+function okPage(rows: Record<string, unknown>[]) {
+  return { ok: true, status: 200, json: async () => rows } as unknown as Response
+}
+
+/** Runs every sleep instantly and records the delay it was asked for. */
+function captureDelays(): number[] {
+  const delays: number[] = []
+  vi.stubGlobal('setTimeout', ((fn: () => void, ms?: number) => {
+    delays.push(ms ?? 0)
+    fn()
+    return 0
+  }) as unknown as typeof setTimeout)
+  return delays
+}
+
+describe('fetchActiveMarkets - a 429 is not a 5xx', () => {
+  afterEach(() => vi.unstubAllGlobals())
+
+  it('does not retry a 429 by default, so a popup never hangs on one', async () => {
+    // The extension pages /markets on its fallback path while the popup is
+    // open. Waiting out a rate-limit window there is worse for the user than
+    // falling straight through to on-device embedding.
+    captureDelays()
+    const fetchMock = vi.fn(async () => rateLimited())
+    vi.stubGlobal('fetch', fetchMock)
+    await expect(fetchActiveMarkets('https://w', 's', 5)).rejects.toThrow('fetch_markets_failed:429')
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+  })
+
+  it('carries the response body in the error, which is what names the source', async () => {
+    // Our own Worker's limiter and Gamma's own throttle both arrive as a bare
+    // 429. Only the body separates them, and the cron log is the only place
+    // anyone will ever look.
+    captureDelays()
+    vi.stubGlobal('fetch', vi.fn(async () => rateLimited('{"error":"rate_limited"}')))
+    await expect(fetchActiveMarkets('https://w', 's', 5)).rejects.toThrow(
+      'fetch_markets_failed:429 {"error":"rate_limited"}',
+    )
+  })
+
+  it('retries a 429 when the caller opts in, and uses the page it gets back', async () => {
+    captureDelays()
+    let calls = 0
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => {
+        calls++
+        return calls === 1 ? rateLimited() : okPage([gammaMarket({ id: 'after-429' })])
+      }),
+    )
+    const out = await fetchActiveMarkets('https://w', 's', 1, { rateLimitRetryMs: 60_000 })
+    expect(out.map((m) => m.id)).toContain('after-429')
+    expect(calls).toBeGreaterThan(1)
+  })
+
+  it('waits the caller wait when no Retry-After is offered', async () => {
+    const delays = captureDelays()
+    let calls = 0
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => {
+        calls++
+        return calls === 1 ? rateLimited() : okPage([gammaMarket({ id: 'ok' })])
+      }),
+    )
+    await fetchActiveMarkets('https://w', 's', 1, { rateLimitRetryMs: 60_000 })
+    expect(delays).toContain(60_000)
+  })
+
+  it('prefers Retry-After over the caller wait, but caps what upstream can ask for', async () => {
+    // Retry-After is upstream input: an absurd value would otherwise park an
+    // unattended cron run for hours.
+    const delays = captureDelays()
+    let calls = 0
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => {
+        calls++
+        if (calls === 1) return rateLimited('{"error":"rate_limited"}', { 'Retry-After': '5' })
+        if (calls === 2) return rateLimited('{"error":"rate_limited"}', { 'Retry-After': '99999' })
+        return okPage([gammaMarket({ id: 'ok' })])
+      }),
+    )
+    await fetchActiveMarkets('https://w', 's', 1, { rateLimitRetryMs: 60_000 })
+    expect(delays).toContain(5_000)
+    expect(delays).toContain(120_000)
+    expect(delays).not.toContain(60_000)
+  })
+
+  it('gives up after three rate-limited attempts instead of retrying forever', async () => {
+    captureDelays()
+    const fetchMock = vi.fn(async () => rateLimited())
+    vi.stubGlobal('fetch', fetchMock)
+    await expect(fetchActiveMarkets('https://w', 's', 5, { rateLimitRetryMs: 60_000 })).rejects.toThrow(
+      'fetch_markets_failed:429',
+    )
+    expect(fetchMock).toHaveBeenCalledTimes(3)
+  })
+
+  it('still retries a 5xx on the short backoff, with no opt-in needed', async () => {
+    // Regression guard: the 429 path was added to this same loop.
+    const delays = captureDelays()
+    let calls = 0
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => {
+        calls++
+        return calls === 1
+          ? ({ ok: false, status: 503, headers: { get: () => null }, text: async () => 'upstream' } as unknown as Response)
+          : okPage([gammaMarket({ id: 'after-503' })])
+      }),
+    )
+    const out = await fetchActiveMarkets('https://w', 's', 1)
+    expect(out.map((m) => m.id)).toContain('after-503')
+    expect(delays).toContain(400)
+  })
+})
+
 describe('searchMarkets - the long-tail escape hatch', () => {
   afterEach(() => vi.unstubAllGlobals())
 
