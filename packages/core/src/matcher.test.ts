@@ -315,6 +315,24 @@ describe('attemptMatch - a failed check has to be able to say why', () => {
     expect(attempt.match?.market.id).toBe('eligible')
   })
 
+  it('reports alternativeRawScores separately from the boosted alternativeScores, so promoting one to featured never has to trust a bonus-inflated number as a probability-like confidence (2026-09-08 audit F20)', async () => {
+    const top = fakeMarket({ id: 'top', question: 'Totally unrelated', vec: [1, 0] })
+    // Shares every headline keyword, so its RANKING score is boosted well
+    // above its raw cosine - exactly the number a UI must NOT read as
+    // "confidence" when this becomes the featured match.
+    const alt = fakeMarket({ id: 'alt', question: 'Uranium enrichment sanctions', vec: [0.5, Math.sqrt(1 - 0.5 ** 2)] })
+    const store = { getMarkets: async () => [top, alt] }
+    const embedder = { embed: async () => new Float32Array([1, 0]) }
+    const attempt = await attemptMatch('Uranium enrichment sanctions', '', {
+      store, embedder, thresholds: { confidenceThreshold: 0.8, lowConfidenceFloor: 0.35 },
+    })
+    expect(attempt.match?.alternatives[0]?.id).toBe('alt')
+    expect(attempt.match?.alternativeRawScores?.[0]).toBeCloseTo(0.5, 6)
+    // The boosted score is a different (higher) number, confirming these
+    // two arrays are not accidentally the same values twice.
+    expect(attempt.match?.alternativeScores?.[0]).toBeGreaterThan(attempt.match?.alternativeRawScores?.[0] ?? 0)
+  })
+
   it('carries the match through unchanged when one does clear the floor', async () => {
     const close = fakeMarket({ id: 'close', question: 'Will Iran enrich uranium?', vec: [1, 0, 0] })
     const store = { getMarkets: async () => [close] }

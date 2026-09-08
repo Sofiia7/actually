@@ -130,11 +130,16 @@ function historyToRow(h: HistoryItem): HistoryRow {
  * outcome prices and demotes the previously-featured market into the alternates
  * list so the user can switch back.
  */
-function buildMatchFromAlternative(prev: MatchResult, index: number): MatchResult | null {
+export function buildMatchFromAlternative(
+  prev: MatchResult,
+  index: number,
+  confidenceThreshold: number,
+): MatchResult | null {
   const picked = prev.alternatives[index]
   if (!picked) return null
   const rest = prev.alternatives.filter((_, i) => i !== index)
   const restScores = (prev.alternativeScores ?? []).filter((_, i) => i !== index)
+  const restRawScores = (prev.alternativeRawScores ?? []).filter((_, i) => i !== index)
   const yesIdx = findOutcomeIndex(picked.outcomes, 'Yes')
   let probability = 0
   try {
@@ -145,14 +150,24 @@ function buildMatchFromAlternative(prev: MatchResult, index: number): MatchResul
   }
   const color: MatchResult['color'] =
     probability < COLOR_THRESHOLDS.blue ? 'blue' : probability < COLOR_THRESHOLDS.yellow ? 'yellow' : 'red'
+  // The picked alternative's RAW semantic score, not its (possibly > 1,
+  // keyword/number-bonus-inflated) ranking score in alternativeScores - and
+  // lowConfidence recomputed against THIS market's own raw score, not
+  // copied from whatever the previously-featured market's flag happened to
+  // be (2026-09-08 audit F20).
+  const rawConfidence = prev.alternativeRawScores?.[index] ?? prev.confidence
   return {
     market: picked,
     probability,
-    confidence: prev.alternativeScores?.[index] ?? prev.confidence,
+    confidence: rawConfidence,
     color,
-    lowConfidence: prev.lowConfidence,
+    lowConfidence: rawConfidence < confidenceThreshold,
     alternatives: [prev.market, ...rest],
     alternativeScores: [prev.confidence, ...restScores],
+    // prev.confidence is already the demoted market's own raw score (see
+    // matcher.ts: confidence is always set from `top.raw`), so it is valid
+    // in both arrays here.
+    alternativeRawScores: [prev.confidence, ...restRawScores],
   }
 }
 
@@ -500,7 +515,11 @@ export const IntegratedPopup: React.FC<IntegratedPopupProps> = ({
   // Promote an alternate market to the featured match (and into the Trade tab).
   function pickRelated(index: number) {
     if (!lastMatch) return
-    const next = buildMatchFromAlternative(lastMatch, index)
+    // settings loads async and pickRelated is only reachable once a match
+    // already exists, so it is practically always populated by now - the
+    // fallback just keeps this typesafe without assuming that.
+    const confidenceThreshold = settings?.confidenceThreshold ?? defaultThresholds('local').confidenceThreshold
+    const next = buildMatchFromAlternative(lastMatch, index, confidenceThreshold)
     if (!next) return
     setLastMatch(next)
     setCheckState({

@@ -54,7 +54,15 @@ export interface MatchResult {
   freshPrice?: number
   lowConfidence: boolean
   alternatives: PolyMarket[]
+  /** Ranking score per alternative (raw cosine + keyword/number/volume
+   * bonuses) - for ordering/display only. NOT a probability-like value: the
+   * bonuses can push it past 1. Promoting an alternative to the featured
+   * match must use alternativeRawScores instead (2026-09-08 audit F20). */
   alternativeScores?: number[]
+  /** Raw semantic similarity per alternative, same scale as `confidence` on
+   * the featured match (0..1, comparable to a confidenceThreshold). This is
+   * what a UI must read when promoting an alternative to featured. */
+  alternativeRawScores?: number[]
 }
 
 export type MatchColor = 'blue' | 'yellow' | 'red'

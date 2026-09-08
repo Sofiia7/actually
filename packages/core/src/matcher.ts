@@ -263,6 +263,7 @@ async function searchAndScore(
       lowConfidence: top.raw < thresholds.confidenceThreshold,
       alternatives: eligible.slice(1, 5).map((r) => r.market),
       alternativeScores: eligible.slice(1, 5).map((r) => r.score),
+      alternativeRawScores: eligible.slice(1, 5).map((r) => r.raw),
     },
     nearest,
     scored: scored.length,
@@ -376,6 +377,7 @@ export async function attemptMatch(
   const probability = priceFromOutcomes(top.market.outcomePrices, top.market.outcomes)
   const alternatives = eligible.slice(1, 5).map((s) => s.market)
   const alternativeScores = eligible.slice(1, 5).map((s) => s.score)
+  const alternativeRawScores = eligible.slice(1, 5).map((s) => s.raw)
 
   return {
     match: {
@@ -386,6 +388,7 @@ export async function attemptMatch(
       lowConfidence: !isAboveThreshold,
       alternatives,
       alternativeScores,
+      alternativeRawScores,
     },
     nearest,
     scored: scored.length,
