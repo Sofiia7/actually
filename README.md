@@ -123,15 +123,17 @@ Load `extension/dist` as an unpacked extension in Chrome. Copy
 the Worker URL, the WalletConnect project id and the builder code.
 
 ```bash
-npm test --workspaces               # 686 tests across four workspaces
+npm test --workspaces               # 763 tests across four workspaces
 ```
 
 ## Privacy
 
 Discovery is free and needs no account. There are no content scripts: the page
 is read only when you click, and only the active tab. On the default settings
-(local embeddings, translation off-device) the article text does not leave your
-machine. Telemetry is opt-in and off by default.
+(local embeddings) the article text does not leave your machine - translation,
+when the page needs it, also runs locally via the browser's own built-in
+translator, regardless of embedding provider. Telemetry is opt-in and off by
+default.
 
 Full policy: https://actually-api.sofiaseremeteva.workers.dev/privacy
 

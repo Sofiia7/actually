@@ -17,7 +17,7 @@ Security triage: [`SECURITY.md`](SECURITY.md)
 **Verify it's real in 60 seconds** - no wallet, worker, or secret needed:
 
 ```bash
-cd extension && npm install && npm test   # 137 unit + component tests, all green
+cd extension && npm install && npm test   # 445 unit + component tests, all green
 ```
 
 What the extension actually does is walked through in [How matching works](#how-matching-works); full setup is below.
@@ -47,7 +47,7 @@ What the extension actually does is walked through in [How matching works](#how-
 | Order-book depth beyond best bid/ask | ✅ |
 | Self-hosted Marck Script font (no remote fetch) | ✅ |
 | Privacy policy + ToS | ✅ |
-| Unit + component tests (vitest, 137 passing) | ✅ |
+| Unit + component tests (vitest, 445 passing) | ✅ |
 | Build-integrity smoke gate (`npm run smoke`) | ✅ |
 
 ---
@@ -214,7 +214,7 @@ The builderCode is baked into the extension at build time and used by **every** 
 ```bash
 npm run dev              # Vite watch mode → outputs to dist/
 npm run worker:dev       # Wrangler local dev for the API (uses WORKER_DEV_MODE)
-npm test                 # Vitest unit + component tests (137 passing)
+npm test                 # Vitest unit + component tests (445 passing)
 npm run lint             # tsc --noEmit type check
 ```
 
@@ -370,8 +370,9 @@ binary-market filter, the confirm-before-sign step, and the release gates
 Implementation was done with heavy AI assistance (Claude) acting as a pair-programmer
 under her review - turning each audit finding and design decision into code, tests,
 and docs. Every change was gated by her acceptance criteria and by the test suite
-(137 passing here; 365 across the whole monorepo, including the `@actually/core` and
-`actually-mcp-server` workspaces) + CI before it landed.
+(445 passing here; 763 across the whole monorepo, including the `@actually/core`,
+`@actually/market-cache-builder`, and `actually-mcp-server` workspaces) + CI before
+it landed.
 
 In short: the *what* and the *why* - product, design, decisions, audit - are Sofiia's;
 the AI accelerated the *how*.

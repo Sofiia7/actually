@@ -1,6 +1,6 @@
 # Actually - Privacy Policy
 
-_Last updated: 2026-08-05_
+_Last updated: 2026-09-08_
 
 Actually is a Chrome extension that shows Polymarket prediction-market odds for news articles, and lets users who connect a wallet place orders on those markets in one click. We aim to be as private as possible. This page explains exactly what data is collected, what is sent off your device, and why.
 
@@ -14,7 +14,7 @@ script on every page you visit; nothing happens until you act.
 The following never leaves your device:
 
 - **Your Worker URL and Worker secret** entered in Settings - stored in `chrome.storage.local`
-- **Cached list of active Polymarket markets** (up to 800 entries). The extension re-checks for a newer cache every 30 minutes, but the underlying market snapshot itself is only as fresh as our last precompute run - currently up to ~2 hours old (see `get_market`/`check_news` in the MCP server for the same caveat). For a live price before trading, the extension always fetches directly rather than relying on this cache.
+- **Cached list of active Polymarket markets** (up to 2000 entries from our precomputed cache; if that cache is unreachable or too stale, the extension falls back to computing embeddings on-device instead, capped at 800 entries there for performance). The extension re-checks for a newer cache every 30 minutes, but the underlying market snapshot itself is only as fresh as our last precompute run - currently up to ~2 hours old (see `get_market`/`check_news` in the MCP server for the same caveat). For a live price before trading, the extension always fetches directly rather than relying on this cache.
 - **Vector embeddings** for those market questions, used for matching news articles
 - **Local history** of the last 10 articles you matched. Clear at any time from the History tab.
 - **WalletConnect session topic** (once connected) and **Polymarket CLOB API credentials** (key, secret, passphrase) - used to authenticate order submissions. Never transmitted except to the CLOB itself.

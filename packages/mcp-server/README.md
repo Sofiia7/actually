@@ -1,10 +1,12 @@
 # actually-mcp-server
 
 MCP server that maps news text to Polymarket markets and returns the market's
-**objective probability** - the piece existing Polymarket MCP servers don't
+**current probability** - the piece existing Polymarket MCP servers don't
 provide. Existing servers hand an agent raw market data (`price`, `volume`,
 `orderbook`); this one answers "what does the market actually think about
-*this specific news text*."
+*this specific news text*." That's a real, unmodified market price - not a
+number this server invents from the text's tone - but it is the crowd's
+current bet, not a verdict on whether the news itself is true.
 
 ## Install
 
@@ -57,7 +59,7 @@ client.
 
 | Tool | Requires a key? | What it does |
 |---|---|---|
-| `check_news(text)` | No | Maps arbitrary news text to the relevant Polymarket market; returns its objective YES probability, confidence, and up to 3 alternative candidate markets. Does not classify tone - that's left to you, the calling agent. |
+| `check_news(text)` | No | Maps arbitrary news text to the relevant Polymarket market; returns its current YES probability, confidence, and up to 3 alternative candidate markets. Does not classify tone - that's left to you, the calling agent. |
 | `get_market(marketId)` | No | Market details, live price, and an orderbook snapshot for a market you already have the id for (e.g. from `check_news`). Falls back to a direct Gamma lookup when the id is outside the precomputed cache. |
 | `place_order(marketId, side, sizeUsd, price, orderType)` | Yes (`POLYMARKET_PRIVATE_KEY`) | Buys YES or NO shares. The token to trade is resolved **server-side** from `marketId` + `side` - you cannot pass a raw token id, so a mismatched side/token can't silently buy the wrong outcome. Rejects non-Yes/No (categorical) markets outright rather than guessing an outcome. Gated on the same jurisdiction check as the browser extension (see below). Capped by `ACTUALLY_MAX_ORDER_USD` / `ACTUALLY_DAILY_LIMIT_USD` (see below). |
 | `sell_order(marketId, side, sizeShares, price, orderType)` | Yes | Sells YES or NO shares you hold - closes or reduces a position. Same non-binary-market rejection and jurisdiction gate as `place_order`. Shares the same daily budget as `place_order` (notional estimated as `sizeShares × price`). |

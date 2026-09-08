@@ -67,9 +67,12 @@ server.registerTool(
     annotations: { readOnlyHint: true, openWorldHint: true },
     description:
       'Map a piece of news text to the relevant Polymarket market and return its ' +
-      'objective YES probability. Does not classify whether the news is dramatized ' +
-      'or accurate relative to the market - that interpretation is left to the ' +
-      'calling agent, which has both the original text and this market anchor. ' +
+      "current YES probability - the market's real, unmodified price, not a number " +
+      "synthesized from the text. That price is the crowd's current bet, not a " +
+      'verdict on whether the news is true. It also does not classify whether the ' +
+      'news is dramatized or accurate relative to the market - that interpretation ' +
+      'is left to the calling agent, which has both the original text and this ' +
+      'market anchor. ' +
       'The probability comes from a precomputed cache refreshed on a cron cadence ' +
       '(can be up to ~2 hours stale) - for a live price before trading, call ' +
       'get_market with the returned marketId. If that cache looks abandoned rather ' +
