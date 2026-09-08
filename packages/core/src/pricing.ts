@@ -93,3 +93,11 @@ export function floorSlippage(bestBid: number, floorPrice: number): number {
   if (!(bestBid > 0)) return 0
   return (bestBid - floorPrice) / bestBid
 }
+
+/** Slippage a market BUY is actually accepting, as a fraction of the ask -
+ * the mirror of floorSlippage, since marketCapPrice rounds UP instead of
+ * down and so does not always cost exactly the nominal capPct either. */
+export function capSlippage(bestAsk: number, capPrice: number): number {
+  if (!(bestAsk > 0)) return 0
+  return (capPrice - bestAsk) / bestAsk
+}

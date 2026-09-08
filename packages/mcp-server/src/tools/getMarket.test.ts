@@ -71,7 +71,7 @@ describe('getMarket', () => {
     )
     expect(result.found).toBe(true)
     expect(result.livePrice).toBeNull()
-    expect(result.orderbook).toEqual({ bestBid: null, bestAsk: null, spread: null, marketSellFloor: null })
+    expect(result.orderbook).toEqual({ bestBid: null, bestAsk: null, spread: null, marketSellFloor: null, marketBuyCap: null })
     expect(fetchLivePriceCalled).toBe(false)
     expect(fetchOrderbookCalled).toBe(false)
   })
@@ -149,6 +149,57 @@ describe('getMarket', () => {
       { marketId: 'm1' },
     )
     expect(fallbackCalled).toBe(false)
+  })
+})
+
+describe('getMarket - outcome-aware price (2026-09-08 audit F19)', () => {
+  it('quotes the NO token, not YES, when outcome: "No" is requested', async () => {
+    const mkt = fakeMarket({ id: 'm1', clobTokenIds: ['tok-yes', 'tok-no'] })
+    const store = { getMarkets: async () => [mkt] }
+    let requestedTokenId: string | undefined
+    const result = await getMarket(
+      {
+        store,
+        fetchLivePrice: async (tokenId) => {
+          requestedTokenId = tokenId
+          return 0.7
+        },
+        fetchOrderbook: async () => ({ asks: [{ price: '0.71', size: '10' }], bids: [{ price: '0.69', size: '10' }] }),
+      },
+      { marketId: 'm1', outcome: 'No' },
+    )
+    expect(requestedTokenId).toBe('tok-no')
+    expect(result.livePrice).toBeCloseTo(0.7, 6)
+    expect(result.orderbook?.bestBid).toBeCloseTo(0.69, 6)
+  })
+
+  it('defaults to YES when outcome is omitted, unchanged from before', async () => {
+    const mkt = fakeMarket({ id: 'm1', clobTokenIds: ['tok-yes', 'tok-no'] })
+    const store = { getMarkets: async () => [mkt] }
+    let requestedTokenId: string | undefined
+    await getMarket(
+      { store, fetchLivePrice: async (tokenId) => { requestedTokenId = tokenId; return null }, fetchOrderbook: async () => ({ asks: [], bids: [] }) },
+      { marketId: 'm1' },
+    )
+    expect(requestedTokenId).toBe('tok-yes')
+  })
+
+  it('quotes a market-buy cap strictly above the ask, mirroring the sell floor', async () => {
+    const result = await getMarket(
+      {
+        store: { getMarkets: async () => [fakeMarket({ id: 'm1' })] },
+        fetchLivePrice: async () => null,
+        fetchOrderbook: async () => ({ asks: [{ price: '0.02', size: '500' }], bids: [] }),
+      },
+      { marketId: 'm1' },
+    )
+    const cap = result.orderbook?.marketBuyCap
+    // 2% above a 2c ask lands mid-tick on the 0.1c grid and rounds UP - a buy
+    // cap has to round up, the mirror of the sell floor rounding down, or it
+    // promises headroom the tick can't actually give.
+    expect(cap?.price).toBeCloseTo(0.021, 6)
+    expect(cap?.price).toBeGreaterThan(0.02)
+    expect(cap?.maxSlippage).toBeCloseTo(0.05, 3)
   })
 })
 

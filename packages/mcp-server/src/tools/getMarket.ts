@@ -1,6 +1,8 @@
 import {
+  capSlippage,
   findOutcomeIndex,
   floorSlippage,
+  marketCapPrice,
   marketFloorPrice,
   parseOrderbook,
   priceFromOutcomes,
@@ -11,6 +13,14 @@ import {
 
 export interface GetMarketInput {
   marketId: string
+  /**
+   * Which token to quote livePrice/orderbook for. Defaults to 'Yes' - the
+   * caller must pass the side it actually intends to trade (matching
+   * place_order/sell_order's `side`), since YES and NO books move somewhat
+   * independently and are not simply 1 − each other (2026-09-08 audit F19:
+   * an agent trading NO was quoted YES's price with no way to tell).
+   */
+  outcome?: 'Yes' | 'No'
 }
 
 export interface GetMarketOutput {
@@ -43,15 +53,26 @@ export interface GetMarketOutput {
      * hole with nothing to warn it.
      */
     marketSellFloor?: { price: number; maxSlippage: number } | null
+    /**
+     * Price to pass as `price` for a MARKET buy, and the slippage it accepts.
+     * The mirror of marketSellFloor: a market buy is fill-or-kill too, and a
+     * cap below the ask (or even AT it, with no headroom for the tick) can
+     * leave the order unable to cross the spread at all (2026-09-08 audit
+     * F19 - place_order's own price guidance used to describe this floor
+     * instead, copied verbatim from the sell case).
+     */
+    marketBuyCap?: { price: number; maxSlippage: number } | null
   }
 }
 
 /**
- * Slippage band a market sell asks for. Matches the extension's ticket so
- * both clients quote the same number; the tick can force a wider real one,
- * which is why `maxSlippage` is reported alongside rather than assumed.
+ * Slippage band a market order asks for, shared by both the buy cap and the
+ * sell floor. Matches the extension's ticket so both clients quote the same
+ * number; the tick can force a wider real one, which is why `maxSlippage` is
+ * reported alongside rather than assumed.
  */
 const MARKET_SELL_FLOOR_PCT = 0.02
+const MARKET_BUY_CAP_PCT = 0.02
 
 export interface GetMarketDeps {
   store: MarketStore
@@ -80,13 +101,13 @@ export async function getMarket(deps: GetMarketDeps, input: GetMarketInput): Pro
     return { found: false }
   }
 
-  const yesIdx = findOutcomeIndex(market.outcomes, 'Yes')
-  const yesTokenId = market.clobTokenIds[yesIdx]
+  const outcomeIdx = findOutcomeIndex(market.outcomes, input.outcome ?? 'Yes')
+  const tokenId = market.clobTokenIds[outcomeIdx]
   const probabilityYes = priceFromOutcomes(market.outcomePrices, market.outcomes)
 
   const [livePrice, book] = await Promise.all([
-    yesTokenId ? deps.fetchLivePrice(yesTokenId) : Promise.resolve(null),
-    yesTokenId ? deps.fetchOrderbook(yesTokenId) : Promise.resolve({ asks: [], bids: [] }),
+    tokenId ? deps.fetchLivePrice(tokenId) : Promise.resolve(null),
+    tokenId ? deps.fetchOrderbook(tokenId) : Promise.resolve({ asks: [], bids: [] }),
   ])
   const snap = parseOrderbook(book)
 
@@ -112,6 +133,13 @@ export async function getMarket(deps: GetMarketDeps, input: GetMarketInput): Pro
           ? (() => {
               const price = marketFloorPrice(snap.bestBid, MARKET_SELL_FLOOR_PCT, market.tickSize ?? '0.001')
               return { price, maxSlippage: floorSlippage(snap.bestBid, price) }
+            })()
+          : null,
+      marketBuyCap:
+        snap.bestAsk != null
+          ? (() => {
+              const price = marketCapPrice(snap.bestAsk, MARKET_BUY_CAP_PCT, market.tickSize ?? '0.001')
+              return { price, maxSlippage: capSlippage(snap.bestAsk, price) }
             })()
           : null,
     },

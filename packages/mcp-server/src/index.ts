@@ -98,11 +98,22 @@ server.registerTool(
     annotations: { readOnlyHint: true, openWorldHint: true },
     description:
       'Look up a specific Polymarket market by id: details, live price, and an ' +
-      'orderbook snapshot. Falls back to a direct Gamma lookup when the id is ' +
-      "outside the precomputed cache's top markets by volume.",
-    inputSchema: { marketId: z.string().min(1) },
+      'orderbook snapshot for ONE outcome token. Falls back to a direct Gamma ' +
+      "lookup when the id is outside the precomputed cache's top markets by volume.",
+    inputSchema: {
+      marketId: z.string().min(1),
+      outcome: z
+        .enum(['Yes', 'No'])
+        .optional()
+        .describe(
+          'Which token to price - match this to the side you intend to trade ' +
+            "(place_order/sell_order's BUY_YES/SELL_YES → 'Yes', BUY_NO/SELL_NO → " +
+            "'No'). Defaults to 'Yes'. YES and NO books move somewhat independently, " +
+            "not simply 1 − each other, so quoting the wrong one hands you the wrong price.",
+        ),
+    },
   },
-  async ({ marketId }) => {
+  async ({ marketId, outcome }) => {
     const { workerUrl, workerSecret } = requireWorkerConfig()
     const result = await getMarket(
       {
@@ -111,7 +122,7 @@ server.registerTool(
         fetchOrderbook: (tokenId) => fetchOrderbookJson(tokenId, workerUrl, workerSecret),
         fetchMarketById: (id) => fetchMarketById(id, workerUrl, workerSecret),
       },
-      { marketId },
+      { marketId, outcome },
     )
     return { content: [{ type: 'text' as const, text: JSON.stringify(result) }] }
   },
@@ -169,10 +180,11 @@ if (PRIVATE_KEY) {
           .lt(1)
           .describe(
             'LIMIT: the resting price. MARKET: the WORST price you accept, and it must be ' +
-              'strictly below the best bid - a market sell is fill-or-kill, so a floor equal ' +
-              'to the bid fills only if the whole size rests on that one level. Call ' +
-              'get_market first and pass orderbook.marketSellFloor.price rather than deriving ' +
-              'it; on cheap books a 2% band is thinner than one tick and rounds back onto the bid.',
+              'strictly ABOVE the best ask - a market buy is fill-or-kill, so a cap at or ' +
+              "below the ask can't cross the spread and the order fails to fill at all. Call " +
+              "get_market first with outcome matching this order's side (BUY_YES → 'Yes', " +
+              'BUY_NO → \'No\') and pass orderbook.marketBuyCap.price rather than deriving it; ' +
+              'on cheap books a 2% band is thinner than one tick and rounds back onto the ask.',
           ),
         orderType: z.enum(['LIMIT', 'MARKET']),
       },
@@ -210,7 +222,18 @@ if (PRIVATE_KEY) {
         marketId: z.string().min(1),
         side: z.enum(['SELL_YES', 'SELL_NO']),
         sizeShares: z.number().positive(),
-        price: z.number().gt(0).lt(1),
+        price: z
+          .number()
+          .gt(0)
+          .lt(1)
+          .describe(
+            'LIMIT: the resting price. MARKET: the WORST price you accept, and it must be ' +
+              'strictly below the best bid - a market sell is fill-or-kill, so a floor equal ' +
+              'to the bid fills only if the whole size rests on that one level. Call ' +
+              "get_market first with outcome matching this order's side (SELL_YES → 'Yes', " +
+              'SELL_NO → \'No\') and pass orderbook.marketSellFloor.price rather than deriving ' +
+              'it; on cheap books a 2% band is thinner than one tick and rounds back onto the bid.',
+          ),
         orderType: z.enum(['LIMIT', 'MARKET']),
       },
     },
