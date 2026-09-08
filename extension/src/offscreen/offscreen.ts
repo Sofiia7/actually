@@ -17,7 +17,7 @@ import { attemptMatch, extractKeywords, searchMarkets } from '@actually/core'
 import { makeChromeMarketStore, makeSettingsEmbedder } from '../background/adapters'
 import { refreshMarketCache, getMarketCache, getCacheStatus } from '../background/cache'
 import { CACHE_TTL_MINUTES } from '../shared/constants'
-import type { Settings } from '../shared/types'
+import type { EmbeddingProvider, Settings } from '../shared/types'
 import { fetchLivePrice } from '@actually/core'
 import { addToHistory } from '../background/history'
 import { logTrade } from '../background/tradeLog'
@@ -102,39 +102,54 @@ function isInFlight(s: ConnectSession | undefined): boolean {
   return s?.stage === 'pending' || s?.stage === 'awaiting_approval' || s?.stage === 'signing'
 }
 
+// Single coordinator for every refresh trigger - the lazy post-match
+// staleness check below, OS_RUN_MATCH's own "cache is empty" bootstrap, and
+// the explicit OS_REFRESH_CACHE case further down (auto-on-open + manual
+// button). Previously each had its OWN separate in-flight guard (or, for
+// the bootstrap case, none at all), so two of them could run a full embed
+// pass at the same time - duplicating expensive work at best, and at worst
+// racing which one's result actually lands last (2026-09-08 audit F18; see
+// also cache.ts's cacheEpoch, the backstop for the cross-context version of
+// this same race against a settings change in the service worker).
+let refreshInFlight: Promise<{ added: number; reused: number; removed: number }> | null = null
+function coordinatedRefresh(
+  provider: EmbeddingProvider,
+  workerUrl: string,
+  workerSecret: string,
+): Promise<{ added: number; reused: number; removed: number }> {
+  if (!refreshInFlight) {
+    refreshInFlight = refreshMarketCache(provider, workerUrl, workerSecret).finally(() => {
+      refreshInFlight = null
+    })
+  }
+  return refreshInFlight
+}
+
 // §12: lazy cache TTL. Checked on EVERY OS_RUN_MATCH, not only after a
 // successful one (2026-09-08 audit F14: gated behind a match before this, a
 // cache stale enough that nothing matches anymore could never trigger its
 // own refresh - no match -> no refresh -> still no match, forever). Kicks
-// off a non-blocking refresh if the cache is older than CACHE_TTL_MINUTES,
-// deduped so concurrent checks don't stack refreshes. The user sees the
-// current result immediately; fresh data lands on the next check.
-let staleRefreshInFlight = false
+// off a non-blocking refresh if the cache is older than CACHE_TTL_MINUTES.
+// The user sees the current result immediately; fresh data lands on the
+// next check.
 // Set on a failed attempt, cleared on the next successful one. Every check
 // now calls maybeRefreshStale (not only successful ones), so a genuinely
 // dead network would otherwise retry the doomed fetch on every single
 // article checked - this caps that to one attempt per cooldown window.
 let staleRefreshLastFailedAt = 0
 const STALE_REFRESH_RETRY_COOLDOWN_MS = 5 * 60_000
-// Shared in-flight guard for explicit OS_REFRESH_CACHE calls (auto-on-open +
-// manual button), so concurrent requests await one refresh instead of stacking.
-let refreshInFlight: Promise<{ added: number; reused: number; removed: number }> | null = null
 async function maybeRefreshStale(settings: Settings): Promise<void> {
-  if (staleRefreshInFlight) return
+  if (refreshInFlight) return
   if (Date.now() - staleRefreshLastFailedAt < STALE_REFRESH_RETRY_COOLDOWN_MS) return
   const { lastUpdated } = await getCacheStatus()
   const ageMin = lastUpdated > 0 ? (Date.now() - lastUpdated) / 60_000 : Infinity
   if (ageMin <= CACHE_TTL_MINUTES) return
-  staleRefreshInFlight = true
-  void refreshMarketCache(settings.embeddingProvider, settings.workerUrl, settings.workerSecret)
+  void coordinatedRefresh(settings.embeddingProvider, settings.workerUrl, settings.workerSecret)
     .then(() => {
       staleRefreshLastFailedAt = 0
     })
     .catch(() => {
       staleRefreshLastFailedAt = Date.now()
-    })
-    .finally(() => {
-      staleRefreshInFlight = false
     })
 }
 
@@ -207,7 +222,7 @@ export async function handle(msg: OffscreenRequest): Promise<OffscreenResponse> 
         if (cacheNow.length === 0 || !cacheHadEmbeddings) {
           try {
             step = 'refresh_cache'
-            await refreshMarketCache(settings.embeddingProvider, settings.workerUrl, settings.workerSecret)
+            await coordinatedRefresh(settings.embeddingProvider, settings.workerUrl, settings.workerSecret)
           } catch (err) {
             return { type: 'OS_MATCH_RESULT', match: null, reason: `cache_refresh_failed:${describeError(err)}` }
           }
@@ -291,18 +306,7 @@ export async function handle(msg: OffscreenRequest): Promise<OffscreenResponse> 
       if (!settings.workerUrl || !settings.workerSecret) {
         throw new Error('no_keys')
       }
-      // Dedupe concurrent refreshes (auto-on-open + manual "Refresh" + the
-      // match-triggered stale refresh) so the embed loop never runs in parallel.
-      if (!refreshInFlight) {
-        refreshInFlight = refreshMarketCache(
-          settings.embeddingProvider,
-          settings.workerUrl,
-          settings.workerSecret,
-        ).finally(() => {
-          refreshInFlight = null
-        })
-      }
-      const r = await refreshInFlight
+      const r = await coordinatedRefresh(settings.embeddingProvider, settings.workerUrl, settings.workerSecret)
       return { type: 'OS_CACHE_REFRESHED', ...r }
     }
 

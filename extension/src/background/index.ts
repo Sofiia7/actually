@@ -23,7 +23,7 @@ import { ALARM_NAMES, CACHE_TTL_MINUTES, TELEMETRY_FLUSH_INTERVAL_MIN } from '..
 import { defaultThresholds } from '@actually/core'
 import type { RequestMessage, ResponseMessage } from '../shared/messages'
 import type { TestKeysResult } from '../shared/types'
-import { getCacheStatus, clearMarketCache } from './cache'
+import { getCacheStatus, clearMarketCache, bumpCacheEpoch } from './cache'
 import { getSettings, saveSettings } from './settings'
 import { clearHistory, getHistory } from './history'
 import { flushTelemetry, getInstallId, trackEvent } from './telemetry'
@@ -118,7 +118,14 @@ async function handle(msg: RequestMessage): Promise<ResponseMessage> {
         if (patch.lowConfidenceFloor === undefined) patch.lowConfidenceFloor = td.lowConfidenceFloor
       }
       const next = await saveSettings(patch)
-      if (switching) await clearMarketCache()
+      // Order matters: bump BEFORE clearing, so a refresh that reads the
+      // epoch anywhere between here and the clear still sees the new value
+      // (2026-09-08 audit F18) - a refresh already in flight for the OLD
+      // provider must discard its write instead of landing after this.
+      if (switching) {
+        await bumpCacheEpoch()
+        await clearMarketCache()
+      }
       return { type: 'SETTINGS_RESPONSE', settings: next }
     }
 

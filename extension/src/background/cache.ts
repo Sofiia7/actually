@@ -17,6 +17,33 @@ import {
   sha256,
 } from '@actually/core'
 
+async function currentEpoch(): Promise<number> {
+  const data = await chrome.storage.local.get(STORAGE_KEYS.cacheEpoch)
+  return (data[STORAGE_KEYS.cacheEpoch] as number | undefined) ?? 0
+}
+
+/**
+ * Writes `data` only if the cache epoch is still what it was when this
+ * refresh started - see STORAGE_KEYS.cacheEpoch's doc comment. Returns
+ * whether the write actually happened, so a caller that was about to report
+ * added/reused/removed counts can report zero instead when it didn't.
+ */
+async function writeIfCurrentEpoch(startEpoch: number, data: Record<string, unknown>): Promise<boolean> {
+  if ((await currentEpoch()) !== startEpoch) return false
+  await chrome.storage.local.set(data)
+  return true
+}
+
+/**
+ * Invalidates any refresh currently in flight - call on every embedding-
+ * provider switch (see STORAGE_KEYS.cacheEpoch's doc comment). A refresh
+ * started under the OLD provider will discard its write instead of landing
+ * after the switch (2026-09-08 audit F18).
+ */
+export async function bumpCacheEpoch(): Promise<void> {
+  await chrome.storage.local.set({ [STORAGE_KEYS.cacheEpoch]: Date.now() })
+}
+
 export async function getMarketCache(): Promise<CachedMarket[]> {
   const data = await chrome.storage.local.get(STORAGE_KEYS.marketCache)
   return (data[STORAGE_KEYS.marketCache] as CachedMarket[] | undefined) ?? []
@@ -53,14 +80,18 @@ export async function refreshMarketCache(
   workerUrl: string,
   workerSecret: string,
 ): Promise<{ added: number; reused: number; removed: number }> {
+  // Captured once, up front - see writeIfCurrentEpoch's doc comment. Any
+  // write this call makes later checks against THIS value, not whatever the
+  // epoch is by then.
+  const epoch = await currentEpoch()
   if (provider === 'local') {
     try {
-      return await refreshFromPrecomputedCache(workerUrl, workerSecret)
+      return await refreshFromPrecomputedCache(workerUrl, workerSecret, epoch)
     } catch (err) {
       console.warn('[cache] precomputed market-cache unavailable, falling back to on-device embedding:', err)
     }
   }
-  return refreshByEmbedding(provider, workerUrl, workerSecret)
+  return refreshByEmbedding(provider, workerUrl, workerSecret, epoch)
 }
 
 /** Attempts (first try + retries) for the precomputed blob. */
@@ -118,6 +149,7 @@ async function fetchBlobWithRetry(workerUrl: string, workerSecret: string): Prom
 async function refreshFromPrecomputedCache(
   workerUrl: string,
   workerSecret: string,
+  epoch: number,
 ): Promise<{ added: number; reused: number; removed: number }> {
   const res = await fetchBlobWithRetry(workerUrl, workerSecret)
   const blob = (await res.json().catch((err) => {
@@ -146,12 +178,16 @@ async function refreshFromPrecomputedCache(
   const removed = existing.filter((m) => !newIds.has(m.id)).length
   const reused = merged.length - added
 
-  await chrome.storage.local.set({
+  const wrote = await writeIfCurrentEpoch(epoch, {
     [STORAGE_KEYS.marketCache]: merged,
     [STORAGE_KEYS.marketCacheTs]: Date.now(),
     [STORAGE_KEYS.marketCacheBuiltAt]: blob.builtAt,
     [STORAGE_KEYS.marketCacheModel]: LOCAL_MODEL_ID,
   })
+  // A settings switch landed while this fetch was in flight - this result
+  // is for a provider nobody wants anymore. Report as a no-op rather than
+  // claim counts for a write that didn't happen (2026-09-08 audit F18).
+  if (!wrote) return { added: 0, reused: 0, removed: 0 }
   return { added, reused, removed }
 }
 
@@ -164,6 +200,7 @@ async function refreshByEmbedding(
   provider: EmbeddingProvider,
   workerUrl: string,
   workerSecret: string,
+  epoch: number,
 ): Promise<{ added: number; reused: number; removed: number }> {
   // If the local model id changed since last refresh, vectors are not
   // comparable across models - wipe and start fresh.
@@ -228,11 +265,15 @@ async function refreshByEmbedding(
     // fresh vectors right here, unlike the precomputed path where builtAt
     // comes from the blob and can be much older than this write.
     const partial = [...reused, ...freshlyEmbedded].slice(0, MAX_MARKETS_ON_DEVICE)
-    await chrome.storage.local.set({
+    const wrote = await writeIfCurrentEpoch(epoch, {
       [STORAGE_KEYS.marketCache]: partial,
       [STORAGE_KEYS.marketCacheTs]: Date.now(),
       [STORAGE_KEYS.marketCacheBuiltAt]: Date.now(),
     })
+    // A settings switch landed mid-embed - stop spending WASM/API calls on
+    // a provider nobody wants anymore instead of finishing the whole loop
+    // just to have every remaining write discarded too (2026-09-08 audit F18).
+    if (!wrote) return { added: 0, reused: 0, removed: 0 }
   }
 
   const merged = [...reused, ...freshlyEmbedded].slice(0, MAX_MARKETS_ON_DEVICE)
@@ -240,11 +281,12 @@ async function refreshByEmbedding(
 
   // If nothing needed embedding, still bump the timestamp
   if (toEmbed.length === 0) {
-    await chrome.storage.local.set({
+    const wrote = await writeIfCurrentEpoch(epoch, {
       [STORAGE_KEYS.marketCache]: merged,
       [STORAGE_KEYS.marketCacheTs]: Date.now(),
       [STORAGE_KEYS.marketCacheBuiltAt]: Date.now(),
     })
+    if (!wrote) return { added: 0, reused: 0, removed: 0 }
   }
 
   return { added: freshlyEmbedded.length, reused: reused.length, removed }

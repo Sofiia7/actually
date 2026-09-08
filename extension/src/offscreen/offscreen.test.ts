@@ -162,3 +162,33 @@ describe('offscreen handle() - a stale cache refreshes even when matching fails 
     expect(refreshMarketCache).toHaveBeenCalledTimes(1)
   })
 })
+
+describe('offscreen handle() - one refresh coordinator, not three separate guards (2026-09-08 audit F18)', () => {
+  const settings = {
+    confidenceThreshold: 0.5, lowConfidenceFloor: 0.35, embeddingProvider: 'local' as const,
+    workerUrl: 'https://w.invalid', workerSecret: 'sek', telemetryEnabled: false,
+    searchFallbackEnabled: false, searchFallbackOfferDismissed: false,
+  }
+
+  it('a concurrent OS_REFRESH_CACHE and OS_RUN_MATCH bootstrap share one refresh instead of running two', async () => {
+    vi.mocked(getSettings).mockResolvedValue(settings as never)
+    // Empty cache - OS_RUN_MATCH's own bootstrap branch (previously
+    // ungated entirely) wants to refresh too.
+    vi.mocked(getMarketCache).mockResolvedValue([] as never)
+    vi.mocked(getCacheStatus).mockResolvedValue({ count: 0, lastUpdated: 0, builtAt: 0 })
+    let resolveRefresh: ((v: { added: number; reused: number; removed: number }) => void) | undefined
+    vi.mocked(refreshMarketCache).mockReturnValue(new Promise((resolve) => { resolveRefresh = resolve }))
+    vi.mocked(makeChromeMarketStore).mockReturnValue({ getMarkets: async () => [] })
+    vi.mocked(makeSettingsEmbedder).mockReturnValue({ embed: async () => new Float32Array([1, 0]) })
+
+    const article = { headline: 'Some headline', bodyText: '', url: 'https://news.example/a', domain: 'news.example' }
+    const p1 = handle({ target: 'offscreen', type: 'OS_REFRESH_CACHE' })
+    const p2 = handle({ target: 'offscreen', type: 'OS_RUN_MATCH', article })
+    // Both calls have now synchronously reached (or awaited into) the
+    // refresh call - only then does the single shared attempt resolve.
+    await new Promise((r) => setTimeout(r, 0))
+    expect(refreshMarketCache).toHaveBeenCalledTimes(1)
+    resolveRefresh!({ added: 0, reused: 0, removed: 0 })
+    await Promise.all([p1, p2])
+  })
+})

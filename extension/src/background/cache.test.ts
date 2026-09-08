@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { LOCAL_MODEL_ID, type MarketCacheBlob, type PolyMarket } from '@actually/core'
 import { clearMarketCache, getCacheStatus, getMarketCache, refreshMarketCache } from './cache'
+import { STORAGE_KEYS } from '../shared/constants'
 
 function market(id: string, question = `Will ${id} happen?`): PolyMarket {
   return {
@@ -28,6 +29,9 @@ function blob(markets: PolyMarket[], model = LOCAL_MODEL_ID): MarketCacheBlob {
 describe('refreshMarketCache - local provider (precomputed Worker cache)', () => {
   beforeEach(async () => {
     await clearMarketCache()
+    // clearMarketCache() doesn't touch this - reset it separately so an
+    // earlier F18 test bumping it doesn't leak into a later, unrelated one.
+    await chrome.storage.local.remove(STORAGE_KEYS.cacheEpoch)
   })
   afterEach(() => {
     vi.unstubAllGlobals()
@@ -99,6 +103,26 @@ describe('refreshMarketCache - local provider (precomputed Worker cache)', () =>
     expect(result).toEqual({ added: 0, reused: 0, removed: 0 })
     const calledUrls = fetchSpy.mock.calls.map((c) => String(c[0]))
     expect(calledUrls.some((u) => u.includes('/markets'))).toBe(true)
+  })
+
+  it('discards its write if the cache epoch changed while it was in flight - a settings switch mid-refresh must not silently reintroduce the old provider\'s data (2026-09-08 audit F18)', async () => {
+    const fetchSpy = vi.fn(async (url: string) => {
+      if (url.endsWith('/market-cache')) {
+        // Simulate a provider switch (SAVE_SETTINGS) landing while this
+        // request was in flight, in a completely separate execution
+        // context (the service worker) that shares nothing with this
+        // module but chrome.storage.
+        await chrome.storage.local.set({ [STORAGE_KEYS.cacheEpoch]: 999 })
+        return new Response(JSON.stringify(blob([market('m1')])), { status: 200 })
+      }
+      return new Response(JSON.stringify([]), { status: 200 })
+    })
+    vi.stubGlobal('fetch', fetchSpy)
+
+    const result = await refreshMarketCache('local', 'https://w.example', 'secret')
+
+    expect(result).toEqual({ added: 0, reused: 0, removed: 0 })
+    expect(await getMarketCache()).toEqual([])
   })
 
   it('rejects a blob whose builtAt is far too old and falls back to on-device embedding, instead of displaying it as fresh (2026-09-08 audit F04)', async () => {
@@ -185,6 +209,32 @@ describe('refreshMarketCache - local provider (precomputed Worker cache)', () =>
 
     await refreshMarketCache('openai', 'https://w.example', 'secret')
     expect(fetchSpy).toHaveBeenCalled()
+  })
+
+  it('the on-device embedding path also discards its write on an epoch change (2026-09-08 audit F18)', async () => {
+    // Seed a cache the way a completed refresh would have left one - not via
+    // refreshMarketCache itself, so this only checks THIS call's own write.
+    await chrome.storage.local.set({
+      [STORAGE_KEYS.marketCache]: [market('preexisting')],
+      [STORAGE_KEYS.marketCacheModel]: 'openai',
+    })
+    // Empty /markets, same as the test above - nothing needs embedding, so
+    // this exercises refreshByEmbedding's "nothing to embed, still bump the
+    // timestamp" write without needing to mock an actual embed call. If that
+    // write were NOT blocked, "preexisting" would disappear (removed, since
+    // it is absent from this empty remote list).
+    const fetchSpy = vi.fn(async (url: string) => {
+      if (String(url).includes('/markets')) {
+        // Settings switch lands while the active-markets list is in flight.
+        await chrome.storage.local.set({ [STORAGE_KEYS.cacheEpoch]: 999 })
+      }
+      return new Response(JSON.stringify([]), { status: 200 })
+    })
+    vi.stubGlobal('fetch', fetchSpy)
+
+    await refreshMarketCache('openai', 'https://w.example', 'secret')
+
+    expect((await getMarketCache()).map((m) => m.id)).toEqual(['preexisting'])
   })
 })
 

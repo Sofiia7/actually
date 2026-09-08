@@ -49,6 +49,13 @@ export const STORAGE_KEYS = {
    * make look fresh even when the data itself is weeks old. */
   marketCacheBuiltAt: 'marketCacheBuiltAt',
   marketCacheModel: 'marketCacheModel',
+  /** Bumped by SAVE_SETTINGS on every embedding-provider switch. A refresh
+   * captures this at its own start and re-checks it before every write, in
+   * the service worker's separate execution context from where it's bumped
+   * - discarding its result if it no longer matches means a refresh started
+   * under the OLD provider can never silently write its data back in after
+   * a switch (2026-09-08 audit F18). */
+  cacheEpoch: 'cacheEpoch',
   history: 'history',
   tradeLog: 'tradeLog',
   installId: 'installId',
