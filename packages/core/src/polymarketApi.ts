@@ -1,8 +1,23 @@
 import type { PolyMarket } from './types'
 import type { RawOrderbook } from './orderbook'
+import { DEFAULT_FETCH_TIMEOUT_MS } from './constants'
 
 function authHeaders(workerSecret: string): HeadersInit {
   return { 'X-Actually-Auth': workerSecret, 'Content-Type': 'application/json' }
+}
+
+/**
+ * Standard fetch() init for a call to our own Worker: auth header plus a
+ * bounded timeout. A retry loop only helps once the network already
+ * answered with an error - it does nothing for a request that never
+ * resolves, which would otherwise hang a caller (or an in-flight dedupe
+ * guard blocking later calls behind it) until the runtime's own default,
+ * unbounded on some of the environments this code runs in (2026-09-08 audit
+ * F17). A fresh signal per call - AbortSignal.timeout() starts its clock
+ * when created, so this must not be memoized/shared across calls.
+ */
+function workerFetchOpts(workerSecret: string): RequestInit {
+  return { headers: authHeaders(workerSecret), signal: AbortSignal.timeout(DEFAULT_FETCH_TIMEOUT_MS) }
 }
 
 // Gamma API caps each page at 100 results regardless of the `limit` param,
@@ -221,9 +236,7 @@ export async function fetchActiveMarkets(
       // Any other 4xx - bad params, bad secret - is not retried at all.
       let res: Response | undefined
       for (let attempt = 0; attempt < FETCH_ATTEMPTS; attempt++) {
-        res = await fetch(`${workerUrl}/markets?${params}`, {
-          headers: authHeaders(workerSecret),
-        })
+        res = await fetch(`${workerUrl}/markets?${params}`, workerFetchOpts(workerSecret))
         if (res.ok) break
         if (attempt === FETCH_ATTEMPTS - 1) break
         if (res.status >= 500) {
@@ -288,7 +301,7 @@ export async function searchMarkets(
   limit = 25,
 ): Promise<PolyMarket[]> {
   const params = new URLSearchParams({ q: query, limit: String(limit) })
-  const res = await fetch(`${workerUrl}/search?${params}`, { headers: authHeaders(workerSecret) })
+  const res = await fetch(`${workerUrl}/search?${params}`, workerFetchOpts(workerSecret))
   if (!res.ok) throw new Error(`search_markets_failed:${res.status}`)
   const raw = (await res.json()) as RawGammaMarket[]
   if (!Array.isArray(raw)) return []
@@ -317,7 +330,7 @@ export async function fetchMarketById(
   workerSecret: string,
 ): Promise<PolyMarket | null> {
   const params = new URLSearchParams({ id: marketId })
-  const res = await fetch(`${workerUrl}/markets?${params}`, { headers: authHeaders(workerSecret) })
+  const res = await fetch(`${workerUrl}/markets?${params}`, workerFetchOpts(workerSecret))
   if (!res.ok) return null
   const raw = (await res.json()) as RawGammaMarket[]
   if (!Array.isArray(raw) || raw.length === 0) return null
@@ -364,9 +377,7 @@ export async function fetchLivePrice(
 ): Promise<number | null> {
   try {
     const params = new URLSearchParams({ token_id: tokenId, side: 'buy' })
-    const res = await fetch(`${workerUrl}/price?${params}`, {
-      headers: authHeaders(workerSecret),
-    })
+    const res = await fetch(`${workerUrl}/price?${params}`, workerFetchOpts(workerSecret))
     if (!res.ok) return null
     const data = (await res.json()) as { price?: string }
     return data.price ? parseFloat(data.price) : null
@@ -388,9 +399,7 @@ export async function fetchOrderbookJson(
 ): Promise<RawOrderbook> {
   try {
     const params = new URLSearchParams({ token_id: tokenId })
-    const res = await fetch(`${workerUrl}/orderbook?${params}`, {
-      headers: authHeaders(workerSecret),
-    })
+    const res = await fetch(`${workerUrl}/orderbook?${params}`, workerFetchOpts(workerSecret))
     if (!res.ok) return { asks: [], bids: [] }
     return (await res.json()) as RawOrderbook
   } catch {

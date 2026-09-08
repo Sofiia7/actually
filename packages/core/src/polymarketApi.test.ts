@@ -54,6 +54,15 @@ describe('fetchOrderbookJson', () => {
     const book = await fetchOrderbookJson('tok-1', 'https://worker.example', 'secret')
     expect(book).toEqual({ asks: [], bids: [] })
   })
+
+  it('bounds the request with a timeout signal instead of leaving it able to hang forever (2026-09-08 audit F17)', async () => {
+    const spy = vi.fn(async (_url: string, _init: RequestInit) => new Response(JSON.stringify({ asks: [], bids: [] }), { status: 200 }))
+    vi.stubGlobal('fetch', spy)
+    await fetchOrderbookJson('tok-1', 'https://worker.example', 'secret')
+    const [, init] = spy.mock.calls[0]
+    expect(init.signal).toBeInstanceOf(AbortSignal)
+    expect(init.signal?.aborted).toBe(false)
+  })
 })
 
 describe('fetchMarketById', () => {

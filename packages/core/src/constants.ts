@@ -55,6 +55,17 @@ export const MAX_MARKETS_CACHE = 2000
 export const MAX_CACHE_AGE_MS = 12 * 60 * 60_000
 
 /**
+ * Default AbortSignal.timeout() budget for a single fetch to our own Worker
+ * (Gamma/search/price/orderbook/market-cache). A retry loop only helps once
+ * the network already answered with an error - it does nothing for a
+ * request that never resolves at all, and a caller awaiting one (or an
+ * in-flight dedupe guard blocking later calls behind it) would otherwise
+ * hang until the environment's own default timeout, which on some runtimes
+ * is minutes or effectively unbounded (2026-09-08 audit F17).
+ */
+export const DEFAULT_FETCH_TIMEOUT_MS = 20_000
+
+/**
  * Ceiling for the ON-DEVICE fallback, used only when the precomputed blob is
  * unavailable and the extension has to embed markets itself.
  *

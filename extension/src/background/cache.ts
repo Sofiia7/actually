@@ -6,6 +6,7 @@ import {
   type CachedMarket,
   type MarketCacheBlob,
   type PolyMarket,
+  DEFAULT_FETCH_TIMEOUT_MS,
   LOCAL_MODEL_ID,
   MAX_CACHE_AGE_MS,
   MAX_MARKETS_CACHE,
@@ -118,8 +119,12 @@ async function fetchBlobWithRetry(workerUrl: string, workerSecret: string): Prom
   let lastErr: unknown
   for (let attempt = 1; attempt <= BLOB_FETCH_ATTEMPTS; attempt++) {
     try {
+      // Bounded, so a hung connection fails (and gets retried, or falls
+      // through to on-device embedding) instead of leaving this - and the
+      // popup awaiting it - hanging indefinitely (2026-09-08 audit F17).
       const res = await fetch(`${workerUrl}/market-cache`, {
         headers: { 'X-Actually-Auth': workerSecret },
+        signal: AbortSignal.timeout(DEFAULT_FETCH_TIMEOUT_MS),
       })
       if (res.ok) return res
       const message = `market-cache fetch failed: ${res.status}`

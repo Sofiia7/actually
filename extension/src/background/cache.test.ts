@@ -105,6 +105,16 @@ describe('refreshMarketCache - local provider (precomputed Worker cache)', () =>
     expect(calledUrls.some((u) => u.includes('/markets'))).toBe(true)
   })
 
+  it('bounds the precomputed-cache request with a timeout signal instead of leaving it able to hang forever (2026-09-08 audit F17)', async () => {
+    const spy = vi.fn(async (_url: string, init?: RequestInit) => {
+      expect(init?.signal).toBeInstanceOf(AbortSignal)
+      return new Response(JSON.stringify(blob([market('m1')])), { status: 200 })
+    })
+    vi.stubGlobal('fetch', spy)
+    await refreshMarketCache('local', 'https://w.example', 'secret')
+    expect(spy).toHaveBeenCalled()
+  })
+
   it('discards its write if the cache epoch changed while it was in flight - a settings switch mid-refresh must not silently reintroduce the old provider\'s data (2026-09-08 audit F18)', async () => {
     const fetchSpy = vi.fn(async (url: string) => {
       if (url.endsWith('/market-cache')) {

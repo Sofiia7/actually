@@ -1,4 +1,4 @@
-import type { CachedMarket, MarketCacheBlob, MarketStore } from '@actually/core'
+import { DEFAULT_FETCH_TIMEOUT_MS, type CachedMarket, type MarketCacheBlob, type MarketStore } from '@actually/core'
 
 const CACHE_TTL_MS = 5 * 60_000
 
@@ -45,8 +45,12 @@ export class WorkerMarketStore implements MarketStore {
   }
 
   private async fetchAndCache(): Promise<CachedMarket[]> {
+    // Bounded, so a hung connection fails cleanly instead of leaving
+    // getMarkets() (and the inFlight dedupe guard blocking calls behind it)
+    // hanging indefinitely (2026-09-08 audit F17).
     const res = await fetch(`${this.workerUrl}/market-cache`, {
       headers: { 'X-Actually-Auth': this.workerSecret },
+      signal: AbortSignal.timeout(DEFAULT_FETCH_TIMEOUT_MS),
     })
     if (!res.ok) {
       const text = await res.text().catch(() => '')

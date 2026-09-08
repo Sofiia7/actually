@@ -55,6 +55,15 @@ describe('WorkerMarketStore', () => {
     expect(store.getBuiltAt()).toBe(validBlob.builtAt)
   })
 
+  it('bounds the request with a timeout signal instead of leaving it able to hang forever (2026-09-08 audit F17)', async () => {
+    const spy = vi.fn(async (_url: string, _init?: RequestInit) => new Response(JSON.stringify(validBlob), { status: 200 }))
+    vi.stubGlobal('fetch', spy)
+    const store = new WorkerMarketStore('https://worker.example', 'secret', 'Xenova/all-MiniLM-L12-v2')
+    await store.getMarkets()
+    const [, init] = spy.mock.calls[0]
+    expect(init?.signal).toBeInstanceOf(AbortSignal)
+  })
+
   it('dedupes concurrent calls during a cache miss into a single fetch', async () => {
     const spy = vi.fn(async () => new Response(JSON.stringify(validBlob), { status: 200 }))
     vi.stubGlobal('fetch', spy)
