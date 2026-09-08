@@ -441,9 +441,13 @@ describe('upstream hosts', () => {
     vi.stubGlobal('fetch', spy)
     const res = await call('/clob/positions/0x1234567890123456789012345678901234567890', baseEnv())
     expect(res.status).toBe(200)
-    expect(String(spy.mock.calls[0]?.[0] ?? '')).toBe(
-      'https://data-api.polymarket.com/positions?user=0x1234567890123456789012345678901234567890',
-    )
+    const url = new URL(String(spy.mock.calls[0]?.[0] ?? ''))
+    expect(url.origin + url.pathname).toBe('https://data-api.polymarket.com/positions')
+    expect(url.searchParams.get('user')).toBe('0x1234567890123456789012345678901234567890')
+    // Default sizeThreshold=1 hides a dust remainder under one share - a
+    // real position the extension's own portfolio panel must still show
+    // (2026-09-08 audit F16).
+    expect(url.searchParams.get('sizeThreshold')).toBe('0')
   })
 
   it('/clob/positions/<address> rejects a malformed address without calling upstream', async () => {

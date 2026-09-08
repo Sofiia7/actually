@@ -37,16 +37,8 @@ interface RawPosition {
   slug?: string
 }
 
-/**
- * Positions for a given on-chain address (the caller's derived Safe), read
- * directly from Polymarket's public, unauthenticated data-api - no worker
- * hop needed, same as the extension's `/clob/proxy/<eoa>` data-api calls.
- */
-export async function fetchPositions(address: string): Promise<Position[]> {
-  const res = await fetch(`https://data-api.polymarket.com/positions?user=${address}`)
-  if (!res.ok) throw new Error(`positions_fetch_failed:${res.status}`)
-  const raw = (await res.json()) as RawPosition[]
-  return raw.map((p) => ({
+function mapPosition(p: RawPosition): Position {
+  return {
     tokenId: p.asset ?? '',
     conditionId: p.conditionId ?? '',
     size: p.size ?? 0,
@@ -65,5 +57,41 @@ export async function fetchPositions(address: string): Promise<Position[]> {
     redeemable: p.redeemable ?? false,
     title: p.title ?? '',
     slug: p.slug ?? '',
-  }))
+  }
+}
+
+// The API defaults to limit=100, offset=0, sizeThreshold=1 share when these
+// are omitted - silently hiding both an active user's positions past the
+// first 100 and any dust remainder under one share (redeem_position then
+// searches this same incomplete list and can wrongly report
+// position_not_found for a position that genuinely exists - 2026-09-08
+// audit F16). PAGE_LIMIT is a request size, not a promise the API honors it
+// exactly; pagination below is driven by how many rows actually come back,
+// not by this number.
+const PAGE_LIMIT = 500
+// A real portfolio is never going to need more than this many pages: a
+// bound so a misbehaving API (e.g. one that always returns a full page)
+// can't turn this into an infinite loop.
+const MAX_PAGES = 20
+
+/**
+ * Positions for a given on-chain address (the caller's derived Safe), read
+ * directly from Polymarket's public, unauthenticated data-api - no worker
+ * hop needed, same as the extension's `/clob/proxy/<eoa>` data-api calls.
+ * Pages through the FULL portfolio rather than trusting the API's default
+ * single 100-position page (2026-09-08 audit F16).
+ */
+export async function fetchPositions(address: string): Promise<Position[]> {
+  const all: Position[] = []
+  for (let page = 0; page < MAX_PAGES; page++) {
+    const offset = page * PAGE_LIMIT
+    const res = await fetch(
+      `https://data-api.polymarket.com/positions?user=${address}&limit=${PAGE_LIMIT}&offset=${offset}&sizeThreshold=0`,
+    )
+    if (!res.ok) throw new Error(`positions_fetch_failed:${res.status}`)
+    const raw = (await res.json()) as RawPosition[]
+    all.push(...raw.map(mapPosition))
+    if (raw.length < PAGE_LIMIT) break
+  }
+  return all
 }

@@ -995,7 +995,10 @@ export default {
         if (!/^0x[0-9a-f]{40}$/.test(addr)) {
           return json({ error: 'bad_address' }, 400, headers)
         }
-        const res = await fetch(`https://data-api.polymarket.com/positions?user=${addr}`, {
+        // sizeThreshold=0: the API's own default (1 share) hides a real
+        // remainder under one share - e.g. left over after a partial sell -
+        // from the portfolio panel entirely (2026-09-08 audit F16).
+        const res = await fetch(`https://data-api.polymarket.com/positions?user=${addr}&sizeThreshold=0`, {
           signal: AbortSignal.timeout(UPSTREAM_TIMEOUT_MS),
         })
         if (!res.ok) {
