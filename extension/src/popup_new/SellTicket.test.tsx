@@ -253,4 +253,23 @@ describe('SellTicket - regressions from the 2026-08-16 audit', () => {
   it('translates the $100-cap rejection as a backstop for the limit path', () => {
     expect(humanSellError('order_exceeds_max_usd:100', 5)).toMatch(/\$100 per-order cap/)
   })
+
+  it('uses the real market tick from the book snapshot instead of assuming 0.001 (2026-09-08 audit F05)', async () => {
+    opsm.orderbookSnapshotViaOffscreen.mockResolvedValue({
+      bestBid: 0.02, bestAsk: null, spread: null, bids: [], asks: [], estimate: null, tickSize: '0.01',
+    })
+    render(<SellTicket position={position} onDone={noop} onCancel={noop} />)
+    // On the real 0.001 grid this used to assume, 2% off a 2c bid floors to
+    // 1.9c. The real tick here is 1c, so the true floor is 1c - the ticket
+    // must show and sign THAT price, not the one computed off the wrong grid.
+    await waitFor(() => expect(screen.getByText(/floored at/i)).toBeInTheDocument())
+    expect(screen.getByText(/floored at\s*1\.0¢/i)).toBeInTheDocument()
+    await waitFor(() => expect(screen.getByRole('button', { name: /Sell now/i })).toBeEnabled())
+    await userEvent.click(screen.getByRole('button', { name: /Sell now/i }))
+    await userEvent.click(screen.getByRole('button', { name: /Sign in wallet/i }))
+    await waitFor(() => expect(opsm.sellOrderViaOffscreen).toHaveBeenCalledOnce())
+    const args = opsm.sellOrderViaOffscreen.mock.calls[0][0]
+    expect(args.price).toBeCloseTo(0.01, 6)
+    expect(args.tickSize).toBe('0.01')
+  })
 })

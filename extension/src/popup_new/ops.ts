@@ -221,6 +221,8 @@ export async function orderbookSnapshotViaOffscreen(
   bids: Array<{ price: number; size: number }>
   asks: Array<{ price: number; size: number }>
   estimate: { effectivePrice: number; slippage: number } | null
+  /** The market's real tick size, when the lookup succeeded. */
+  tickSize?: string
   /** Set when the lookup itself failed (e.g. 'wallet_not_restored') - distinct
    * from a successful lookup that legitimately found an empty book. */
   error?: string
@@ -234,7 +236,7 @@ export async function orderbookSnapshotViaOffscreen(
   if (r.type === 'OS_ERROR') {
     return { bestBid: null, bestAsk: null, spread: null, bids: [], asks: [], estimate: null, error: r.error }
   }
-  return { bestBid: r.bestBid, bestAsk: r.bestAsk, spread: r.spread, bids: r.bids, asks: r.asks, estimate: r.estimate ?? null }
+  return { bestBid: r.bestBid, bestAsk: r.bestAsk, spread: r.spread, bids: r.bids, asks: r.asks, estimate: r.estimate ?? null, tickSize: r.tickSize }
 }
 
 /**

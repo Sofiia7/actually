@@ -522,6 +522,7 @@ async function handle(msg: OffscreenRequest): Promise<OffscreenResponse> {
         bids: snap.bids,
         asks: snap.asks,
         estimate,
+        tickSize: snap.tickSize,
       }
     }
 

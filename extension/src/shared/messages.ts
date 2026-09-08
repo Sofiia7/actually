@@ -157,6 +157,8 @@ export type OffscreenResponse =
       bids: Array<{ price: number; size: number }>
       asks: Array<{ price: number; size: number }>
       estimate?: { effectivePrice: number; slippage: number } | null
+      /** The market's real tick size (see OrderbookSnapshot.tickSize). */
+      tickSize?: string
     }
   | { type: 'OS_PRICE_HISTORY'; points: Array<{ t: number; p: number }> }
   | { type: 'OS_HISTORY_MARKET_RESOLVED'; market: PolyMarket | null; error?: 'not_found' | 'closed' }

@@ -669,6 +669,13 @@ export interface OrderbookSnapshot {
   asks: OrderbookLevel[]
   /** Estimated effective price for a market buy of `sizeShares`. */
   estimateBuy: (sizeShares: number) => { effectivePrice: number; slippage: number } | null
+  /**
+   * The market's real tick size, straight off the same /book response this
+   * snapshot is built from. Positions (unlike a matched market) carry no
+   * Gamma record, so this is the only place the sell ticket can learn the
+   * real grid instead of assuming one (2026-09-08 audit F05).
+   */
+  tickSize: string
 }
 
 export async function getOrderbookSnapshot(
@@ -698,6 +705,7 @@ export async function getOrderbookSnapshot(
     spread,
     bids: bids.slice(0, DEPTH_LEVELS),
     asks: asks.slice(0, DEPTH_LEVELS),
+    tickSize: book.tick_size,
     estimateBuy: (sizeShares) => {
       if (asks.length === 0 || bestAsk == null) return null
       let remaining = sizeShares

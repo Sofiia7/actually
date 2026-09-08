@@ -15,11 +15,15 @@ import { orderbookSnapshotViaOffscreen, sellOrderViaOffscreen } from './ops'
 const FLOOR_PCT = 0.02
 
 /**
- * Price grid this ticket assumes. Positions come from the data API with no
- * Gamma record attached, so the real tick is unknown here (the SDK resolves
- * it for the order itself - see this component's doc comment). 0.001 is
- * Polymarket's finest grid and is what the previous inline `* 1000` rounding
- * already assumed; naming it just makes the assumption visible.
+ * Fallback price grid, used only until the book snapshot answers with the
+ * market's real tick (see `book.tickSize` below). Positions come from the
+ * data API with no Gamma record attached, so this ticket has no other way
+ * to know the tick up front. 0.001 is Polymarket's finest grid. Assuming
+ * this were the ACTUAL tick (as this component used to) understated the
+ * real floor whenever a market's true tick was coarser - e.g. a 2% floor
+ * off a 2c bid displays as 1.9c on this grid, but a real 1c-tick market
+ * floors to 1c, half again further below the bid than shown (2026-09-08
+ * audit F05).
  */
 const SELL_TICK = '0.001'
 
@@ -49,7 +53,7 @@ export const SellTicket: React.FC<SellTicketProps> = ({ position, onDone, onCanc
   const [orderType, setOrderType] = useState<'MARKET' | 'LIMIT'>('MARKET')
   const [sharesInput, setSharesInput] = useState(String(floorShares(position.size)))
   const [priceInput, setPriceInput] = useState('')
-  const [book, setBook] = useState<{ bestBid: number | null; error?: string }>({ bestBid: null })
+  const [book, setBook] = useState<{ bestBid: number | null; tickSize?: string; error?: string }>({ bestBid: null })
   // See TradeTabWired's bookAttempt: a failed book lookup gets a button, not
   // an instruction. "Close and reopen this ticket" was asking the user to
   // infer the retry mechanism from a sentence.
@@ -63,7 +67,7 @@ export const SellTicket: React.FC<SellTicketProps> = ({ position, onDone, onCanc
     void (async () => {
       const snap = await orderbookSnapshotViaOffscreen(position.tokenId)
       if (cancelled) return
-      setBook({ bestBid: snap.bestBid, error: snap.error })
+      setBook({ bestBid: snap.bestBid, tickSize: snap.tickSize, error: snap.error })
       if (snap.bestBid != null) setPriceInput(String(snap.bestBid))
     })()
     return () => { cancelled = true }
@@ -71,8 +75,11 @@ export const SellTicket: React.FC<SellTicketProps> = ({ position, onDone, onCanc
 
   const shares = parseFloat(sharesInput)
   const limitPrice = parseFloat(priceInput)
+  // The real tick when the book snapshot answered with one; the assumed
+  // grid otherwise (see SELL_TICK's doc comment).
+  const tickSize = book.tickSize ?? SELL_TICK
   // A market sell can't fill BELOW this floor - the mirror of a buy's cap.
-  const floorPrice = book.bestBid != null ? marketFloorPrice(book.bestBid, FLOOR_PCT, SELL_TICK) : null
+  const floorPrice = book.bestBid != null ? marketFloorPrice(book.bestBid, FLOOR_PCT, tickSize) : null
   // What the floor really costs, which is not FLOOR_PCT whenever the tick is
   // coarser than the band - see marketFloorPrice. Printing the nominal 2%
   // there would be a promise the grid cannot keep.
@@ -126,7 +133,13 @@ export const SellTicket: React.FC<SellTicketProps> = ({ position, onDone, onCanc
         price: activePrice,
         // negRisk deliberately omitted - the SDK resolves the real flag from
         // the CLOB. Sending `false` here (as this once did) forced the normal
-        // exchange contract and got every neg-risk sell rejected.
+        // exchange contract and got every neg-risk sell rejected. tickSize
+        // follows the same rule: send it when the book snapshot gave us the
+        // real one (so signing can't land on a different tick than what was
+        // shown - 2026-09-08 audit F05), but OMIT it - never the SELL_TICK
+        // guess - when it didn't, since a wrong guess gets the whole order
+        // rejected as invalid_tick where the SDK's own resolution would not.
+        tickSize: book.tickSize,
         orderType,
       })
       void logTrade({
