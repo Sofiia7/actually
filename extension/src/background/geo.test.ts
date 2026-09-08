@@ -1,16 +1,16 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { BLOCKED_COUNTRIES, _resetGeoCache, getGeoStatus } from './geo'
 
-describe('BLOCKED_COUNTRIES', () => {
-  it('includes US', () => {
-    expect(BLOCKED_COUNTRIES.has('US')).toBe(true)
+describe('BLOCKED_COUNTRIES - the full-block floor only (2026-09-08 audit F08)', () => {
+  it('does not include US - it is close-only, not a full block, so the Worker (via closeOnly) is the source of truth for it', () => {
+    expect(BLOCKED_COUNTRIES.has('US')).toBe(false)
   })
 
-  it('includes UK / GB', () => {
-    expect(BLOCKED_COUNTRIES.has('GB')).toBe(true)
+  it('does not include GB - same reasoning, close-only', () => {
+    expect(BLOCKED_COUNTRIES.has('GB')).toBe(false)
   })
 
-  it('does not include DE (Germany is fine for Polymarket)', () => {
+  it('does not include DE - Germany is close-only, not a full block, so it is not on this floor (the Worker reports it via closeOnly)', () => {
     expect(BLOCKED_COUNTRIES.has('DE')).toBe(false)
   })
 
@@ -41,12 +41,29 @@ describe('getGeoStatus', () => {
     expect(r.errorReason).toBeUndefined()
   })
 
+  it('passes through closeOnly from the Worker (2026-09-08 audit F08)', async () => {
+    globalThis.fetch = vi.fn(async () =>
+      new Response(JSON.stringify({ country: 'DE', blocked: true, closeOnly: true }), { status: 200 }),
+    ) as unknown as typeof fetch
+    const r = await getGeoStatus('https://w.example', 'sec')
+    expect(r.blocked).toBe(true)
+    expect(r.closeOnly).toBe(true)
+  })
+
+  it('defaults closeOnly to false for a full block (or when the Worker omits the field)', async () => {
+    globalThis.fetch = vi.fn(async () =>
+      new Response(JSON.stringify({ country: 'IR', blocked: true }), { status: 200 }),
+    ) as unknown as typeof fetch
+    const r = await getGeoStatus('https://w.example', 'sec')
+    expect(r.closeOnly).toBe(false)
+  })
+
   it('blocks anyway when the worker misreports a country on our own bundled list as not blocked', async () => {
     // Defense-in-depth: BLOCKED_COUNTRIES is a client-side floor, not just
     // documentation - a worker bug or stale deploy that wrongly clears
     // `blocked` for a known-restricted country must not be trusted alone.
     globalThis.fetch = vi.fn(async () =>
-      new Response(JSON.stringify({ country: 'US', blocked: false }), { status: 200 }),
+      new Response(JSON.stringify({ country: 'IR', blocked: false }), { status: 200 }),
     ) as unknown as typeof fetch
     const r = await getGeoStatus('https://w.example', 'sec')
     expect(r.blocked).toBe(true)

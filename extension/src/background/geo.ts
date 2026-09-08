@@ -12,20 +12,18 @@
  * the popup (not persisted - countries can change between sessions).
  */
 
+/**
+ * Defense-in-depth floor for the FULL-block tier only (no new orders, and
+ * existing positions cannot be closed either) - comprehensively
+ * OFAC-sanctioned jurisdictions. Deliberately NOT the whole restricted-country
+ * list: Polymarket's larger close-only tier (Germany, the UK, Brazil, and
+ * ~30 others - see the Worker's CLOSE_ONLY_COUNTRIES) changes more often and
+ * has no unambiguous single "blocked" answer to hardcode here, so it is
+ * Worker-only; the Worker is the source of truth for it at request time.
+ * This floor exists so a worker bug or stale/misconfigured deploy can't wave
+ * through a country already known to be in the most severe tier.
+ */
 export const BLOCKED_COUNTRIES = new Set<string>([
-  'US', // United States
-  'GB', // United Kingdom
-  'FR', // France
-  'BE', // Belgium
-  'AU', // Australia
-  'SG', // Singapore
-  'TH', // Thailand
-  'TW', // Taiwan
-  'PL', // Poland
-  // Ontario (Canada) is restricted but country-level data is too coarse to
-  // express. Worker handles ON sub-region when CF returns the region header.
-  // Comprehensively OFAC-sanctioned jurisdictions - a stricter, separate
-  // obligation from Polymarket's own market-access list above.
   'IR', // Iran
   'KP', // North Korea
   'CU', // Cuba
@@ -45,6 +43,14 @@ export type GeoErrorReason =
 export interface GeoStatus {
   country: string
   blocked: boolean
+  /**
+   * True when `blocked` is Polymarket's close-only tier (existing positions
+   * can still be closed/sold/cancelled) rather than a full block (2026-09-08
+   * audit F08). Meaningless when `blocked` is false. Always false for a
+   * country BLOCKED_COUNTRIES itself forces to blocked - floor membership
+   * means the full-block tier by construction.
+   */
+  closeOnly: boolean
   /** True if the lookup couldn't be performed. See `errorReason` for why. */
   unknown: boolean
   errorReason?: GeoErrorReason
@@ -70,7 +76,7 @@ export async function getGeoStatus(
 ): Promise<GeoStatus> {
   if (cached && Date.now() - cachedAt < GEO_CACHE_TTL_MS) return cached
   if (!workerUrl || !workerSecret) {
-    cached = { country: '', blocked: true, unknown: true, errorReason: 'no_worker' }
+    cached = { country: '', blocked: true, closeOnly: false, unknown: true, errorReason: 'no_worker' }
     cachedAt = Date.now()
     return cached
   }
@@ -84,20 +90,25 @@ export async function getGeoStatus(
         : res.status === 503 ? 'misconfigured'
         : res.status === 429 ? 'rate_limited'
         : 'http_error'
-      cached = { country: '', blocked: true, unknown: true, errorReason: reason }
+      cached = { country: '', blocked: true, closeOnly: false, unknown: true, errorReason: reason }
       cachedAt = Date.now()
       return cached
     }
     const data = (await res.json()) as {
       country?: string
       blocked?: boolean
+      closeOnly?: boolean
     }
     if (!data.country) {
-      cached = { country: '', blocked: true, unknown: true, errorReason: 'no_country' }
+      cached = { country: '', blocked: true, closeOnly: false, unknown: true, errorReason: 'no_country' }
       cachedAt = Date.now()
       return cached
     }
     const country = data.country.toUpperCase()
+    // Floor membership forces the FULL-block tier regardless of what the
+    // worker said (see BLOCKED_COUNTRIES's doc comment) - so it also forces
+    // closeOnly false, even if a buggy worker claimed close-only for it.
+    const onFloor = BLOCKED_COUNTRIES.has(country)
     cached = {
       country,
       // OR the worker's verdict with our own bundled list rather than
@@ -107,14 +118,16 @@ export async function getGeoStatus(
       // real floor: even a worker bug or a stale/misconfigured deploy can't
       // wave through a country this bundled list already knows is
       // restricted. The worker stays the sole source of truth for anything
-      // NOT in this list (OFAC/EXTRA_BLOCKED_COUNTRIES additions, Ontario).
-      blocked: Boolean(data.blocked) || BLOCKED_COUNTRIES.has(country),
+      // NOT in this list (close-only tier, OFAC/EXTRA_BLOCKED_COUNTRIES
+      // additions, Ontario/BC/AB/QC).
+      blocked: Boolean(data.blocked) || onFloor,
+      closeOnly: Boolean(data.closeOnly) && !onFloor,
       unknown: false,
     }
     cachedAt = Date.now()
     return cached
   } catch {
-    cached = { country: '', blocked: true, unknown: true, errorReason: 'network' }
+    cached = { country: '', blocked: true, closeOnly: false, unknown: true, errorReason: 'network' }
     cachedAt = Date.now()
     return cached
   }

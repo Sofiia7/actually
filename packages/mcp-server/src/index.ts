@@ -240,7 +240,11 @@ if (PRIVATE_KEY) {
     async (input) => {
       const { workerUrl, workerSecret } = requireWorkerConfig()
       const geo = await checkTradingGeoGate(workerUrl, workerSecret)
-      if (geo.blocked) {
+      // A sell CLOSES a position - Polymarket's close-only jurisdictions
+      // permit exactly this, so only a full block (closeOnly: false) refuses
+      // it here. place_order (which OPENS one) refuses on any block, full or
+      // close-only (2026-09-08 audit F08).
+      if (geo.blocked && !geo.closeOnly) {
         return { content: [{ type: 'text' as const, text: JSON.stringify({ ok: false, error: 'geo_blocked' }) }] }
       }
       const market = await resolveMarketOrThrow(input.marketId)

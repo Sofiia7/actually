@@ -278,17 +278,35 @@ export function validateMarketCacheInput(body: unknown): MarketCacheValidation {
   return { ok: true, blob: body as MarketCacheBlob }
 }
 
-// Polymarket-restricted jurisdictions (commercial-availability restrictions)
-// plus comprehensively OFAC-sanctioned jurisdictions (a separate, stricter
-// obligation than Polymarket's own market-access list - the builder code
-// attached to every order means we are a monetizing counterparty, not just
-// a UI). Mirrors the client list in src/background/geo.ts; the Worker is the
-// source of truth at request time. EXTRA_BLOCKED_COUNTRIES (see wrangler.toml)
-// is for fast additions without a redeploy.
-const BLOCKED_COUNTRIES = new Set<string>([
-  'US', 'GB', 'FR', 'BE', 'AU', 'SG', 'TH', 'TW', 'PL',
-  'IR', 'KP', 'CU', 'SY', // OFAC-sanctioned: Iran, North Korea, Cuba, Syria
+// Comprehensively OFAC-sanctioned jurisdictions plus the Ukrainian oblasts
+// Polymarket blocks at the same tier - no new orders, and existing positions
+// cannot be closed either (source: docs.polymarket.com/api-reference/geoblock,
+// checked 2026-09-08). A separate, stricter obligation than Polymarket's own
+// market-access list below - the builder code attached to every order means
+// we are a monetizing counterparty, not just a UI. EXTRA_BLOCKED_COUNTRIES
+// (see wrangler.toml) is for fast additions without a redeploy and is
+// treated at this (full) tier.
+const FULL_BLOCK_COUNTRIES = new Set<string>(['IR', 'KP', 'CU', 'SY'])
+// Region granularity (country-region, matching req.cf.regionCode) - Ukraine
+// itself is not restricted, only these occupied oblasts.
+const FULL_BLOCK_REGIONS = new Set<string>(['UA-43', 'UA-14', 'UA-09']) // Crimea, Donetsk, Luhansk
+
+// Polymarket's own commercial-availability restrictions: can close/reduce an
+// existing position, cannot open a new one. Source as above. Mirrors the
+// client list in src/background/geo.ts, which covers only the FULL_BLOCK
+// tier as a defense-in-depth floor - this larger, more frequently-revised
+// list is Worker-only; the Worker is the source of truth for it at request
+// time. Includes both of Polymarket's "close-only" tiers (their own frontend
+// draws a further "frontend only" distinction from a small subset that its
+// API leaves open - this extension is itself a third-party frontend to that
+// same API, so it is held to the same close-only bar as Polymarket's own).
+const CLOSE_ONLY_COUNTRIES = new Set<string>([
+  'AU', 'BY', 'BE', 'BI', 'BR', 'CF', 'CD', 'ET', 'FR', 'DE', 'IQ', 'IT',
+  'LB', 'LY', 'MM', 'NZ', 'NI', 'PL', 'RU', 'SG', 'SO', 'SK', 'SS', 'SD',
+  'TW', 'TH', 'GB', 'US', 'UM', 'VE', 'YE', 'ZW',
+  'IE', 'JP', 'MT', 'NL',
 ])
+const CLOSE_ONLY_REGIONS = new Set<string>(['CA-BC', 'CA-ON', 'CA-AB', 'CA-QC'])
 
 const CORS_BASE = {
   'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
@@ -756,11 +774,16 @@ export default {
         const extraSet = new Set(
           (extra ?? '').split(',').map((s) => s.trim().toUpperCase()).filter(Boolean),
         )
-        const blocked =
-          BLOCKED_COUNTRIES.has(country) ||
-          extraSet.has(country) ||
-          (country === 'CA' && region === 'ON')
-        return json({ country, region, blocked }, 200, headers)
+        const regionKey = region ? `${country}-${region}` : ''
+        const fullyBlocked =
+          FULL_BLOCK_COUNTRIES.has(country) || extraSet.has(country) || FULL_BLOCK_REGIONS.has(regionKey)
+        // Not expressed as a separate flag when fullyBlocked: a jurisdiction
+        // on both tiers (impossible today, but the check is defensive) must
+        // read as the stricter one, not additionally as close-only.
+        const closeOnly =
+          !fullyBlocked && (CLOSE_ONLY_COUNTRIES.has(country) || CLOSE_ONLY_REGIONS.has(regionKey))
+        const blocked = fullyBlocked || closeOnly
+        return json({ country, region, blocked, closeOnly }, 200, headers)
       }
 
       // --- Market cache: read (agents / MCP server) -----------------

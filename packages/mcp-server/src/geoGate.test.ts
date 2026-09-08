@@ -28,6 +28,30 @@ describe('checkTradingGeoGate', () => {
     expect(r.country).toBe('US')
   })
 
+  it('surfaces closeOnly so sell_order/redeem-style tools can allow closing (2026-09-08 audit F08)', async () => {
+    globalThis.fetch = vi.fn(async () =>
+      new Response(JSON.stringify({ country: 'DE', blocked: true, closeOnly: true }), { status: 200 }),
+    ) as unknown as typeof fetch
+    const r = await checkTradingGeoGate('https://w.example', 'sec')
+    expect(r.blocked).toBe(true)
+    expect(r.closeOnly).toBe(true)
+  })
+
+  it('defaults closeOnly to false for a full block', async () => {
+    globalThis.fetch = vi.fn(async () =>
+      new Response(JSON.stringify({ country: 'IR', blocked: true }), { status: 200 }),
+    ) as unknown as typeof fetch
+    const r = await checkTradingGeoGate('https://w.example', 'sec')
+    expect(r.closeOnly).toBe(false)
+  })
+
+  it('fails closed to a full block (closeOnly: false), never a close-only one, on any error', async () => {
+    globalThis.fetch = vi.fn(async () => { throw new Error('net') }) as unknown as typeof fetch
+    const r = await checkTradingGeoGate('https://w.example', 'sec')
+    expect(r.blocked).toBe(true)
+    expect(r.closeOnly).toBe(false)
+  })
+
   it('fails closed on a network error', async () => {
     globalThis.fetch = vi.fn(async () => {
       throw new Error('net')

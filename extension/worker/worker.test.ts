@@ -195,37 +195,69 @@ describe('CORS fail-closed', () => {
 })
 
 describe('/geo', () => {
-  it('blocks a confirmed restricted country (US)', async () => {
+  it('blocks a confirmed restricted country (US) as close-only', async () => {
     const res = await call('/geo', baseEnv(), { country: 'US' })
-    const body = (await res.json()) as { country: string; blocked: boolean }
-    expect(body).toMatchObject({ country: 'US', blocked: true })
+    const body = (await res.json()) as { country: string; blocked: boolean; closeOnly: boolean }
+    expect(body).toMatchObject({ country: 'US', blocked: true, closeOnly: true })
   })
 
   it('allows an unrestricted country (RS)', async () => {
     const res = await call('/geo', baseEnv(), { country: 'RS' })
-    expect((await res.json() as { blocked: boolean }).blocked).toBe(false)
+    const body = (await res.json()) as { blocked: boolean; closeOnly: boolean }
+    expect(body.blocked).toBe(false)
+    expect(body.closeOnly).toBe(false)
   })
 
-  it('blocks comprehensively OFAC-sanctioned jurisdictions (IR, KP, CU, SY)', async () => {
+  it('fully blocks comprehensively OFAC-sanctioned jurisdictions (IR, KP, CU, SY) - no closing either', async () => {
     for (const country of ['IR', 'KP', 'CU', 'SY']) {
       const res = await call('/geo', baseEnv(), { country })
-      expect((await res.json() as { blocked: boolean }).blocked).toBe(true)
+      const body = (await res.json()) as { blocked: boolean; closeOnly: boolean }
+      expect(body).toMatchObject({ blocked: true, closeOnly: false })
     }
   })
 
-  it('blocks Ontario (CA + ON region)', async () => {
-    const res = await call('/geo', baseEnv(), { country: 'CA', region: 'ON' })
-    expect((await res.json() as { blocked: boolean }).blocked).toBe(true)
+  it('blocks Ontario, British Columbia, Alberta and Quebec as close-only (2026-09-08 audit F08)', async () => {
+    for (const region of ['ON', 'BC', 'AB', 'QC']) {
+      const res = await call('/geo', baseEnv(), { country: 'CA', region })
+      const body = (await res.json()) as { blocked: boolean; closeOnly: boolean }
+      expect(body).toMatchObject({ blocked: true, closeOnly: true })
+    }
   })
 
-  it('does not block the rest of Canada (CA + QC)', async () => {
-    const res = await call('/geo', baseEnv(), { country: 'CA', region: 'QC' })
+  it('does not block the rest of Canada (e.g. Manitoba)', async () => {
+    const res = await call('/geo', baseEnv(), { country: 'CA', region: 'MB' })
     expect((await res.json() as { blocked: boolean }).blocked).toBe(false)
   })
 
-  it('honors EXTRA_BLOCKED_COUNTRIES from env', async () => {
+  it('honors EXTRA_BLOCKED_COUNTRIES from env as a full block', async () => {
     const res = await call('/geo', baseEnv({ EXTRA_BLOCKED_COUNTRIES: 'DE,NL' }), { country: 'DE' })
-    expect((await res.json() as { blocked: boolean }).blocked).toBe(true)
+    const body = (await res.json()) as { blocked: boolean; closeOnly: boolean }
+    expect(body).toMatchObject({ blocked: true, closeOnly: false })
+  })
+
+  it('blocks Germany, Poland, Singapore etc. as close-only rather than not at all (2026-09-08 audit F08)', async () => {
+    // Real Polymarket policy (docs.polymarket.com/api-reference/geoblock,
+    // checked 2026-09-08): can close existing positions, cannot open new
+    // ones. The old list omitted these countries from the blocklist
+    // entirely, which let an agent or user open new positions from them.
+    for (const country of ['DE', 'BR', 'RU', 'IE', 'JP', 'NL']) {
+      const res = await call('/geo', baseEnv(), { country })
+      const body = (await res.json()) as { country: string; blocked: boolean; closeOnly: boolean }
+      expect(body).toMatchObject({ country, blocked: true, closeOnly: true })
+    }
+  })
+
+  it('fully blocks Crimea, Donetsk and Luhansk (UA regions) - no new orders, no closing either', async () => {
+    for (const region of ['43', '14', '09']) {
+      const res = await call('/geo', baseEnv(), { country: 'UA', region })
+      const body = (await res.json()) as { blocked: boolean; closeOnly: boolean }
+      expect(body).toMatchObject({ blocked: true, closeOnly: false })
+    }
+  })
+
+  it('does not block the rest of Ukraine', async () => {
+    const res = await call('/geo', baseEnv(), { country: 'UA', region: '30' }) // Kyiv
+    expect((await res.json() as { blocked: boolean }).blocked).toBe(false)
   })
 
   it('regression: a CF-Region-Code HTTP header (not real Cloudflare behavior) must NOT be trusted', async () => {

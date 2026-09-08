@@ -17,6 +17,11 @@
 
 export interface GeoGateResult {
   blocked: boolean
+  /** True when `blocked` is Polymarket's close-only tier (existing positions
+   * can still be closed) rather than a full block (2026-09-08 audit F08).
+   * Meaningless when `blocked` is false. Always false on any failure path
+   * here - fails closed to the STRICTER tier, never the more permissive one. */
+  closeOnly: boolean
   country?: string
 }
 
@@ -32,9 +37,9 @@ export async function checkTradingGeoGate(workerUrl: string, workerSecret: strin
   try {
     const res = await fetch(`${workerUrl}/geo`, { headers: { 'X-Actually-Auth': workerSecret } })
     if (!res.ok) {
-      result = { blocked: true }
+      result = { blocked: true, closeOnly: false }
     } else {
-      const data = (await res.json()) as { country?: string; blocked?: boolean }
+      const data = (await res.json()) as { country?: string; blocked?: boolean; closeOnly?: boolean }
       // Require `blocked` to actually be a boolean rather than coercing a
       // missing field with `Boolean(undefined)` (=== false) - a future
       // worker refactor that renames/drops the field would otherwise
@@ -42,11 +47,11 @@ export async function checkTradingGeoGate(workerUrl: string, workerSecret: strin
       // this package with no error anywhere. Fail closed instead.
       result =
         data.country && typeof data.blocked === 'boolean'
-          ? { blocked: data.blocked, country: data.country.toUpperCase() }
-          : { blocked: true, country: data.country?.toUpperCase() }
+          ? { blocked: data.blocked, closeOnly: Boolean(data.closeOnly), country: data.country.toUpperCase() }
+          : { blocked: true, closeOnly: false, country: data.country?.toUpperCase() }
     }
   } catch {
-    result = { blocked: true }
+    result = { blocked: true, closeOnly: false }
   }
 
   cached = result
