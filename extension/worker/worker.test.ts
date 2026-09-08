@@ -797,6 +797,19 @@ describe('builder signing (remote signer for Polymarket relayer)', () => {
     expect(res.status).toBe(403)
   })
 
+  it('413 when the actual body exceeds the byte cap, before it is ever parsed (2026-09-08 audit F10)', async () => {
+    // Only payload.body was ever bounded (200_000 chars), and only AFTER
+    // req.json() had already parsed the whole thing. An unused extra field
+    // was completely unbounded - this is exactly that: a real field small
+    // enough to sign, plus 300KB of padding nothing reads.
+    const env = baseEnv(CREDS)
+    const res = await call('/builder-sign', env, {
+      method: 'POST',
+      body: JSON.stringify({ method: 'POST', path: '/submit', body: '{}', padding: 'x'.repeat(300_000) }),
+    })
+    expect(res.status).toBe(413)
+  })
+
   it('caps daily signatures at the Unverified tier limit', async () => {
     const env = baseEnv(CREDS)
     const body = JSON.stringify({ method: 'POST', path: '/submit' })

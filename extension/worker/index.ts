@@ -195,6 +195,17 @@ export const TELEMETRY_LIMITS = {
   maxBlobBytes: 16 * 1024,
 } as const
 
+/**
+ * Input limit for /builder-sign. Mirrors EMBED_LIMITS.maxBodyBytes - large
+ * enough to comfortably fit the 200_000-char `body` field this route already
+ * bounds (see the check right after JSON.parse below) plus its small
+ * method/path/timestamp fields, small enough that an unused extra field
+ * can't turn every signed request into unbounded Worker memory/compute
+ * (2026-09-08 audit F10: previously req.json() parsed the entire body
+ * before anything checked its size at all).
+ */
+export const BUILDER_SIGN_LIMITS = { maxBodyBytes: 256 * 1024 } as const
+
 /** Per-upstream-fetch timeout - see the `signal:` argument on every outbound fetch() below. */
 const UPSTREAM_TIMEOUT_MS = 10_000
 
@@ -867,9 +878,17 @@ export default {
         if (!authMode) {
           return json({ error: 'builder_creds_not_configured' }, 503, headers)
         }
+        // Reject oversized bodies before parsing (cheap DoS guard) - enforced
+        // on actual bytes read, not the (spoofable/omittable) Content-Length
+        // header. Only payload.body gets its own, tighter check below; this
+        // catches an unused extra field padding out the whole envelope.
+        const signBody = await readBodyWithLimit(req, BUILDER_SIGN_LIMITS.maxBodyBytes)
+        if (signBody === null) {
+          return json({ error: 'body_too_large' }, 413, headers)
+        }
         let payload: { method?: unknown; path?: unknown; body?: unknown; timestamp?: unknown }
         try {
-          payload = (await req.json()) as typeof payload
+          payload = JSON.parse(signBody) as typeof payload
         } catch {
           return json({ error: 'bad_body' }, 400, headers)
         }

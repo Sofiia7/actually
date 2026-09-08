@@ -1,0 +1,5 @@
+.scratch/
+*.log
+consumer/
+*.tgz
+live-check.json
