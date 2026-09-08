@@ -102,22 +102,37 @@ function isInFlight(s: ConnectSession | undefined): boolean {
   return s?.stage === 'pending' || s?.stage === 'awaiting_approval' || s?.stage === 'signing'
 }
 
-// §12: lazy cache TTL. After a match is returned we kick off a non-blocking
-// refresh if the cache is older than CACHE_TTL_MINUTES, deduped so concurrent
-// matches don't stack refreshes. The user sees the current match immediately;
-// fresh data lands on the next check.
+// §12: lazy cache TTL. Checked on EVERY OS_RUN_MATCH, not only after a
+// successful one (2026-09-08 audit F14: gated behind a match before this, a
+// cache stale enough that nothing matches anymore could never trigger its
+// own refresh - no match -> no refresh -> still no match, forever). Kicks
+// off a non-blocking refresh if the cache is older than CACHE_TTL_MINUTES,
+// deduped so concurrent checks don't stack refreshes. The user sees the
+// current result immediately; fresh data lands on the next check.
 let staleRefreshInFlight = false
+// Set on a failed attempt, cleared on the next successful one. Every check
+// now calls maybeRefreshStale (not only successful ones), so a genuinely
+// dead network would otherwise retry the doomed fetch on every single
+// article checked - this caps that to one attempt per cooldown window.
+let staleRefreshLastFailedAt = 0
+const STALE_REFRESH_RETRY_COOLDOWN_MS = 5 * 60_000
 // Shared in-flight guard for explicit OS_REFRESH_CACHE calls (auto-on-open +
 // manual button), so concurrent requests await one refresh instead of stacking.
 let refreshInFlight: Promise<{ added: number; reused: number; removed: number }> | null = null
 async function maybeRefreshStale(settings: Settings): Promise<void> {
   if (staleRefreshInFlight) return
+  if (Date.now() - staleRefreshLastFailedAt < STALE_REFRESH_RETRY_COOLDOWN_MS) return
   const { lastUpdated } = await getCacheStatus()
   const ageMin = lastUpdated > 0 ? (Date.now() - lastUpdated) / 60_000 : Infinity
   if (ageMin <= CACHE_TTL_MINUTES) return
   staleRefreshInFlight = true
   void refreshMarketCache(settings.embeddingProvider, settings.workerUrl, settings.workerSecret)
-    .catch(() => undefined)
+    .then(() => {
+      staleRefreshLastFailedAt = 0
+    })
+    .catch(() => {
+      staleRefreshLastFailedAt = Date.now()
+    })
     .finally(() => {
       staleRefreshInFlight = false
     })
@@ -220,6 +235,13 @@ export async function handle(msg: OffscreenRequest): Promise<OffscreenResponse> 
           },
         })
         const match = attempt.match
+        // Unconditional - was previously only reached after a SUCCESSFUL
+        // match, so a cache stale enough that nothing matches anymore could
+        // never trigger its own refresh: no match -> no refresh -> still no
+        // match, forever, until the user refreshes by hand (2026-09-08
+        // audit F14). Checking the TTL doesn't depend on whether matching
+        // itself succeeded.
+        void maybeRefreshStale(settings) // §12 non-blocking TTL refresh
         if (!match) {
           // The counters stay - they are how an empty cache is told apart
           // from a genuine miss - but they go to the console and telemetry,
@@ -258,7 +280,6 @@ export async function handle(msg: OffscreenRequest): Promise<OffscreenResponse> 
           color: match.color,
           confidence_bucket: Math.floor(match.confidence * 10) / 10,
         })
-        void maybeRefreshStale(settings) // §12 non-blocking TTL refresh
         return { type: 'OS_MATCH_RESULT', match }
       } catch (err) {
         return { type: 'OS_MATCH_RESULT', match: null, reason: `match_error[step=${step}]:${describeError(err)}` }
