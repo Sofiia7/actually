@@ -88,6 +88,19 @@ describe('SpendGuard', () => {
     expect(guard.reserve(1).ok).toBe(false)
   })
 
+  it('does not block the very first order on a fresh state directory that does not exist yet (2026-09-08 audit F01)', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'spend-guard-test-'))
+    try {
+      const statePath = join(dir, 'a-new-subdir-nobody-created-yet', 'spend.json')
+      const guard = new SpendGuard({ maxOrderUsd: 100, dailyLimitUsd: 500, statePath })
+      const result = guard.reserve(10)
+      expect(result.ok).toBe(true)
+      expect(existsSync(statePath)).toBe(true)
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+
   it('persists reserved spend to statePath and honors it across a fresh instance (process restart)', () => {
     const dir = mkdtempSync(join(tmpdir(), 'spend-guard-test-'))
     const statePath = join(dir, 'spend-guard.json')
@@ -173,21 +186,26 @@ describe('SpendGuard', () => {
     }
   }, 10_000)
 
-  it('release() still proceeds unlocked (best-effort) if a live lock is held past the max wait - safe direction, unlike reserve()', () => {
+  it('release() skips the refund (does not write unlocked) if a live lock is held past the max wait (2026-09-08 audit F12)', () => {
+    // An unlocked read-modify-write can lose either side of a race with a
+    // concurrent process's own reserve()/release() write, in either
+    // direction - including silently erasing a peer's reserve() and making
+    // the guard LESS restrictive than the real daily spend. Skipping the
+    // refund is the safe failure: the guard only ends up MORE conservative.
     const dir = mkdtempSync(join(tmpdir(), 'spend-guard-test-'))
     const statePath = join(dir, 'spend-guard.json')
     const lockPath = `${statePath}.lock`
     try {
-      const guard = new SpendGuard({ maxOrderUsd: 100, dailyLimitUsd: 150, statePath })
-      const reserved = guard.reserve(100)
+      const guard = new SpendGuard({ maxOrderUsd: 100, dailyLimitUsd: 100, statePath })
+      const reserved = guard.reserve(100) // fully spends the daily budget
       expect(reserved.ok).toBe(true)
 
       writeFileSync(lockPath, String(process.pid)) // a "live" holder (fresh mtime, never released)
       guard.release(100, reserved.ok ? reserved.reservedDay : undefined) // must not hang or throw
       rmSync(lockPath, { force: true })
 
-      // release() ran despite the held lock, so the budget was given back.
-      expect(guard.reserve(100).ok).toBe(true)
+      // The refund was skipped rather than written unlocked - still fully reserved.
+      expect(guard.reserve(1).ok).toBe(false)
     } finally {
       rmSync(dir, { recursive: true, force: true })
     }

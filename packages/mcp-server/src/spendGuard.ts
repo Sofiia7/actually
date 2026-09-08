@@ -186,25 +186,37 @@ export class SpendGuard {
    * Runs `fn` holding a cross-process file lock derived from `statePath`
    * (`<statePath>.lock`) - see acquireLock's doc comment. Without a
    * configured statePath there's nothing on disk for another process to
-   * race against, so this just runs `fn` directly. If the lock can't be
-   * acquired within LOCK_MAX_WAIT_MS, callers that pass `onLockFailed`
-   * (reserve()) get that fallback instead of `fn` running unlocked - for a
-   * real-money cap, proceeding without the lock is the dangerous direction
-   * (two processes could both pass the check and combined spend exceeds
-   * dailyLimitUsd). Callers that omit it (release()) still run `fn`
-   * unlocked best-effort, because failing to give budget back only makes
-   * the guard MORE conservative, never less - see release()'s doc comment.
+   * race against, so this just runs `fn` directly. Ensures the state
+   * directory exists first - a fresh install has no `~/.actually-mcp-server/`
+   * yet, and `acquireLock`'s `openSync(lockPath, 'wx')` fails ENOENT (not
+   * EEXIST) against a missing directory, which used to read as "lock busy"
+   * and block a brand-new user's very first order (2026-09-08 audit F01).
+   *
+   * If the lock can't be acquired within LOCK_MAX_WAIT_MS - or the directory
+   * can't even be created - `onLockFailed` always runs INSTEAD of `fn`,
+   * never `fn` unlocked: for a real-money cap, an unlocked read-modify-write
+   * racing a peer process's own write can lose either side's update in
+   * either direction, including silently erasing a peer's `reserve()` and
+   * making the guard LESS restrictive than real spend (2026-09-08 audit
+   * F12). Every caller must supply `onLockFailed`; release()'s is a no-op,
+   * since skipping a refund only makes the guard MORE conservative, never
+   * less - see release()'s doc comment.
    */
-  private withLock<T>(fn: () => T, onLockFailed?: () => T): T {
+  private withLock<T>(fn: () => T, onLockFailed: () => T): T {
     const path = this.config.statePath
     if (!path) return fn()
+    try {
+      mkdirSync(dirname(path), { recursive: true })
+    } catch {
+      return onLockFailed()
+    }
     const lockPath = `${path}.lock`
     const locked = acquireLock(lockPath)
-    if (!locked && onLockFailed) return onLockFailed()
+    if (!locked) return onLockFailed()
     try {
       return fn()
     } finally {
-      if (locked) releaseLock(lockPath)
+      releaseLock(lockPath)
     }
   }
 
@@ -276,6 +288,6 @@ export class SpendGuard {
       if (reservedDay !== undefined && reservedDay !== this.day) return
       this.daySpentUsd = Math.max(0, this.daySpentUsd - sizeUsd)
       this.saveState()
-    })
+    }, () => {})
   }
 }
