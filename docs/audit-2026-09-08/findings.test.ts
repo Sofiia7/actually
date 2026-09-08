@@ -2,30 +2,20 @@
 // They use fake credentials, mocked HTTP and isolated scratch files. No trade is sent.
 // When fixing an issue, move its case into the owning suite and invert the assertion.
 //
-// F01, F02, F03, F05, F04, F06, F08 were fixed on 2026-09-08 (see git log)
-// and their cases moved into the owning suites: packages/mcp-server/src/
-// spendGuard.test.ts, tools/placeOrder.test.ts, tools/sellOrder.test.ts,
+// F01, F02, F03, F05, F04, F06, F08, F15 were fixed on 2026-09-08 (see git
+// log) and their cases moved into the owning suites: packages/mcp-server/
+// src/spendGuard.test.ts, tools/placeOrder.test.ts, tools/sellOrder.test.ts,
 // clobClient.test.ts, marketStore.test.ts; extension/src/popup_new/
 // SellTicket.test.tsx, TradeTabWired.test.tsx; extension/src/background/
 // cache.test.ts, geo.test.ts; extension/worker/worker.test.ts;
 // packages/core/src/matcher.test.ts.
 import { afterEach, expect, it, vi } from 'vitest'
 import { fetchPositions } from '../../packages/mcp-server/src/positions'
-import { attemptMatch, floatArrayToB64 } from '../../packages/core/src/index'
 import { flushTelemetry } from '../../extension/src/background/telemetry'
 import { STORAGE_KEYS, DEFAULT_SETTINGS } from '../../extension/src/shared/constants'
 import worker from '../../extension/worker/index'
 
 afterEach(() => { vi.unstubAllGlobals(); vi.restoreAllMocks() })
-
-function market(id: string, question = 'Will the event happen?', raw = 1) {
-  return {
-    id, question, slug: id, outcomes: '["Yes","No"]', outcomePrices: '["0.5","0.5"]',
-    clobTokenIds: ['yes', 'no'], active: true, closed: false, volume: 0, liquidity: 100,
-    embeddingB64: floatArrayToB64(new Float32Array([raw, Math.sqrt(1 - raw * raw)])),
-    cachedAt: Date.now(), questionHash: id,
-  }
-}
 
 const fakeEnv = {
   WORKER_SHARED_SECRET: 'audit-public-fake', ALLOWED_EXTENSION_ID: 'audit-extension',
@@ -64,16 +54,4 @@ it('F10: /builder-sign parses and accepts an oversized envelope with unused padd
     ...fakeEnv, BUILDER_API_KEY: 'fake', BUILDER_API_PASSPHRASE: 'fake', BUILDER_API_SECRET: btoa('audit-fake'),
   } as never)
   expect(res.status).toBe(200)
-})
-
-it('F15: search fallback returns an Over/Under market as a YES/NO match', async () => {
-  const candidate = { ...market('non-binary'), outcomes: '["Over","Under"]' }
-  const result = await attemptMatch('Will the event happen?', '', {
-    store: { getMarkets: async () => [] },
-    embedder: { embed: async () => new Float32Array([1, 0]) },
-    searchFallback: async () => [candidate],
-    thresholds: { lowConfidenceFloor: 0.35, confidenceThreshold: 0.5 },
-  })
-  expect(result.match?.market.id).toBe('non-binary')
-  expect(result.match?.probability).toBe(0.5)
 })

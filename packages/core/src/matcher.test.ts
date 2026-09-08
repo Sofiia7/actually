@@ -405,6 +405,32 @@ describe('attemptMatch - the long-tail search fallback', () => {
     expect(attempt.match?.market.question).toBe('Another event entirely')
   })
 
+  it('never offers a non-binary (Over/Under etc.) search hit as a YES/NO match (2026-09-08 audit F15)', async () => {
+    // The cache builder already drops non-binary markets before they're
+    // cached (isBinaryOutcomes), but the live search fallback bypassed that
+    // filter entirely - a categorical market came back scored exactly like
+    // a real Yes/No one, with a meaningless "probability" (outcome[0]'s
+    // price) and BUY_YES/BUY_NO semantics that don't describe its tokens.
+    const store = { getMarkets: async () => [] }
+    const nonBinary = { ...searchHit('Will X, Y, or Z win?'), outcomes: '["X","Y","Z"]' }
+    const attempt = await attemptMatch('Will X, Y, or Z win?', '', {
+      store, embedder, thresholds,
+      searchFallback: async () => [nonBinary],
+    })
+    expect(attempt.match).toBeNull()
+  })
+
+  it('still matches a genuine binary search hit alongside a filtered non-binary one', async () => {
+    const store = { getMarkets: async () => [] }
+    const binary = searchHit('Will Iran enrich uranium?')
+    const nonBinary = { ...searchHit('Will X, Y, or Z win?'), outcomes: '["X","Y","Z"]' }
+    const attempt = await attemptMatch('Iran enriches uranium', '', {
+      store, embedder, thresholds,
+      searchFallback: async () => [nonBinary, binary],
+    })
+    expect(attempt.match?.market.question).toBe('Will Iran enrich uranium?')
+  })
+
   it('swallows a search failure - the user already has a true answer', async () => {
     const store = { getMarkets: async () => [fakeMarket({ id: 'cached', question: 'Will the Lakers win?', vec: [0, 1, 0] })] }
     const attempt = await attemptMatch('Iran enriches uranium', '', {

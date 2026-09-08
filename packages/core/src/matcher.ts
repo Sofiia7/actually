@@ -1,6 +1,6 @@
 import type { CachedMarket, MatchResult, PolyMarket } from './types'
 import { COLOR_THRESHOLDS, HEADLINE_WEIGHT, MAX_BODY_TEXT_CHARS } from './constants'
-import { b64ToFloatArray, cosineSimilarity, floatArrayToB64, priceFromOutcomes } from './util'
+import { b64ToFloatArray, cosineSimilarity, floatArrayToB64, isBinaryOutcomes, priceFromOutcomes } from './util'
 
 export interface MarketStore {
   getMarkets(): Promise<CachedMarket[]>
@@ -211,8 +211,17 @@ async function searchAndScore(
     return null
   }
 
+  // The cache builder already drops non-binary (Over/Under, multi-outcome)
+  // markets before caching, but live search results bypass that filter -
+  // without it here, a categorical market gets scored and offered as an
+  // ordinary Yes/No match, with a meaningless probability (outcome[0]'s
+  // price) and BUY_YES/BUY_NO semantics that don't describe its actual
+  // tokens (2026-09-08 audit F15). Filtered before the candidate cap so a
+  // non-binary hit doesn't also crowd out a real one from the embed budget.
+  const binaryCandidates = candidates.filter((m) => isBinaryOutcomes(m.outcomes))
+
   const scored: ScoredRow[] = []
-  for (const m of candidates.slice(0, MAX_FALLBACK_CANDIDATES)) {
+  for (const m of binaryCandidates.slice(0, MAX_FALLBACK_CANDIDATES)) {
     const vec = await deps.embedder.embed(m.question)
     const cached: CachedMarket = {
       ...m,
