@@ -99,6 +99,21 @@ describe('placeOrder', () => {
     expect(releasedUsd).toBe(25)
   })
 
+  it('keeps the reserved spend when the submit result is unknown (lost response), instead of releasing it (2026-09-08 audit F03)', async () => {
+    let releaseCalled = false
+    const result = await placeOrder(
+      {
+        privateKey: '0xabc',
+        signAndSubmit: async () => ({ success: false, error: 'ECONNRESET', unknown: true }),
+        spendGuard: { reserve: () => ({ ok: true }), release: () => { releaseCalled = true } },
+      },
+      { marketId: 'm1', tokenId: 'tok-yes', side: 'BUY_YES', sizeUsd: 25, price: 0.5, orderType: 'MARKET', negRisk: false },
+    )
+    expect(releaseCalled).toBe(false)
+    expect(result.ok).toBe(false)
+    expect(result.error).toBe('unknown_result:ECONNRESET')
+  })
+
   it('releases the reserved spend when signAndSubmit throws', async () => {
     let releasedUsd: number | undefined
     await placeOrder(

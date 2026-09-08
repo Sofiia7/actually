@@ -30,6 +30,10 @@ export interface SignAndSubmitSellResult {
   success: boolean
   orderId?: string
   error?: string
+  /** See placeOrder.ts's SignAndSubmitResult.unknown - same contract, same
+   * 2026-09-08 audit F03 rationale: an unconfirmed result must not release
+   * reserved spend-guard budget. */
+  unknown?: boolean
 }
 
 export interface SellOrderDeps {
@@ -98,6 +102,9 @@ export async function sellOrder(deps: SellOrderDeps, input: SellOrderInput): Pro
   }
 
   if (!result.success) {
+    if (result.unknown) {
+      return { ok: false, error: `unknown_result:${result.error ?? 'unknown_error'}` }
+    }
     deps.spendGuard?.release(estimatedUsd, reservedDay)
     return { ok: false, error: result.error ?? 'unknown_error' }
   }

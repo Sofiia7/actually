@@ -120,6 +120,21 @@ describe('sellOrder', () => {
     )
     expect(releasedUsd).toBeCloseTo(12, 6)
   })
+
+  it('keeps the reserved spend when the submit result is unknown (lost response), instead of releasing it (2026-09-08 audit F03)', async () => {
+    let releaseCalled = false
+    const result = await sellOrder(
+      {
+        privateKey: '0xabc',
+        signAndSubmit: async () => ({ success: false, error: 'ECONNRESET', unknown: true }),
+        spendGuard: { reserve: () => ({ ok: true }), release: () => { releaseCalled = true } },
+      },
+      baseInput,
+    )
+    expect(releaseCalled).toBe(false)
+    expect(result.ok).toBe(false)
+    expect(result.error).toBe('unknown_result:ECONNRESET')
+  })
 })
 
 describe('sellOrder - minimum order size', () => {

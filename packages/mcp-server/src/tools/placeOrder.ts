@@ -18,6 +18,16 @@ export interface SignAndSubmitResult {
   success: boolean
   orderId?: string
   error?: string
+  /**
+   * True when the caller could not confirm the exchange's answer (e.g. a
+   * network/transport failure after the request left this process) - as
+   * opposed to a confirmed CLOB rejection. The order may have actually been
+   * accepted, so this must NOT be treated as safe to release reserved
+   * spend-guard budget for (2026-09-08 audit F03: a lost response was
+   * treated as a normal rejection, silently reopening budget for an order
+   * that may have gone through).
+   */
+  unknown?: boolean
 }
 
 export interface SpendGuardLike {
@@ -99,7 +109,13 @@ export async function placeOrder(deps: PlaceOrderDeps, input: PlaceOrderInput): 
   }
 
   if (!result.success) {
-    // Rejected/failed order - give back the budget reserve() committed.
+    if (result.unknown) {
+      // We don't know whether this order actually reached the exchange -
+      // keep the reservation rather than risk reopening budget for a trade
+      // that may have gone through (2026-09-08 audit F03).
+      return { ok: false, error: `unknown_result:${result.error ?? 'unknown_error'}` }
+    }
+    // Confirmed rejected/failed order - give back the budget reserve() committed.
     deps.spendGuard?.release(input.sizeUsd, reservedDay)
     return { ok: false, error: result.error ?? 'unknown_error' }
   }

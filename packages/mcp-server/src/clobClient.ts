@@ -163,12 +163,19 @@ export async function signMarketBuyOrder(client: ClobClient, args: MarketBuyOrde
  * Reading only `errorMsg` collapsed every one of those (below-minimum size,
  * insufficient balance/allowance, bad tick) into a bare "clob_rejected",
  * leaving the calling agent nothing to act on.
+ *
+ * A THIRD shape - `unknown: true` - marks a result that is neither a
+ * confirmed fill nor a confirmed rejection: `postOrder` threw (network
+ * failure, timeout, ...) or resolved with nothing at all. The exchange may
+ * have already accepted the order upstream even though this process never
+ * saw the answer (2026-09-08 audit F03) - callers must not treat `unknown`
+ * the same as a confirmed "no" and release spend-guard budget for it.
  */
 export async function submitSignedOrder(
   client: ClobClient,
   signed: unknown,
   orderType: OrderType = OrderType.GTC,
-): Promise<{ success: boolean; orderId?: string; error?: string }> {
+): Promise<{ success: boolean; orderId?: string; error?: string; unknown?: boolean }> {
   try {
     // SDK type is `SignedOrder` - we passed it through `unknown` to keep the
     // sign/submit boundary explicit. Cast back here.
@@ -181,11 +188,11 @@ export async function submitSignedOrder(
       // field - hence the union.
       | { success?: boolean; errorMsg?: string; orderID?: string; error?: unknown; status?: number | string }
       | undefined
-    if (!res) return { success: false, error: 'empty_response' }
+    if (!res) return { success: false, error: 'empty_response', unknown: true }
     if (res.success) return { success: true, orderId: res.orderID }
     return { success: false, error: clobErrorText(res) ?? 'clob_rejected' }
   } catch (err) {
-    return { success: false, error: String(err) }
+    return { success: false, error: String(err), unknown: true }
   }
 }
 
