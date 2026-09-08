@@ -82,7 +82,7 @@ const opsm = ops as unknown as Record<string, ReturnType<typeof vi.fn>>
 
 beforeEach(() => {
   vi.clearAllMocks()
-  opsm.getGeoViaOffscreen.mockResolvedValue({ country: 'RS', blocked: false, unknown: false })
+  opsm.getGeoViaOffscreen.mockResolvedValue({ country: 'RS', blocked: false, closeOnly: false, unknown: false })
   opsm.priceHistoryViaOffscreen.mockResolvedValue([])
   opsm.orderbookSnapshotViaOffscreen.mockResolvedValue({ bestBid: 0.4, bestAsk: 0.42, spread: 0.02, bids: [], asks: [], estimate: null })
   opsm.placeOrderViaOffscreen.mockResolvedValue({ ok: true, orderId: '0x123' })
@@ -325,6 +325,27 @@ describe('TradeTabWired - positions are ordered by what the user just did', () =
     await screen.findByText(/Tiny and recent/)
     const rendered = container.textContent ?? ''
     expect(rendered.indexOf('Tiny and recent')).toBeLessThan(rendered.indexOf('Big and old'))
+  })
+})
+
+describe('TradeTabWired - geo close-only jurisdictions (2026-09-08 audit F08)', () => {
+  it('still shows the order ticket and portfolio for a close-only country, but disables placing a new order', async () => {
+    opsm.restoreWalletViaOffscreen.mockResolvedValue(wallet)
+    opsm.getGeoViaOffscreen.mockResolvedValue({ country: 'DE', blocked: true, closeOnly: true, unknown: false })
+    render(<TradeTabWired {...props} />)
+    await screen.findByText('Orderbook')
+    // The whole-panel block banner from a full block must NOT appear - a
+    // close-only jurisdiction can still view/cancel/sell.
+    expect(screen.queryByText(/Trading is not available in your region/i)).toBeNull()
+    await waitFor(() => expect(screen.getByRole('button', { name: /Place limit order/i })).toBeDisabled())
+    expect(screen.getByText(/close-only/i)).toBeInTheDocument()
+  })
+
+  it('still fully blocks the panel for a full-block country (unchanged)', async () => {
+    opsm.restoreWalletViaOffscreen.mockResolvedValue(wallet)
+    opsm.getGeoViaOffscreen.mockResolvedValue({ country: 'IR', blocked: true, closeOnly: false, unknown: false })
+    render(<TradeTabWired {...props} />)
+    expect(await screen.findByText(/Trading is not available in your region \(IR\)/i)).toBeInTheDocument()
   })
 })
 

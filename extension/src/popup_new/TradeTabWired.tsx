@@ -75,6 +75,7 @@ type ConnectStage =
 
 type GeoInfo = {
   blocked: boolean
+  closeOnly: boolean
   country: string
   unknown: boolean
   errorReason?: GeoErrorReason
@@ -348,12 +349,16 @@ export const TradeTabWired: React.FC<TradeTabWiredProps> = ({
     )
   }
 
-  // Block on a confirmed restricted country, and - when the build is
-  // fail-closed (prod default, see GEO_FAIL_OPEN) - also when the region
-  // couldn't be verified at all.
-  const geoConfirmedBlock = geo != null && geo.blocked && !geo.unknown
+  // Block the WHOLE panel (hiding portfolio, cancel, and sell/redeem along
+  // with buying) only on a full block or - when the build is fail-closed,
+  // prod default, see GEO_FAIL_OPEN - an unverifiable region. A close-only
+  // jurisdiction (2026-09-08 audit F08) can still close/cancel/sell existing
+  // positions, so it must not lose access to any of that - only the ability
+  // to place a NEW order is disabled below, near the submit button.
+  const geoFullBlock = geo != null && geo.blocked && !geo.closeOnly && !geo.unknown
+  const geoCloseOnlyBlock = geo != null && geo.blocked && geo.closeOnly && !geo.unknown
   const geoUnknownBlock = geo != null && geo.unknown && !GEO_FAIL_OPEN
-  if (geoConfirmedBlock || geoUnknownBlock) {
+  if (geoFullBlock || geoUnknownBlock) {
     return (
       <Panel>
         <ErrorBanner>
@@ -507,6 +512,8 @@ export const TradeTabWired: React.FC<TradeTabWiredProps> = ({
       wallet={wallet}
       settings={settings}
       geoUnknown={geo?.unknown ?? false}
+      geoCloseOnly={geoCloseOnlyBlock}
+      geoCountry={geo?.country ?? ''}
       onConnect={startConnect}
       onDisconnect={doDisconnect}
       onOpenSettings={onOpenSettings}
@@ -534,6 +541,11 @@ interface ReadyProps {
   wallet: WalletState | null
   settings: SettingsT
   geoUnknown: boolean
+  /** True in a close-only jurisdiction (2026-09-08 audit F08) - passed down
+   * to OrderFormWired, which disables placing a NEW order but leaves the
+   * rest of the panel (portfolio, cancel, sell/redeem) live. */
+  geoCloseOnly: boolean
+  geoCountry: string
   onConnect: () => void
   onDisconnect: () => void
   onOpenSettings: () => void
@@ -556,6 +568,8 @@ const TradeReady: React.FC<ReadyProps> = ({
   wallet,
   settings,
   geoUnknown,
+  geoCloseOnly,
+  geoCountry,
   onConnect,
   onDisconnect,
   onOpenSettings,
@@ -652,6 +666,8 @@ const TradeReady: React.FC<ReadyProps> = ({
             yesIdx={yesIdx}
             onDisconnect={onDisconnect}
             onPortfolioChanged={onRefreshPortfolio}
+            geoCloseOnly={geoCloseOnly}
+            geoCountry={geoCountry}
           />
           <div ref={positionsRef}>
             <PositionsPanel
@@ -714,6 +730,12 @@ interface OrderFormProps {
   yesIdx: number
   onDisconnect: () => void
   onPortfolioChanged?: () => void
+  /** True in a close-only jurisdiction (2026-09-08 audit F08) - opening a
+   * new position is disabled, but the rest of the panel (portfolio, cancel,
+   * sell/redeem) stays live, since close-only jurisdictions permit that. */
+  geoCloseOnly: boolean
+  /** For the close-only message; empty when geoCloseOnly is false. */
+  geoCountry: string
 }
 
 const CAP_PCT = 0.02 // market (FOK) max slippage cap
@@ -726,6 +748,8 @@ const OrderFormWired: React.FC<OrderFormProps> = ({
   yesIdx,
   onDisconnect,
   onPortfolioChanged,
+  geoCloseOnly,
+  geoCountry,
 }) => {
   const [orderType, setOrderType] = useState<'LIMIT' | 'MARKET'>('LIMIT')
   const [side, setSide] = useState<'BUY_YES' | 'BUY_NO'>('BUY_YES')
@@ -828,6 +852,7 @@ const OrderFormWired: React.FC<OrderFormProps> = ({
     belowMinSize ||
     limitInvalid ||
     noLiquidity ||
+    geoCloseOnly ||
     (slippage != null && slippage > HARD_SLIPPAGE)
 
   async function onSubmit() {
@@ -1034,6 +1059,12 @@ const OrderFormWired: React.FC<OrderFormProps> = ({
       {slippage != null && slippage > WARN_SLIPPAGE && (
         <Etched size={11} weight={300} color="rgba(180,90,30,.85)">
           High slippage - orderbook is thin. Reduce size or use a limit order.
+        </Etched>
+      )}
+      {geoCloseOnly && (
+        <Etched size={11} weight={300} color="rgba(180,90,30,.85)">
+          Trading is close-only in your region ({geoCountry}) - you can still sell or cancel existing
+          positions and orders, but not open a new one.
         </Etched>
       )}
 

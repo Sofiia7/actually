@@ -55,6 +55,7 @@ export async function refreshCacheViaOffscreen(): Promise<{
 export async function getGeoViaOffscreen(): Promise<{
   country: string
   blocked: boolean
+  closeOnly: boolean
   unknown: boolean
   errorReason?: GeoErrorReason
 }> {
@@ -62,10 +63,11 @@ export async function getGeoViaOffscreen(): Promise<{
     target: 'offscreen',
     type: 'OS_GET_GEO',
   })
-  if (r.type === 'OS_ERROR') return { country: '', blocked: true, unknown: true, errorReason: 'network' }
+  if (r.type === 'OS_ERROR') return { country: '', blocked: true, closeOnly: false, unknown: true, errorReason: 'network' }
   return {
     country: r.country,
     blocked: r.blocked,
+    closeOnly: r.closeOnly,
     unknown: r.unknown,
     errorReason: r.errorReason as GeoErrorReason | undefined,
   }

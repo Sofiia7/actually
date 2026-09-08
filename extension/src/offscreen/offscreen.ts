@@ -297,6 +297,7 @@ export async function handle(msg: OffscreenRequest): Promise<OffscreenResponse> 
         type: 'OS_GEO_RESULT',
         country: g.country,
         blocked: g.blocked,
+        closeOnly: g.closeOnly,
         unknown: g.unknown,
         errorReason: g.errorReason,
       }

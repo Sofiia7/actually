@@ -160,7 +160,7 @@ export type OffscreenResponse =
     }
   | { type: 'OS_CACHE_REFRESHED'; added: number; reused: number; removed: number }
   | { type: 'OS_BUILDER_STATUS_RESULT'; available: boolean }
-  | { type: 'OS_GEO_RESULT'; country: string; blocked: boolean; unknown: boolean; errorReason?: string }
+  | { type: 'OS_GEO_RESULT'; country: string; blocked: boolean; closeOnly: boolean; unknown: boolean; errorReason?: string }
   | { type: 'OS_WALLET_RESTORED'; wallet: SerializableWalletState | null }
   | { type: 'OS_REDEEM_RESULT'; ok: boolean; transactionId?: string; error?: string }
   | { type: 'OS_CONNECT_STARTED'; sessionId: string }
