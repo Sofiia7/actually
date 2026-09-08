@@ -46,6 +46,32 @@ jobs:
       - name: Unit tests - all workspaces
         run: npm test --workspaces --if-present
 
+      # F11 (2026-09-08 audit): the root package.json's `overrides` for
+      # protobufjs/ws only apply at the monorepo's own install root - a
+      # consumer running `npm install actually-mcp-server` or `npx
+      # actually-mcp-server` never inherits them (see mcp-server's own
+      # package.json _comments for the full investigation). That gap is
+      # accepted, not fixed - but nothing before this step ever installed
+      # the PUBLISHED package shape at all, so a packaging regression (a
+      # dependency that only resolves inside the workspace, a bin path that
+      # breaks, a missing `files` entry) could ship unnoticed. This does not
+      # re-verify runtime/MCP-handshake behavior - that's already covered
+      # against the workspace build by docs/audit-2026-09-08/mcp-smoke.mjs -
+      # it only proves a real `npm install` of the tarball a consumer would
+      # actually get still resolves and lands the entry point on disk.
+      - name: mcp-server standalone install (consumer regression check)
+        run: |
+          set -e
+          npm run build --workspace packages/mcp-server
+          rm -rf /tmp/mcp-server-pack /tmp/mcp-server-consumer
+          mkdir -p /tmp/mcp-server-pack /tmp/mcp-server-consumer
+          npm pack --workspace packages/mcp-server --pack-destination /tmp/mcp-server-pack
+          cd /tmp/mcp-server-consumer
+          npm init -y >/dev/null
+          npm install /tmp/mcp-server-pack/actually-mcp-server-*.tgz
+          test -f node_modules/actually-mcp-server/dist/index.js
+          test -f node_modules/.bin/actually-mcp-server
+
       # House style, enforced rather than remembered: plain hyphens only, never
       # a long dash, in UI strings, code, comments or docs. See
       # extension/scripts/check-dashes.mjs for the one allowed exception.

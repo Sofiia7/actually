@@ -25,6 +25,15 @@ new_sqlite_classes = ["RateLimiterDO"]
 binding = "TELEMETRY"
 dataset = "actually_telemetry"
 
+# Workers Logs - without this pinned here, observability is whatever the
+# dashboard happens to have toggled, not something a fresh `wrangler deploy`
+# (e.g. onto a new account, or after a dashboard reset) reproduces
+# (2026-09-08 audit F22). head_sampling_rate = 1 keeps every request's logs,
+# appropriate at this Worker's traffic volume.
+[observability]
+enabled = true
+head_sampling_rate = 1
+
 [[kv_namespaces]]
 binding = "MARKET_CACHE"
 # Create with: npx wrangler kv namespace create MARKET_CACHE

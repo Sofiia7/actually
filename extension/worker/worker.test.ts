@@ -182,6 +182,49 @@ describe('health + auth', () => {
   })
 })
 
+describe('/ready - readiness distinct from liveness (2026-09-08 audit F22)', () => {
+  it('needs no auth, same as /health', async () => {
+    const res = await call('/ready', baseEnv(), { auth: null, origin: null })
+    expect(res.status).not.toBe(401)
+  })
+
+  it('reports ready when the market cache is populated and fresh', async () => {
+    const env = baseEnv()
+    await (env as { MARKET_CACHE: KVNamespace }).MARKET_CACHE.put(
+      'blob',
+      JSON.stringify({ model: 'Xenova/all-MiniLM-L12-v2', builtAt: Date.now(), markets: [] }),
+    )
+    const res = await call('/ready', env, { auth: null, origin: null })
+    expect(res.status).toBe(200)
+    expect((await res.json() as { ok: boolean }).ok).toBe(true)
+  })
+
+  it('reports NOT ready when the cache blob is old enough to mean the precompute cron has likely stopped', async () => {
+    const env = baseEnv()
+    await (env as { MARKET_CACHE: KVNamespace }).MARKET_CACHE.put(
+      'blob',
+      JSON.stringify({ model: 'Xenova/all-MiniLM-L12-v2', builtAt: Date.now() - 30 * 86400000, markets: [] }),
+    )
+    const res = await call('/ready', env, { auth: null, origin: null })
+    expect(res.status).toBe(503)
+    const body = await res.json() as { ok: boolean; problems: string[] }
+    expect(body.ok).toBe(false)
+    expect(body.problems).toEqual(expect.arrayContaining([expect.stringContaining('stale')]))
+  })
+
+  it('reports NOT ready when the cache has never been populated', async () => {
+    const res = await call('/ready', baseEnv(), { auth: null, origin: null })
+    expect(res.status).toBe(503)
+    const body = await res.json() as { problems: string[] }
+    expect(body.problems).toEqual(expect.arrayContaining([expect.stringContaining('not_populated')]))
+  })
+
+  it('reports NOT ready (not a crash) when MARKET_CACHE is not bound', async () => {
+    const res = await call('/ready', baseEnv({ MARKET_CACHE: undefined }), { auth: null, origin: null })
+    expect(res.status).toBe(503)
+  })
+})
+
 describe('CORS fail-closed', () => {
   it('OPTIONS echoes the allowed origin', async () => {
     const res = await call('/geo', baseEnv(), { method: 'OPTIONS' })

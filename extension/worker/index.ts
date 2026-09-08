@@ -9,6 +9,7 @@
 import PRIVACY_POLICY_MD from '../docs/privacy-policy.md'
 import { renderPrivacyPage } from './privacyPage'
 import type { MarketCacheBlob } from '@actually/core'
+import { MAX_CACHE_AGE_MS } from '@actually/core'
 
 interface Env {
   WORKER_SHARED_SECRET?: string
@@ -571,9 +572,45 @@ export default {
       })
     }
 
-    // Health probe - no auth, no body
+    // Health probe - no auth, no body. LIVENESS only: "is the process
+    // answering requests at all" - must never depend on a downstream
+    // dependency (KV, the rate-limiter DO), or an unrelated outage takes
+    // this down too and a deploy system reads it as "restart the Worker",
+    // which fixes nothing (2026-09-08 audit F22).
     if (url.pathname === '/health') {
       return json({ ok: true, ts: Date.now() }, 200, headers)
+    }
+
+    // READINESS - unlike /health, this DOES check downstream state: whether
+    // the precomputed market-cache blob exists and looks alive. A stopped
+    // precompute cron doesn't crash the Worker (every request still answers
+    // 200), so liveness alone would never surface it - this is what a
+    // deploy/monitoring system should actually gate on and alert from
+    // (2026-09-08 audit F22). No auth, matching /health - an operational
+    // probe, not user data.
+    if (url.pathname === '/ready') {
+      const problems: string[] = []
+      if (!env.MARKET_CACHE) {
+        problems.push('market_cache_not_configured')
+      } else {
+        const raw = await env.MARKET_CACHE.get('blob')
+        if (!raw) {
+          problems.push('market_cache_not_populated')
+        } else {
+          try {
+            const blob = JSON.parse(raw) as Partial<MarketCacheBlob>
+            const ageMs = typeof blob.builtAt === 'number' ? Date.now() - blob.builtAt : NaN
+            if (!(ageMs >= 0)) {
+              problems.push('market_cache_corrupt')
+            } else if (ageMs > MAX_CACHE_AGE_MS) {
+              problems.push(`market_cache_stale:${Math.round(ageMs / 3600000)}h`)
+            }
+          } catch {
+            problems.push('market_cache_corrupt')
+          }
+        }
+      }
+      return json({ ok: problems.length === 0, problems }, problems.length === 0 ? 200 : 503, headers)
     }
 
     const auth = checkAuth(req, env)
