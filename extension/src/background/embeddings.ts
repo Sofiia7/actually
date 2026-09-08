@@ -65,7 +65,15 @@ async function getLocalPipeline() {
         'Xenova/all-MiniLM-L12-v2',
       )
       return extractor as unknown as (t: string, opts: object) => Promise<{ data: Float32Array }>
-    })()
+    })().catch((err: unknown) => {
+      // Only a FAILED load clears the cache, so the next call gets a fresh
+      // attempt instead of replaying the same cached rejection until the
+      // extension restarts (2026-09-08 audit F21). A successful load stays
+      // cached forever - the model doesn't change. Mirrors
+      // packages/mcp-server/src/embedder.ts's LocalEmbedder.getPipeline().
+      localPipelinePromise = null
+      throw err
+    })
   }
   return localPipelinePromise
 }
