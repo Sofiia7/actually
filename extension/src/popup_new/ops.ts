@@ -142,11 +142,15 @@ export async function sellOrderViaOffscreen(
 
 export async function redeemPositionViaOffscreen(
   conditionId: string,
+  /** Display fields for the trade log - see OffscreenPlaceOrderArgs's doc
+   * comment on why offscreen, not this popup, writes the log entry. */
+  log: { question: string; marketSlug?: string; outcome?: string; shares?: number },
 ): Promise<{ ok: boolean; transactionId?: string; error?: string }> {
   const r = await call<Extract<OffscreenResponse, { type: 'OS_REDEEM_RESULT' }> | Extract<OffscreenResponse, { type: 'OS_ERROR' }>>({
     target: 'offscreen',
     type: 'OS_REDEEM_POSITION',
     conditionId,
+    ...log,
   })
   if (r.type === 'OS_ERROR') return { ok: false, error: r.error }
   return { ok: r.ok, transactionId: r.transactionId, error: r.error }

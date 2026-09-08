@@ -854,6 +854,9 @@ const OrderFormWired: React.FC<OrderFormProps> = ({
         minOrderSize: match.market.minOrderSize,
         orderType,
         makerTaker,
+        question: match.market.question,
+        marketSlug: match.market.eventSlug || match.market.slug,
+        outcome: side === 'BUY_YES' ? 'Yes' : 'No',
       })
       setResult({
         ok: r.ok,
@@ -864,19 +867,9 @@ const OrderFormWired: React.FC<OrderFormProps> = ({
           : `${humanError(r.error ?? 'unknown_error')}`,
         orderId: r.orderId,
       })
-      void logTrade({
-        kind: 'BUY',
-        status: r.ok ? 'placed' : 'failed',
-        question: match.market.question,
-        marketSlug: match.market.eventSlug || match.market.slug,
-        outcome: side === 'BUY_YES' ? 'Yes' : 'No',
-        orderType,
-        usd: sizeUsd,
-        shares: effShares,
-        price,
-        ref: r.orderId,
-        error: r.ok ? undefined : humanError(r.error ?? 'unknown_error'),
-      })
+      // Not logged here - offscreen.ts owns the trade-log write now, since it
+      // (not this popup) is guaranteed to still be around when the wallet
+      // answers (2026-09-08 audit F13).
       if (r.ok) onPortfolioChanged?.()
     } catch (err) {
       setResult({ ok: false, msg: `Error: ${describeError(err)}` })

@@ -76,7 +76,17 @@ export type OffscreenRequest =
   | { target: 'offscreen'; type: 'OS_POLL_CONNECT'; sessionId?: string }
   | { target: 'offscreen'; type: 'OS_PLACE_ORDER'; args: OffscreenPlaceOrderArgs }
   | { target: 'offscreen'; type: 'OS_SELL_ORDER'; args: OffscreenSellOrderArgs }
-  | { target: 'offscreen'; type: 'OS_REDEEM_POSITION'; conditionId: string }
+  | {
+      target: 'offscreen'
+      type: 'OS_REDEEM_POSITION'
+      conditionId: string
+      /** Display fields for the trade log - see OffscreenPlaceOrderArgs's
+       * doc comment on why offscreen (not the popup) owns the write. */
+      question: string
+      marketSlug?: string
+      outcome?: string
+      shares?: number
+    }
   | { target: 'offscreen'; type: 'OS_CANCEL_ORDER'; orderId: string }
   | { target: 'offscreen'; type: 'OS_GET_OPEN_ORDERS'; marketId?: string }
   | { target: 'offscreen'; type: 'OS_GET_POSITIONS' }
@@ -99,6 +109,16 @@ export interface OffscreenPlaceOrderArgs {
   orderType: 'LIMIT' | 'MARKET'
   /** UI-derived maker/taker classification - telemetry only. */
   makerTaker?: 'maker' | 'taker'
+  /**
+   * Display fields for the trade log. offscreen.ts - not the caller - writes
+   * the log entry, because the popup that sent this message can close at any
+   * point while the wallet signature is pending and lose the chance to do it
+   * itself (2026-09-08 audit F13). This document has no Gamma/positions
+   * record of its own to look these up from, so the caller supplies them.
+   */
+  question: string
+  marketSlug?: string
+  outcome: string
 }
 
 export interface OffscreenSellOrderArgs {
@@ -119,6 +139,11 @@ export interface OffscreenSellOrderArgs {
   tickSize?: string
   minOrderSize?: number
   orderType: 'LIMIT' | 'MARKET'
+  /** See OffscreenPlaceOrderArgs's doc comment - same reason offscreen.ts
+   * owns the trade-log write for sells too. */
+  question: string
+  marketSlug?: string
+  outcome: string
 }
 
 export type OffscreenResponse =

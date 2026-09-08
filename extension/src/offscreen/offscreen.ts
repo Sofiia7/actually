@@ -20,6 +20,8 @@ import { CACHE_TTL_MINUTES } from '../shared/constants'
 import type { Settings } from '../shared/types'
 import { fetchLivePrice } from '@actually/core'
 import { addToHistory } from '../background/history'
+import { logTrade } from '../background/tradeLog'
+import { orderShares } from '@actually/core'
 import { trackEvent } from '../background/telemetry'
 import { _resetGeoCache, getGeoStatus } from '../background/geo'
 import {
@@ -164,7 +166,7 @@ if (IS_OFFSCREEN_DOC) {
   })
 }
 
-async function handle(msg: OffscreenRequest): Promise<OffscreenResponse> {
+export async function handle(msg: OffscreenRequest): Promise<OffscreenResponse> {
   switch (msg.type) {
     case 'OS_PING':
       return { type: 'OS_PONG' }
@@ -388,6 +390,25 @@ async function handle(msg: OffscreenRequest): Promise<OffscreenResponse> {
         orderType: msg.args.orderType,
         makerTaker: msg.args.makerTaker,
       })
+      // Logged HERE, not by the popup that called us: the popup can close at
+      // any point while we're awaiting the wallet signature (Chrome drops an
+      // extension popup on any focus loss), which tears down its JS context
+      // and loses whatever it was about to do with our response. This
+      // document keeps running either way, so it - not the popup - has to be
+      // the one that durably records what happened (2026-09-08 audit F13).
+      void logTrade({
+        kind: 'BUY',
+        status: r.ok ? 'placed' : 'failed',
+        question: msg.args.question,
+        marketSlug: msg.args.marketSlug,
+        outcome: msg.args.outcome,
+        orderType: msg.args.orderType,
+        usd: msg.args.sizeUsd,
+        shares: orderShares(msg.args.sizeUsd, msg.args.price),
+        price: msg.args.price,
+        ref: r.orderId,
+        error: r.ok ? undefined : r.error,
+      })
       return { type: 'OS_ORDER_RESULT', ...r }
     }
 
@@ -403,6 +424,20 @@ async function handle(msg: OffscreenRequest): Promise<OffscreenResponse> {
         tickSize: msg.args.tickSize,
         minOrderSize: msg.args.minOrderSize,
         orderType: msg.args.orderType,
+      })
+      // See OS_PLACE_ORDER above - same reason this can't be left to the popup.
+      void logTrade({
+        kind: 'SELL',
+        status: r.ok ? 'placed' : 'failed',
+        question: msg.args.question,
+        marketSlug: msg.args.marketSlug,
+        outcome: msg.args.outcome,
+        orderType: msg.args.orderType,
+        shares: msg.args.sizeShares,
+        price: msg.args.price,
+        usd: msg.args.sizeShares * msg.args.price,
+        ref: r.orderId,
+        error: r.ok ? undefined : r.error,
       })
       return { type: 'OS_ORDER_RESULT', ...r }
     }
@@ -429,6 +464,17 @@ async function handle(msg: OffscreenRequest): Promise<OffscreenResponse> {
         address: w.address,
         conditionId: msg.conditionId,
         positions,
+      })
+      // See OS_PLACE_ORDER's doc comment - same reason this can't be left to the popup.
+      void logTrade({
+        kind: 'REDEEM',
+        status: r.ok ? 'placed' : /redeem_status_unknown/.test(r.error ?? '') ? 'unknown' : 'failed',
+        question: msg.question,
+        marketSlug: msg.marketSlug,
+        outcome: msg.outcome,
+        shares: msg.shares,
+        ref: r.transactionId,
+        error: r.ok ? undefined : r.error,
       })
       return { type: 'OS_REDEEM_RESULT', ...r }
     }

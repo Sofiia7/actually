@@ -141,20 +141,13 @@ export const SellTicket: React.FC<SellTicketProps> = ({ position, onDone, onCanc
         // rejected as invalid_tick where the SDK's own resolution would not.
         tickSize: book.tickSize,
         orderType,
-      })
-      void logTrade({
-        kind: 'SELL',
-        status: r.ok ? 'placed' : 'failed',
         question: position.title,
         marketSlug: position.slug,
         outcome: position.outcome,
-        orderType,
-        shares,
-        price: activePrice,
-        usd: proceeds,
-        ref: r.orderId,
-        error: r.ok ? undefined : humanSellError(r.error ?? 'unknown_error', minShares),
       })
+      // Not logged here - offscreen.ts owns the trade-log write now, since it
+      // (not this popup) is guaranteed to still be around when the wallet
+      // answers (2026-09-08 audit F13).
       if (r.ok) {
         // A LIMIT sell has NOT sold anything yet - it rests until someone
         // takes it. Saying "Sold" for both is the same lie commit 8a0e4e5

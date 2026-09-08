@@ -153,18 +153,16 @@ export const PositionsPanel: React.FC<PositionsPanelProps> = ({
     setRedeemingId(conditionId)
     setSellNotice(null)
     try {
-      const r = await redeemPositionViaOffscreen(conditionId)
       const held = positions.find((p) => p.conditionId === conditionId)
-      void logTrade({
-        kind: 'REDEEM',
-        status: r.ok ? 'placed' : /redeem_status_unknown/.test(r.error ?? '') ? 'unknown' : 'failed',
+      const r = await redeemPositionViaOffscreen(conditionId, {
         question: held?.title ?? 'Resolved market',
         marketSlug: held?.slug,
         outcome: held?.outcome,
         shares: held?.size,
-        ref: r.transactionId,
-        error: r.ok ? undefined : humanRedeemError(r.error ?? 'unknown_error'),
       })
+      // Not logged here - offscreen.ts owns the trade-log write now, since it
+      // (not this popup) is guaranteed to still be around when the relayer
+      // answers (2026-09-08 audit F13).
       setSellNotice(
         r.ok
           ? { text: `Redeemed${r.transactionId ? ` · ${r.transactionId.slice(0, 10)}…` : ''} - the payout lands in your Polymarket balance. Saved to History.`, isError: false }
