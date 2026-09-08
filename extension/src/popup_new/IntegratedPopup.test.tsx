@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
-import { buildMatchFromAlternative } from './IntegratedPopup'
+import { buildMatchFromAlternative, formatTestResult } from './IntegratedPopup'
 import type { MatchResult, PolyMarket } from '@actually/core'
+import type { TestKeysResult } from '../shared/types'
 
 function fakeMarket(over: Partial<PolyMarket>): PolyMarket {
   return {
@@ -63,5 +64,39 @@ describe('buildMatchFromAlternative - promoting an alternative to featured (2026
     expect(next?.alternatives[0]?.id).toBe('featured')
     expect(next?.alternativeRawScores?.[0]).toBeCloseTo(0.9, 6)
     expect(next?.alternativeScores?.[0]).toBeCloseTo(0.9, 6)
+  })
+})
+
+describe('formatTestResult - auth and cache surface as their own status, not folded into worker (2026-09-08 audit F23)', () => {
+  it('shows only Worker when auth/cache were never checked (e.g. worker unreachable)', () => {
+    const r: TestKeysResult = { worker: { ok: false, error: 'no_url' } }
+    expect(formatTestResult(r)).toBe('Worker ✗ no_url')
+  })
+
+  it('shows Worker, Auth and Cache all passing', () => {
+    const r: TestKeysResult = {
+      worker: { ok: true },
+      auth: { ok: true },
+      cache: { ok: true },
+    }
+    expect(formatTestResult(r)).toBe('Worker ✓ · Auth ✓ · Cache ✓')
+  })
+
+  it('surfaces an auth failure distinctly from worker reachability', () => {
+    const r: TestKeysResult = {
+      worker: { ok: true },
+      auth: { ok: false, error: 'http_401' },
+      cache: { ok: true },
+    }
+    expect(formatTestResult(r)).toBe('Worker ✓ · Auth ✗ http_401 · Cache ✓')
+  })
+
+  it('surfaces a stale-cache failure distinctly from auth', () => {
+    const r: TestKeysResult = {
+      worker: { ok: true },
+      auth: { ok: true },
+      cache: { ok: false, error: 'market_cache_stale:30h' },
+    }
+    expect(formatTestResult(r)).toBe('Worker ✓ · Auth ✓ · Cache ✗ market_cache_stale:30h')
   })
 })

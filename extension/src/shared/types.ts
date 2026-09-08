@@ -153,5 +153,10 @@ export interface Position {
 
 export interface TestKeysResult {
   worker: { ok: boolean; error?: string }
+  /** Whether workerSecret itself is valid - checked separately from `worker`
+   * reachability, since `/health` is unauthenticated (2026-09-08 audit F23). */
+  auth?: { ok: boolean; error?: string }
+  /** Whether the precomputed market cache is populated and fresh. */
+  cache?: { ok: boolean; error?: string }
   openai?: { ok: boolean; error?: string }
 }

@@ -857,8 +857,10 @@ const WalletSlot: React.FC<WalletSlotProps> = ({ wallet, wiping, onWipe }) => {
   )
 }
 
-function formatTestResult(r: TestKeysResult): string {
+export function formatTestResult(r: TestKeysResult): string {
   const w = r.worker.ok ? 'Worker ✓' : `Worker ✗ ${r.worker.error ?? ''}`
+  const a = r.auth ? (r.auth.ok ? ' · Auth ✓' : ` · Auth ✗ ${r.auth.error ?? ''}`) : ''
+  const c = r.cache ? (r.cache.ok ? ' · Cache ✓' : ` · Cache ✗ ${r.cache.error ?? ''}`) : ''
   const o = r.openai ? (r.openai.ok ? ' · OpenAI ✓' : ` · OpenAI ✗ ${r.openai.error ?? ''}`) : ''
-  return `${w}${o}`
+  return `${w}${a}${c}${o}`
 }

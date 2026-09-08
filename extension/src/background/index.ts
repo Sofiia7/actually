@@ -22,12 +22,12 @@ import { describeError } from '../shared/describeError'
 import { ALARM_NAMES, CACHE_TTL_MINUTES, TELEMETRY_FLUSH_INTERVAL_MIN } from '../shared/constants'
 import { defaultThresholds } from '@actually/core'
 import type { RequestMessage, ResponseMessage } from '../shared/messages'
-import type { TestKeysResult } from '../shared/types'
 import { getCacheStatus, clearMarketCache, bumpCacheEpoch } from './cache'
 import { getSettings, saveSettings } from './settings'
 import { clearHistory, getHistory } from './history'
 import { flushTelemetry, getInstallId, trackEvent } from './telemetry'
 import { routeToOffscreen } from './offscreen-host'
+import { testConnection } from './connectionTest'
 
 // --- Lifecycle ---------------------------------------------------------------
 
@@ -160,38 +160,4 @@ async function handle(msg: RequestMessage): Promise<ResponseMessage> {
     default:
       return { type: 'ERROR', error: 'unknown_message' }
   }
-}
-
-async function testConnection(): Promise<TestKeysResult> {
-  const settings = await getSettings()
-  const out: TestKeysResult = { worker: { ok: false } }
-
-  if (!settings.workerUrl) {
-    out.worker = { ok: false, error: 'no_url' }
-    return out
-  }
-
-  try {
-    const res = await fetch(`${settings.workerUrl}/health`)
-    out.worker = res.ok ? { ok: true } : { ok: false, error: `http_${res.status}` }
-  } catch (err) {
-    out.worker = { ok: false, error: describeError(err) }
-  }
-
-  if (settings.embeddingProvider === 'openai' && out.worker.ok) {
-    try {
-      const res = await fetch(`${settings.workerUrl}/embeddings`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'X-Actually-Auth': settings.workerSecret,
-        },
-        body: JSON.stringify({ texts: ['ping'] }),
-      })
-      out.openai = res.ok ? { ok: true } : { ok: false, error: `http_${res.status}` }
-    } catch (err) {
-      out.openai = { ok: false, error: describeError(err) }
-    }
-  }
-  return out
 }
