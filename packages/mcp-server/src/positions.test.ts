@@ -51,11 +51,16 @@ describe('fetchPositions', () => {
     expect(String(url)).toBe('https://data-api.polymarket.com/positions?user=0xabc')
   })
 
-  it('defaults outcomeIndex/negativeRisk/redeemable when the API omits them', async () => {
+  it('defaults negativeRisk/redeemable when the API omits them, but marks outcomeIndex as UNKNOWN rather than assuming YES (2026-09-08 audit F09)', async () => {
+    // A missing outcomeIndex must fail buildRedeemTransaction's
+    // invalid_outcome_index check (core/redeem.ts, `!== 0 && !== 1`), not
+    // silently redeem as slot 0 (YES) - a NO position with a missing index
+    // would otherwise put the payout in the wrong neg-risk slot. Matches
+    // the extension's own positions.ts, which already uses -1 for this.
     const raw = [{ asset: 'tok-yes', conditionId: 'cond-1', size: 40 }]
     vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify(raw), { status: 200 })))
     const [position] = await fetchPositions('0xabc')
-    expect(position.outcomeIndex).toBe(0)
+    expect(position.outcomeIndex).toBe(-1)
     expect(position.negativeRisk).toBe(false)
     expect(position.redeemable).toBe(false)
   })

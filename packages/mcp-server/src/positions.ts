@@ -8,7 +8,9 @@ export interface Position {
   cashPnl: number
   percentPnl: number
   outcome: string
-  /** 0 or 1 - which binary outcome slot this position occupies. Needed to redeem neg-risk positions. */
+  /** 0 or 1 - which binary outcome slot this position occupies. Needed to
+   * redeem neg-risk positions. -1 when the source data omitted it - never
+   * assume that means slot 0 (2026-09-08 audit F09). */
   outcomeIndex: number
   /** True for neg-risk (multi-outcome) markets - redeem_position needs this to pick the right contract. */
   negativeRisk: boolean
@@ -54,7 +56,11 @@ export async function fetchPositions(address: string): Promise<Position[]> {
     cashPnl: p.cashPnl ?? 0,
     percentPnl: p.percentPnl ?? 0,
     outcome: p.outcome ?? '',
-    outcomeIndex: p.outcomeIndex ?? 0,
+    // -1, not 0: a missing outcomeIndex must FAIL buildRedeemTransaction's
+    // validation (invalid_outcome_index), not silently redeem outcome slot
+    // 0 (YES) for what might be a NO position (2026-09-08 audit F09).
+    // Matches the extension's own positions.ts.
+    outcomeIndex: p.outcomeIndex ?? -1,
     negativeRisk: p.negativeRisk ?? false,
     redeemable: p.redeemable ?? false,
     title: p.title ?? '',
