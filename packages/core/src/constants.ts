@@ -43,6 +43,18 @@ export const LOCAL_MODEL_REVISION = 'beeb2e4b69e95f188a15cc2e90d09fd035dac229'
 export const MAX_MARKETS_CACHE = 2000
 
 /**
+ * How old a precomputed /market-cache blob's `builtAt` can be before it is
+ * treated as broken rather than merely a little behind. The precompute cron
+ * runs every ~2h, so a healthy blob is almost always under an hour old; this
+ * is a generous multiple of that to absorb a real outage without flapping,
+ * while still catching a cron that has silently stopped running entirely -
+ * previously nothing checked `builtAt` at all, so a client that fetched
+ * successfully stamped a 30-day-old blob with today's "last updated" time
+ * (2026-09-08 audit F04).
+ */
+export const MAX_CACHE_AGE_MS = 12 * 60 * 60_000
+
+/**
  * Ceiling for the ON-DEVICE fallback, used only when the precomputed blob is
  * unavailable and the extension has to embed markets itself.
  *

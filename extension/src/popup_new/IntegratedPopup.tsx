@@ -246,7 +246,7 @@ export const IntegratedPopup: React.FC<IntegratedPopupProps> = ({
   }
 
   // Settings tab state
-  const [cache, setCache] = useState<{ count: number; lastUpdated: number }>({ count: 0, lastUpdated: 0 })
+  const [cache, setCache] = useState<{ count: number; lastUpdated: number; builtAt: number }>({ count: 0, lastUpdated: 0, builtAt: 0 })
   const [testStatus, setTestStatus] = useState<string>('')
   const [autoRefreshing, setAutoRefreshing] = useState(false)
 
@@ -289,7 +289,7 @@ export const IntegratedPopup: React.FC<IntegratedPopupProps> = ({
       >
       setSettings(res.settings)
       const status = await getCacheStatus()
-      setCache({ count: status.count, lastUpdated: status.lastUpdated })
+      setCache({ count: status.count, lastUpdated: status.lastUpdated, builtAt: status.builtAt })
       // Load the check log up front, not just when the History tab is opened.
       // The Trade tab has to be able to tell "you have never checked anything"
       // apart from "you checked things, just not since this popup opened" -
@@ -345,7 +345,7 @@ export const IntegratedPopup: React.FC<IntegratedPopupProps> = ({
 
   async function refreshCache() {
     const c = await getCacheStatus()
-    setCache({ count: c.count, lastUpdated: c.lastUpdated })
+    setCache({ count: c.count, lastUpdated: c.lastUpdated, builtAt: c.builtAt })
   }
 
   // ---- check actions ----
@@ -555,7 +555,10 @@ export const IntegratedPopup: React.FC<IntegratedPopupProps> = ({
     shareStats: settings.telemetryEnabled,
     searchFallback: settings.searchFallbackEnabled,
     cacheSize: cache.count,
-    cacheAge: autoRefreshing ? 'loading markets…' : cache.lastUpdated ? formatRelative(cache.lastUpdated) : '-',
+    // The DATA's own age, not just when this client last successfully
+    // polled - a stopped precompute cron must not read as freshly updated
+    // (2026-09-08 audit F04).
+    cacheAge: autoRefreshing ? 'loading markets…' : cache.builtAt ? formatRelative(cache.builtAt) : '-',
     version: chrome.runtime?.getManifest?.().version ?? '1.0.0',
     contract: BUILDER_CODE || '(not configured)',
     workerUrl: settings.workerUrl,

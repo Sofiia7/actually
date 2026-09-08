@@ -101,6 +101,25 @@ describe('refreshMarketCache - local provider (precomputed Worker cache)', () =>
     expect(calledUrls.some((u) => u.includes('/markets'))).toBe(true)
   })
 
+  it('rejects a blob whose builtAt is far too old and falls back to on-device embedding, instead of displaying it as fresh (2026-09-08 audit F04)', async () => {
+    const stale = blob([market('m1')])
+    stale.builtAt = Date.now() - 30 * 86400000 // 30 days old - the cron looks dead, not just late
+    const fetchSpy = vi.fn(async (url: string) => {
+      if (url.endsWith('/market-cache')) {
+        return new Response(JSON.stringify(stale), { status: 200 })
+      }
+      return new Response(JSON.stringify([]), { status: 200 })
+    })
+    vi.stubGlobal('fetch', fetchSpy)
+
+    const result = await refreshMarketCache('local', 'https://w.example', 'secret')
+
+    // Fell through to the embedding-based path, same as a model mismatch.
+    expect(result).toEqual({ added: 0, reused: 0, removed: 0 })
+    const calledUrls = fetchSpy.mock.calls.map((c) => String(c[0]))
+    expect(calledUrls.some((u) => u.includes('/markets'))).toBe(true)
+  })
+
   // The blob is ~7 MB. One dropped connection used to cost the user minutes:
   // the fallback embeds hundreds of markets through WASM on their device, and
   // it needs the network too, so a blip that would have healed on a second
@@ -177,5 +196,18 @@ describe('getCacheStatus / getMarketCache', () => {
   it('reports an empty cache before any refresh', async () => {
     const status = await getCacheStatus()
     expect(status.count).toBe(0)
+  })
+
+  it('reports the BLOB\'s builtAt as the data age, separate from when this client fetched it (2026-09-08 audit F04)', async () => {
+    const old = Date.now() - 6 * 3600000 // 6h old blob, well under the reject threshold - just genuinely a bit behind
+    const fetchSpy = vi.fn(async () => new Response(JSON.stringify({ ...blob([market('m1')]), builtAt: old }), { status: 200 }))
+    vi.stubGlobal('fetch', fetchSpy)
+    await refreshMarketCache('local', 'https://w.example', 'secret')
+    vi.unstubAllGlobals()
+
+    const status = await getCacheStatus()
+    expect(status.builtAt).toBe(old)
+    // fetchedAt (lastUpdated) is "just now" - a fresh, successful poll of stale data must not collapse the two.
+    expect(status.lastUpdated).toBeGreaterThan(old)
   })
 })

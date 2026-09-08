@@ -9,6 +9,7 @@ import {
   fetchOrderbookJson,
   findOutcomeIndex,
   LOCAL_MODEL_ID,
+  MAX_CACHE_AGE_MS,
   resolveOrderToken,
   safeJsonArray,
   searchMarkets,
@@ -71,7 +72,9 @@ server.registerTool(
       'calling agent, which has both the original text and this market anchor. ' +
       'The probability comes from a precomputed cache refreshed on a cron cadence ' +
       '(can be up to ~2 hours stale) - for a live price before trading, call ' +
-      'get_market with the returned marketId.',
+      'get_market with the returned marketId. If that cache looks abandoned rather ' +
+      "than just late, the response adds cacheStale: true and cacheAgeHours - treat " +
+      'the match as unreliable and prefer get_market/a direct search when present.',
     inputSchema: { text: z.string().min(1).max(8000) },
   },
   async ({ text }) => {
@@ -86,8 +89,20 @@ server.registerTool(
           return searchMarkets(workerUrl, workerSecret, terms)
         }
       : undefined
-    const result = await checkNews({ store: getStore(), embedder, thresholds, searchFallback }, { text })
-    return { content: [{ type: 'text' as const, text: JSON.stringify(result) }] }
+    const store = getStore()
+    const result = await checkNews({ store, embedder, thresholds, searchFallback }, { text })
+    // Nothing rejects a stale market-cache blob here the way the extension's
+    // refreshFromPrecomputedCache does (there is no on-device fallback for
+    // this server to fall through to) - so instead of silently trusting
+    // however old the data is, tell the calling agent when the precompute
+    // cron looks like it has stopped (2026-09-08 audit F04).
+    const builtAt = store.getBuiltAt()
+    const cacheAgeMs = builtAt != null ? Date.now() - builtAt : null
+    const output =
+      cacheAgeMs != null && cacheAgeMs > MAX_CACHE_AGE_MS
+        ? { ...result, cacheStale: true, cacheAgeHours: Math.round(cacheAgeMs / 3600000) }
+        : result
+    return { content: [{ type: 'text' as const, text: JSON.stringify(output) }] }
   },
 )
 

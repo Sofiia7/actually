@@ -10,12 +10,24 @@ const CACHE_TTL_MS = 5 * 60_000
 export class WorkerMarketStore implements MarketStore {
   private cached: { markets: CachedMarket[]; fetchedAt: number } | null = null
   private inFlight: Promise<CachedMarket[]> | null = null
+  private builtAt: number | null = null
 
   constructor(
     private readonly workerUrl: string,
     private readonly workerSecret: string,
     private readonly expectedModel: string,
   ) {}
+
+  /**
+   * The last successfully-fetched blob's own `builtAt` - the DATA's age, not
+   * when this store last polled (see `CACHE_TTL_MS`'s in-memory poll cache
+   * above, a different concern). Null before any successful fetch. Lets a
+   * caller warn when the precompute cron has likely stopped running instead
+   * of silently serving arbitrarily old data (2026-09-08 audit F04).
+   */
+  getBuiltAt(): number | null {
+    return this.builtAt
+  }
 
   async getMarkets(): Promise<CachedMarket[]> {
     if (this.cached && Date.now() - this.cached.fetchedAt < CACHE_TTL_MS) {
@@ -50,6 +62,7 @@ export class WorkerMarketStore implements MarketStore {
       )
     }
     this.cached = { markets: blob.markets, fetchedAt: Date.now() }
+    this.builtAt = blob.builtAt
     return blob.markets
   }
 }

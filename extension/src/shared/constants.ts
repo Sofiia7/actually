@@ -43,6 +43,11 @@ export const STORAGE_KEYS = {
   settings: 'settings',
   marketCache: 'marketCache',
   marketCacheTs: 'marketCacheTs',
+  /** The underlying data's own age (blob.builtAt on the precomputed path, the
+   * embed time on the on-device path) - distinct from marketCacheTs (when
+   * THIS client last successfully fetched/wrote), which a stopped cron can
+   * make look fresh even when the data itself is weeks old. */
+  marketCacheBuiltAt: 'marketCacheBuiltAt',
   marketCacheModel: 'marketCacheModel',
   history: 'history',
   tradeLog: 'tradeLog',

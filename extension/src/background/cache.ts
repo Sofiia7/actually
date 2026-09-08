@@ -7,6 +7,7 @@ import {
   type MarketCacheBlob,
   type PolyMarket,
   LOCAL_MODEL_ID,
+  MAX_CACHE_AGE_MS,
   MAX_MARKETS_CACHE,
   MAX_MARKETS_ON_DEVICE,
   fetchActiveMarkets,
@@ -21,15 +22,18 @@ export async function getMarketCache(): Promise<CachedMarket[]> {
   return (data[STORAGE_KEYS.marketCache] as CachedMarket[] | undefined) ?? []
 }
 
-export async function getCacheStatus(): Promise<{ count: number; lastUpdated: number }> {
+export async function getCacheStatus(): Promise<{ count: number; lastUpdated: number; builtAt: number }> {
   const data = await chrome.storage.local.get([
     STORAGE_KEYS.marketCache,
     STORAGE_KEYS.marketCacheTs,
+    STORAGE_KEYS.marketCacheBuiltAt,
   ])
   const cache = (data[STORAGE_KEYS.marketCache] as CachedMarket[] | undefined) ?? []
   return {
     count: cache.length,
     lastUpdated: (data[STORAGE_KEYS.marketCacheTs] as number | undefined) ?? 0,
+    // The DATA's own age - see marketCacheBuiltAt's doc comment (2026-09-08 audit F04).
+    builtAt: (data[STORAGE_KEYS.marketCacheBuiltAt] as number | undefined) ?? 0,
   }
 }
 
@@ -122,6 +126,17 @@ async function refreshFromPrecomputedCache(
   if (blob.model !== LOCAL_MODEL_ID) {
     throw new Error(`market-cache model mismatch: worker served "${blob.model}", expected "${LOCAL_MODEL_ID}"`)
   }
+  // A blob this old means the precompute cron has likely stopped running
+  // entirely, not just fallen a cycle behind - serving it (and stamping it
+  // with TODAY's fetch time, as this used to) would show completely stale
+  // probabilities as freshly updated with nothing to warn the user
+  // (2026-09-08 audit F04). Throwing here - like the model-mismatch check
+  // above - falls through to refreshMarketCache's on-device embedding
+  // fallback instead of silently trusting dead data.
+  const ageMs = Date.now() - blob.builtAt
+  if (ageMs > MAX_CACHE_AGE_MS) {
+    throw new Error(`market-cache stale: builtAt is ${Math.round(ageMs / 3600000)}h old`)
+  }
 
   const merged = blob.markets.slice(0, MAX_MARKETS_CACHE)
   const existing = await getMarketCache()
@@ -134,6 +149,7 @@ async function refreshFromPrecomputedCache(
   await chrome.storage.local.set({
     [STORAGE_KEYS.marketCache]: merged,
     [STORAGE_KEYS.marketCacheTs]: Date.now(),
+    [STORAGE_KEYS.marketCacheBuiltAt]: blob.builtAt,
     [STORAGE_KEYS.marketCacheModel]: LOCAL_MODEL_ID,
   })
   return { added, reused, removed }
@@ -208,11 +224,14 @@ async function refreshByEmbedding(
         cachedAt: Date.now(),
       })
     }
-    // Persist partial progress
+    // Persist partial progress. builtAt = now: on-device embedding computes
+    // fresh vectors right here, unlike the precomputed path where builtAt
+    // comes from the blob and can be much older than this write.
     const partial = [...reused, ...freshlyEmbedded].slice(0, MAX_MARKETS_ON_DEVICE)
     await chrome.storage.local.set({
       [STORAGE_KEYS.marketCache]: partial,
       [STORAGE_KEYS.marketCacheTs]: Date.now(),
+      [STORAGE_KEYS.marketCacheBuiltAt]: Date.now(),
     })
   }
 
@@ -224,6 +243,7 @@ async function refreshByEmbedding(
     await chrome.storage.local.set({
       [STORAGE_KEYS.marketCache]: merged,
       [STORAGE_KEYS.marketCacheTs]: Date.now(),
+      [STORAGE_KEYS.marketCacheBuiltAt]: Date.now(),
     })
   }
 

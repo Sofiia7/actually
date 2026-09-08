@@ -47,6 +47,14 @@ describe('WorkerMarketStore', () => {
     await expect(store.getMarkets()).rejects.toThrow(/not valid JSON/i)
   })
 
+  it('exposes the fetched blob\'s builtAt, null before any successful fetch (2026-09-08 audit F04)', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify(validBlob), { status: 200 })))
+    const store = new WorkerMarketStore('https://worker.example', 'secret', 'Xenova/all-MiniLM-L12-v2')
+    expect(store.getBuiltAt()).toBeNull()
+    await store.getMarkets()
+    expect(store.getBuiltAt()).toBe(validBlob.builtAt)
+  })
+
   it('dedupes concurrent calls during a cache miss into a single fetch', async () => {
     const spy = vi.fn(async () => new Response(JSON.stringify(validBlob), { status: 200 }))
     vi.stubGlobal('fetch', spy)
