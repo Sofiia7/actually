@@ -2,16 +2,16 @@
 // They use fake credentials, mocked HTTP and isolated scratch files. No trade is sent.
 // When fixing an issue, move its case into the owning suite and invert the assertion.
 //
-// F01, F02, F03, F05 were fixed on 2026-09-08 (see git log) and their cases
-// moved into the owning suites: packages/mcp-server/src/spendGuard.test.ts,
-// packages/mcp-server/src/tools/placeOrder.test.ts,
-// packages/mcp-server/src/tools/sellOrder.test.ts,
-// packages/mcp-server/src/clobClient.test.ts, extension/src/popup_new/SellTicket.test.tsx.
+// F01, F02, F03, F05, F04, F06, F08 were fixed on 2026-09-08 (see git log)
+// and their cases moved into the owning suites: packages/mcp-server/src/
+// spendGuard.test.ts, tools/placeOrder.test.ts, tools/sellOrder.test.ts,
+// clobClient.test.ts, marketStore.test.ts; extension/src/popup_new/
+// SellTicket.test.tsx, TradeTabWired.test.tsx; extension/src/background/
+// cache.test.ts, geo.test.ts; extension/worker/worker.test.ts;
+// packages/core/src/matcher.test.ts.
 import { afterEach, expect, it, vi } from 'vitest'
-import { WorkerMarketStore } from '../../packages/mcp-server/src/marketStore'
 import { fetchPositions } from '../../packages/mcp-server/src/positions'
-import { attemptMatch, floatArrayToB64, LOCAL_MODEL_ID } from '../../packages/core/src/index'
-import { getCacheStatus, refreshMarketCache } from '../../extension/src/background/cache'
+import { attemptMatch, floatArrayToB64 } from '../../packages/core/src/index'
 import { flushTelemetry } from '../../extension/src/background/telemetry'
 import { STORAGE_KEYS, DEFAULT_SETTINGS } from '../../extension/src/shared/constants'
 import worker from '../../extension/worker/index'
@@ -35,29 +35,6 @@ const fakeEnv = {
   },
 }
 
-it('F04: a 30-day-old cache is accepted by both clients and displayed as freshly updated', async () => {
-  const old = Date.now() - 30 * 86400000
-  const blob = { model: LOCAL_MODEL_ID, builtAt: old, markets: [{ ...market('stale'), cachedAt: old }] }
-  vi.stubGlobal('fetch', vi.fn(async () => Response.json(blob)))
-  const store = new WorkerMarketStore('https://audit.invalid', 'fake', LOCAL_MODEL_ID)
-  expect((await store.getMarkets())[0].id).toBe('stale')
-  await refreshMarketCache('local', 'https://audit.invalid', 'fake')
-  expect((await getCacheStatus()).lastUpdated).toBeGreaterThan(old + 29 * 86400000)
-})
-
-it('F06: a boosted below-floor candidate hides an eligible match', async () => {
-  const eligible = market('eligible', 'Another event', 0.40)
-  const weak = market('weak', 'Uranium enrichment sanctions', 0.34)
-  const result = await attemptMatch('Uranium enrichment sanctions', '', {
-    store: { getMarkets: async () => [eligible, weak] },
-    embedder: { embed: async () => new Float32Array([1, 0]) },
-    thresholds: { lowConfidenceFloor: 0.35, confidenceThreshold: 0.5 },
-  })
-  expect(result.scored).toBe(2)
-  expect(result.match).toBeNull()
-  expect(result.nearest?.question).toBe(weak.question)
-})
-
 it('F07: Worker accepts 250 telemetry events but client deletes all 300', async () => {
   const queue = Array.from({ length: 300 }, (_, i) => ({ installId: 'fake', event: 'match_shown', ts: i }))
   await chrome.storage.local.set({ [STORAGE_KEYS.telemetryQueue]: queue })
@@ -68,17 +45,6 @@ it('F07: Worker accepts 250 telemetry events but client deletes all 300', async 
   await flushTelemetry({ ...DEFAULT_SETTINGS, telemetryEnabled: true, workerUrl: 'https://audit.invalid', workerSecret: fakeEnv.WORKER_SHARED_SECRET })
   expect(persisted).toBe(250)
   expect((await chrome.storage.local.get(STORAGE_KEYS.telemetryQueue))[STORAGE_KEYS.telemetryQueue]).toEqual([])
-})
-
-it('F08: current geo list allows new orders in Germany and Crimea', async () => {
-  for (const [country, region] of [['DE', 'BE'], ['UA', '43']]) {
-    const req = new Request('https://audit.invalid/geo', {
-      headers: { 'X-Actually-Auth': fakeEnv.WORKER_SHARED_SECRET, 'CF-IPCountry': country },
-    })
-    Object.defineProperty(req, 'cf', { value: { regionCode: region } })
-    const res = await worker.fetch(req as never, fakeEnv as never)
-    expect((await res.json()).blocked).toBe(false)
-  }
 })
 
 it('F09: missing outcomeIndex in MCP positions silently becomes YES slot 0', async () => {

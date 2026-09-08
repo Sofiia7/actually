@@ -296,6 +296,25 @@ describe('attemptMatch - a failed check has to be able to say why', () => {
     expect(attempt.nearest?.question).toBe('Will the Lakers win?')
   })
 
+  it('does not let a boosted below-floor candidate hide a candidate that clears the floor on raw score alone (2026-09-08 audit F06)', async () => {
+    // "eligible" clears the 0.35 floor on raw cosine alone (0.40) but shares
+    // no keywords with the headline, so it gets no bonus. "weak" scores only
+    // 0.34 raw (below the floor) but its question repeats every headline
+    // keyword, boosting it to 0.34+0.12=0.46 - ahead of eligible's
+    // 0.40+0.004=0.404. Sorting by the BOOSTED score before checking the
+    // floor picked "weak" as top, and its raw score failed the floor check -
+    // hiding "eligible" entirely even though it plainly qualified.
+    const eligible = fakeMarket({ id: 'eligible', question: 'Another event entirely', vec: [0.40, Math.sqrt(1 - 0.4 ** 2)] })
+    const weak = fakeMarket({ id: 'weak', question: 'Uranium enrichment sanctions', vec: [0.34, Math.sqrt(1 - 0.34 ** 2)] })
+    const store = { getMarkets: async () => [eligible, weak] }
+    const embedder = { embed: async () => new Float32Array([1, 0]) }
+    const attempt = await attemptMatch('Uranium enrichment sanctions', '', {
+      store, embedder, thresholds: { confidenceThreshold: 0.8, lowConfidenceFloor: 0.35 },
+    })
+    expect(attempt.scored).toBe(2)
+    expect(attempt.match?.market.id).toBe('eligible')
+  })
+
   it('carries the match through unchanged when one does clear the floor', async () => {
     const close = fakeMarket({ id: 'close', question: 'Will Iran enrich uranium?', vec: [1, 0, 0] })
     const store = { getMarkets: async () => [close] }
@@ -365,6 +384,25 @@ describe('attemptMatch - the long-tail search fallback', () => {
     })
     expect(attempt.match).toBeNull()
     expect(attempt.nearest?.question).toBe('Closer searched market')
+  })
+
+  it('does not let a boosted below-floor search hit hide one that clears the floor on raw score alone (2026-09-08 audit F06)', async () => {
+    // Same bug as the cached-candidates case above, in the search-fallback
+    // path's own separate sort.
+    const store = { getMarkets: async () => [] }
+    const attempt = await attemptMatch('Uranium enrichment sanctions', '', {
+      store,
+      embedder: {
+        embed: async (t: string) => {
+          if (t.includes('Another event entirely')) return new Float32Array([0.40, Math.sqrt(1 - 0.4 ** 2)])
+          if (t.includes('loom')) return new Float32Array([0.34, Math.sqrt(1 - 0.34 ** 2)])
+          return new Float32Array([1, 0])
+        },
+      },
+      thresholds: { confidenceThreshold: 0.8, lowConfidenceFloor: 0.35 },
+      searchFallback: async () => [searchHit('Another event entirely'), searchHit('Uranium enrichment sanctions loom')],
+    })
+    expect(attempt.match?.market.question).toBe('Another event entirely')
   })
 
   it('swallows a search failure - the user already has a true answer', async () => {

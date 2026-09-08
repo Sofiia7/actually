@@ -223,12 +223,24 @@ async function searchAndScore(
     const row = scoreOne(cached, vec)
     if (row) scored.push(row)
   }
-  scored.sort((a, b) => b.score - a.score)
+  if (scored.length === 0) return { match: null, nearest: null, scored: 0 }
 
-  const top = scored[0]
-  if (!top) return { match: null, nearest: null, scored: 0 }
-  const nearest: NearestMiss = { question: top.market.question, slug: top.market.slug, score: top.raw }
-  if (top.raw < thresholds.lowConfidenceFloor) {
+  // Nearest-miss reporting wants the best RAW score across every candidate,
+  // not just whichever clears the floor - that is what "closest but not
+  // quite" means. Found before filtering so a floor-clearer never hides it.
+  const bestByRaw = scored.reduce((a, b) => (b.raw > a.raw ? b : a))
+  const nearest: NearestMiss = { question: bestByRaw.market.question, slug: bestByRaw.market.slug, score: bestByRaw.raw }
+
+  // Filter to the floor on RAW score FIRST, then rank the survivors by the
+  // boosted score - ranking everyone by the boosted score first and only
+  // then floor-checking whichever came out on top let a below-floor
+  // candidate inflated by keyword/number bonuses outrank (and so hide) a
+  // candidate that plainly cleared the floor on cosine alone (2026-09-08
+  // audit F06).
+  const eligible = scored.filter((s) => s.raw >= thresholds.lowConfidenceFloor)
+  eligible.sort((a, b) => b.score - a.score)
+  const top = eligible[0]
+  if (!top) {
     return { match: null, nearest, scored: scored.length }
   }
 
@@ -240,8 +252,8 @@ async function searchAndScore(
       confidence: top.raw,
       color: getColor(probability),
       lowConfidence: top.raw < thresholds.confidenceThreshold,
-      alternatives: scored.slice(1, 5).map((r) => r.market),
-      alternativeScores: scored.slice(1, 5).map((r) => r.score),
+      alternatives: eligible.slice(1, 5).map((r) => r.market),
+      alternativeScores: eligible.slice(1, 5).map((r) => r.score),
     },
     nearest,
     scored: scored.length,
@@ -312,24 +324,33 @@ export async function attemptMatch(
     const s = scoreOne(m, b64ToFloatArray(m.embeddingB64))
     if (s) scored.push(s)
   }
-  scored.sort((a, b) => b.score - a.score)
+  // Sorted by RAW here (not the boosted score) so scored[0] is cleanly "best
+  // by raw semantic score" for nearest-miss reporting below.
+  scored.sort((a, b) => b.raw - a.raw)
+  const bestByRaw = scored[0]
 
   const missOf = (
     row: { market: CachedMarket; raw: number } | undefined,
   ): NearestMiss | null =>
     row ? { question: row.market.question, slug: row.market.slug, score: row.raw } : null
 
-  const top = scored[0]
-  // Compare thresholds against the raw semantic score (not the boosted one),
-  // so the volume bonus only acts as a tiebreaker, not a confidence inflator.
-  if (!top || top.raw < deps.thresholds.lowConfidenceFloor) {
+  // Filter to the floor on RAW score FIRST, then rank the survivors by the
+  // boosted score - ranking everyone by the boosted score first and only
+  // then floor-checking whichever came out on top let a below-floor
+  // candidate inflated by keyword/number bonuses outrank (and so hide) a
+  // candidate that plainly cleared the floor on cosine alone (2026-09-08
+  // audit F06).
+  const eligible = scored.filter((s) => s.raw >= deps.thresholds.lowConfidenceFloor)
+  eligible.sort((a, b) => b.score - a.score)
+  const top = eligible[0]
+  if (!top) {
     // Nothing on the shelf fits. Ask Polymarket directly, if allowed to.
     const viaSearch = deps.searchFallback
       ? await searchAndScore(headline, deps, scoreOne, deps.thresholds)
       : null
     if (viaSearch?.match) return { ...viaSearch, scored: scored.length + viaSearch.scored }
     // Report whichever attempt got closer, so the UI names the better miss.
-    const cachedMiss = missOf(top)
+    const cachedMiss = missOf(bestByRaw)
     const searchMiss = viaSearch?.nearest ?? null
     const nearestOverall =
       cachedMiss && searchMiss ? (searchMiss.score > cachedMiss.score ? searchMiss : cachedMiss) : cachedMiss ?? searchMiss
@@ -344,8 +365,8 @@ export async function attemptMatch(
   const isAboveThreshold = top.raw >= deps.thresholds.confidenceThreshold
 
   const probability = priceFromOutcomes(top.market.outcomePrices, top.market.outcomes)
-  const alternatives = scored.slice(1, 5).map((s) => s.market)
-  const alternativeScores = scored.slice(1, 5).map((s) => s.score)
+  const alternatives = eligible.slice(1, 5).map((s) => s.market)
+  const alternativeScores = eligible.slice(1, 5).map((s) => s.score)
 
   return {
     match: {
