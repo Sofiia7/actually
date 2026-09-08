@@ -164,3 +164,57 @@ describe('placeOrder - minimum order size', () => {
     expect(result).toEqual({ ok: false, error: 'order_below_min_size:20' })
   })
 })
+
+describe('placeOrder - tick validation', () => {
+  const base = {
+    marketId: 'm1',
+    tokenId: 'tok-yes',
+    side: 'BUY_YES' as const,
+    orderType: 'LIMIT' as const,
+    negRisk: false,
+  }
+
+  it('rejects a price that is not aligned to the market tick, before signing or reserving budget (2026-09-08 audit F02)', async () => {
+    let signed = false
+    let reserved = false
+    const result = await placeOrder(
+      {
+        privateKey: '0xabc',
+        signAndSubmit: async () => {
+          signed = true
+          return { success: true, orderId: 'x' }
+        },
+        spendGuard: {
+          reserve: () => {
+            reserved = true
+            return { ok: true as const }
+          },
+          release: () => {},
+        },
+      },
+      // 1.5c is not a multiple of the 1c tick - the CLOB SDK would round it
+      // to 2c internally while shares were computed off the un-rounded
+      // 1.5c, signing a maker amount well above what sizeUsd reserved.
+      { ...base, sizeUsd: 100, price: 0.015, tickSize: '0.01' },
+    )
+    expect(result).toEqual({ ok: false, error: 'invalid_tick_price:0.01' })
+    expect(signed).toBe(false)
+    expect(reserved).toBe(false)
+  })
+
+  it('allows a price that is exactly on the tick', async () => {
+    const result = await placeOrder(
+      { privateKey: '0xabc', signAndSubmit: async () => ({ success: true, orderId: 'ok' }) },
+      { ...base, sizeUsd: 100, price: 0.02, tickSize: '0.01' },
+    )
+    expect(result).toEqual({ ok: true, orderId: 'ok' })
+  })
+
+  it('validates against the negRisk-based default tick (0.001) when no tickSize is given', async () => {
+    const result = await placeOrder(
+      { privateKey: '0xabc', signAndSubmit: async () => ({ success: true, orderId: 'x' }) },
+      { ...base, sizeUsd: 100, price: 0.015, negRisk: true }, // valid on a 0.001 grid
+    )
+    expect(result.ok).toBe(true)
+  })
+})

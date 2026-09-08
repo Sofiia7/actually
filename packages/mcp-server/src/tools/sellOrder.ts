@@ -1,4 +1,4 @@
-import { minOrderShares } from '@actually/core'
+import { isValidTickPrice, minOrderShares } from '@actually/core'
 import type { SpendGuardLike } from './placeOrder'
 
 export interface SellOrderInput {
@@ -48,6 +48,15 @@ export interface SellOrderOutput {
 export async function sellOrder(deps: SellOrderDeps, input: SellOrderInput): Promise<SellOrderOutput> {
   if (!deps.privateKey) {
     return { ok: false, error: 'not_configured' }
+  }
+
+  // Same rationale as placeOrder.ts's tick check (2026-09-08 audit F02): a
+  // caller-supplied price that isn't a tick multiple gets silently rounded
+  // by the CLOB when it builds the order, changing the real notional away
+  // from what the spend guard estimates below.
+  const effectiveTick = input.tickSize ?? (input.negRisk ? '0.001' : '0.01')
+  if (!isValidTickPrice(input.price, effectiveTick)) {
+    return { ok: false, error: `invalid_tick_price:${effectiveTick}` }
   }
 
   // Same CLOB floor as place_order, but expressed directly here: a sell is

@@ -1,4 +1,4 @@
-import { isBelowMinOrderSize, minOrderShares } from '@actually/core'
+import { isBelowMinOrderSize, isValidTickPrice, minOrderShares } from '@actually/core'
 
 export interface PlaceOrderInput {
   marketId: string
@@ -60,6 +60,17 @@ export interface PlaceOrderOutput {
 export async function placeOrder(deps: PlaceOrderDeps, input: PlaceOrderInput): Promise<PlaceOrderOutput> {
   if (!deps.privateKey) {
     return { ok: false, error: 'not_configured' }
+  }
+
+  // The CLOB rounds any price that isn't a tick multiple while building the
+  // order, but the share count below is computed against the un-rounded
+  // price - a caller-supplied 1.5c on a 1c tick lets the SDK sign a maker
+  // amount well above what sizeUsd reserved (2026-09-08 audit F02: $100
+  // reserved, $133.33 actually signed). Reject before any of that math
+  // runs, the same way isBelowMinOrderSize below does.
+  const effectiveTick = input.tickSize ?? (input.negRisk ? '0.001' : '0.01')
+  if (!isValidTickPrice(input.price, effectiveTick)) {
+    return { ok: false, error: `invalid_tick_price:${effectiveTick}` }
   }
 
   // CLOB refuses anything under the market's minimum order size, and that

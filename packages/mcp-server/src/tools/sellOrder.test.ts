@@ -163,3 +163,38 @@ describe('sellOrder - minimum order size', () => {
     expect(result).toEqual({ ok: true, orderId: 'ok' })
   })
 })
+
+describe('sellOrder - tick validation', () => {
+  it('rejects a price that is not aligned to the market tick, before signing or reserving budget (2026-09-08 audit F02)', async () => {
+    let signed = false
+    let reserved = false
+    const result = await sellOrder(
+      {
+        privateKey: '0xabc',
+        signAndSubmit: async () => {
+          signed = true
+          return { success: true, orderId: 'x' }
+        },
+        spendGuard: {
+          reserve: () => {
+            reserved = true
+            return { ok: true as const }
+          },
+          release: () => {},
+        },
+      },
+      { ...baseInput, price: 0.015, tickSize: '0.01' },
+    )
+    expect(result).toEqual({ ok: false, error: 'invalid_tick_price:0.01' })
+    expect(signed).toBe(false)
+    expect(reserved).toBe(false)
+  })
+
+  it('allows a price that is exactly on the tick', async () => {
+    const result = await sellOrder(
+      { privateKey: '0xabc', signAndSubmit: async () => ({ success: true, orderId: 'ok' }) },
+      { ...baseInput, price: 0.3, tickSize: '0.01' },
+    )
+    expect(result).toEqual({ ok: true, orderId: 'ok' })
+  })
+})
