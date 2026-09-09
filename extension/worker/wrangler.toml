@@ -1,3 +1,11 @@
+# wrangler 4.123+ deploy note (2026-09-09): run from THIS directory,
+# `npx wrangler deploy` sometimes fails to auto-discover this file at all
+# (falls into an unrelated "Configuring project for Vite" autoconfig flow,
+# presumably tripped by the sibling ../vite.config.ts one level up) - happens
+# in both git-bash and PowerShell, so it is not a shell/path-translation
+# issue. Workaround: pass the config explicitly with an ABSOLUTE path -
+# `npx wrangler deploy --config "<absolute path>\wrangler.toml"` - a
+# relative `--config wrangler.toml` was not reliable either.
 name = "actually-api"
 main = "index.ts"
 compatibility_date = "2025-01-01"
