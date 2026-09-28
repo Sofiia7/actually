@@ -9,7 +9,7 @@
 import PRIVACY_POLICY_MD from '../docs/privacy-policy.md'
 import { renderPrivacyPage } from './privacyPage'
 import type { MarketCacheBlob } from '@actually/core'
-import { MAX_CACHE_AGE_MS } from '@actually/core'
+import { isRedeemCall, MAX_CACHE_AGE_MS } from '@actually/core'
 
 interface Env {
   WORKER_SHARED_SECRET?: string
@@ -341,6 +341,10 @@ const CORS_BASE = {
   // valid, signing 200s for anything that asked from outside a browser.
   'Access-Control-Allow-Headers': 'Content-Type, X-Actually-Auth, Authorization',
   'Access-Control-Max-Age': '86400',
+  // Which allowed origin corsHeaders() echoes depends on the request (store
+  // and dev ids can both be allowed), so a cached response must not be
+  // replayed to a different origin - /market-cache is publicly cacheable.
+  Vary: 'Origin',
   'Content-Type': 'application/json',
 }
 
@@ -424,17 +428,55 @@ export async function buildBuilderSignature(
 }
 
 /**
- * Paths this Worker is willing to sign for. The builder credential can
- * authenticate ANY relayer endpoint, so an open-ended signer would let anyone
- * holding the (deliberately public) client secret spend the builder's daily
- * relayer quota on arbitrary calls. Redeeming needs exactly these two.
+ * The one relayer call this Worker signs: POST /submit, the only
+ * authenticated request in the redeem flow (its status polling,
+ * GET /transaction?id=, is public and never comes here). The builder
+ * credential can authenticate ANY relayer endpoint - GET /transactions, for
+ * one, lists every transaction submitted under the builder key - and the
+ * client secret in front of this route is public by design, so everything
+ * else is refused.
  */
-const SIGNABLE_RELAYER_PATHS = new Set(['/submit', '/transactions'])
+const SIGNABLE_RELAYER_METHOD = 'POST'
+const SIGNABLE_RELAYER_PATH = '/submit'
 
 /** Daily ceiling on signatures issued, mirroring the Builder Program's
  * Unverified tier (100 relayer txns/day). Stops quota exhaustion from being
  * something a stranger can do quietly; raise alongside a tier upgrade. */
 const BUILDER_SIGN_DAILY_LIMIT = 100
+
+/** One caller's share of BUILDER_SIGN_DAILY_LIMIT. Without it a single
+ * address at the 10/min limit spends the whole day's allowance - and with it
+ * everyone's in-app redeem - in ten minutes. A redeem is one signature;
+ * twenty a day is far past what one household redeems. */
+const BUILDER_SIGN_DAILY_PER_IP = 20
+
+export type RelayerSubmitValidation = { ok: true } | { ok: false; reason: string }
+
+/**
+ * Pure check that a relayer /submit body is what the extension's redeem
+ * produces: the relayer SDK's SAFE request, a plain CALL (not DELEGATECALL),
+ * carrying exactly the redeemPositions call @actually/core encodes. The
+ * builder signature covers the body, so checking it here is what bounds the
+ * credential to redeeming - whoever holds the public client secret.
+ */
+export function validateRelayerSubmit(body: string | undefined): RelayerSubmitValidation {
+  if (typeof body !== 'string' || body.length === 0) return { ok: false, reason: 'no_body' }
+  let parsed: unknown
+  try {
+    parsed = JSON.parse(body)
+  } catch {
+    return { ok: false, reason: 'bad_json' }
+  }
+  if (typeof parsed !== 'object' || parsed === null) return { ok: false, reason: 'bad_shape' }
+  const r = parsed as { type?: unknown; to?: unknown; data?: unknown; signatureParams?: unknown }
+  if (r.type !== 'SAFE') return { ok: false, reason: 'not_safe' }
+  const operation = (r.signatureParams as { operation?: unknown } | null | undefined)?.operation
+  if (operation !== '0') return { ok: false, reason: 'not_call' }
+  if (typeof r.to !== 'string' || typeof r.data !== 'string' || !isRedeemCall(r.to, r.data)) {
+    return { ok: false, reason: 'not_redeem' }
+  }
+  return { ok: true }
+}
 
 function json(body: unknown, status: number, headers: HeadersInit): Response {
   return new Response(JSON.stringify(body), { status, headers })
@@ -546,6 +588,30 @@ function clientIp(req: Request): string {
   )
 }
 
+/**
+ * The key a caller's rate limits are counted under: IPv4 as it is, IPv6 by
+ * its /64. One subscriber is routinely handed a whole /64, so counting full
+ * IPv6 addresses let a single caller rotate through it for a fresh limit on
+ * every request. Anything unparseable passes through unchanged.
+ */
+export function ipRateKey(ip: string): string {
+  if (!ip.includes(':')) return ip
+  const mapped = /^::ffff:(\d{1,3}(?:\.\d{1,3}){3})$/i.exec(ip)
+  if (mapped) return mapped[1]
+  const halves = ip.split('::')
+  if (halves.length > 2) return ip
+  const head = halves[0] ? halves[0].split(':') : []
+  const tail = halves.length === 2 && halves[1] ? halves[1].split(':') : []
+  const missing = 8 - head.length - tail.length
+  if (halves.length === 1 ? missing !== 0 : missing < 1) return ip
+  const groups = [...head, ...new Array<string>(halves.length === 2 ? missing : 0).fill('0'), ...tail]
+  if (!groups.every((g) => /^[0-9a-f]{1,4}$/i.test(g))) return ip
+  return `${groups
+    .slice(0, 4)
+    .map((g) => parseInt(g, 16).toString(16))
+    .join(':')}::/64`
+}
+
 export default {
   async fetch(req: Request, env: Env): Promise<Response> {
     const url = new URL(req.url)
@@ -554,7 +620,7 @@ export default {
 
     if (req.method === 'OPTIONS') return new Response(null, { headers })
 
-    const ip = clientIp(req)
+    const ip = ipRateKey(clientIp(req))
 
     // Global per-IP cap, applied before auth and before any per-route limit
     // below. Every per-route `rateLimit(...)` call only ever runs AFTER
@@ -897,14 +963,23 @@ export default {
         if (!method || !path) {
           return json({ error: 'bad_request' }, 400, headers)
         }
-        if (!SIGNABLE_RELAYER_PATHS.has(path.split('?')[0])) {
+        if (method !== SIGNABLE_RELAYER_METHOD || path !== SIGNABLE_RELAYER_PATH) {
           return json({ error: 'path_not_signable' }, 403, headers)
         }
         const reqBody = typeof payload.body === 'string' ? payload.body : undefined
         if (reqBody && reqBody.length > 200_000) {
           return json({ error: 'body_too_large' }, 413, headers)
         }
-        // Daily quota guard - see BUILDER_SIGN_DAILY_LIMIT.
+        const submit = validateRelayerSubmit(reqBody)
+        if (!submit.ok) {
+          return json({ error: 'body_not_signable', reason: submit.reason }, 403, headers)
+        }
+        // Quota guards run only for a request we are willing to sign, so junk
+        // costs nobody anything: this caller's share first, then the shared
+        // daily cap - see BUILDER_SIGN_DAILY_PER_IP / BUILDER_SIGN_DAILY_LIMIT.
+        if (!(await checkRateLimit(env, `builder-sign-daily-ip:${ip}`, 86_400_000, BUILDER_SIGN_DAILY_PER_IP))) {
+          return json({ error: 'builder_ip_daily_limit_reached' }, 429, headers)
+        }
         if (!(await checkRateLimit(env, 'builder-sign-daily', 86_400_000, BUILDER_SIGN_DAILY_LIMIT))) {
           return json({ error: 'builder_daily_limit_reached' }, 429, headers)
         }

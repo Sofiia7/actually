@@ -1,6 +1,14 @@
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
+import { Interface } from 'ethers'
+import { createWalletClient, http } from 'viem'
+import { privateKeyToAccount } from 'viem/accounts'
+import { polygon } from 'viem/chains'
+import { createAbstractSigner } from '@polymarket/builder-abstract-signer'
+import { buildSafeTransactionRequest } from '@polymarket/builder-relayer-client/dist/builder/safe.js'
+import { getContractConfig } from '@polymarket/builder-relayer-client/dist/config/index.js'
+import { buildRedeemTransaction } from '@actually/core'
 import worker from './index'
-import { MARKET_CACHE_LIMITS } from './index'
+import { ipRateKey, MARKET_CACHE_LIMITS } from './index'
 
 // We exercise the Worker by calling its `fetch` handler directly with a fake
 // `env` (a Map-backed KV) and a stubbed global `fetch` for the routes that
@@ -116,6 +124,54 @@ const call = (path: string, env: never, o?: ReqOpts) => worker.fetch(req(path, o
 afterEach(() => {
   vi.unstubAllGlobals()
 })
+
+/**
+ * The exact /submit body Polymarket's relayer SDK builds when the extension
+ * redeems (RelayClient.execute -> buildSafeTransactionRequest), signed by a
+ * throwaway local key. Every "valid" /builder-sign request in this file is
+ * this, not a hand-written imitation of it, so the Worker is held to what
+ * really arrives. Built once per contract in beforeAll: the first pass through
+ * viem is slow under vitest's transform, and that cost does not belong in a
+ * test timeout.
+ */
+const sdkBodies = new Map<boolean, string>()
+async function sdkRedeemBody(negativeRisk = false): Promise<string> {
+  const cached = sdkBodies.get(negativeRisk)
+  if (cached) return cached
+  // Hardhat's well-known test key #0: public, and holds nothing on Polygon.
+  const account = privateKeyToAccount('0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80')
+  const wallet = createWalletClient({ account, chain: polygon, transport: http('http://127.0.0.1:9') })
+  const cid = '0x' + '11'.repeat(32)
+  const tx = buildRedeemTransaction(cid, [{ conditionId: cid, outcomeIndex: 0, size: 5, negativeRisk }])
+  const quiet = vi.spyOn(console, 'log').mockImplementation(() => {}) // the SDK logs every request it builds
+  try {
+    const request = await buildSafeTransactionRequest(
+      createAbstractSigner(137, wallet),
+      {
+        transactions: [{ to: tx.to, operation: 0 as never, data: tx.data, value: '0' }],
+        from: account.address,
+        nonce: '0',
+        chainId: 137,
+      },
+      getContractConfig(137).SafeContracts,
+      'redeem_position',
+    )
+    const body = JSON.stringify(request)
+    sdkBodies.set(negativeRisk, body)
+    return body
+  } finally {
+    quiet.mockRestore()
+  }
+}
+
+beforeAll(async () => {
+  await sdkRedeemBody(false)
+  await sdkRedeemBody(true)
+}, 120_000)
+
+/** A /builder-sign envelope: what the signing SDK POSTs to the remote signer. */
+const signRequest = (body: string | undefined, method = 'POST', path = '/submit') =>
+  JSON.stringify({ method, path, ...(body === undefined ? {} : { body }) })
 
 describe('health + auth', () => {
   it('/health needs no auth', async () => {
@@ -234,6 +290,14 @@ describe('CORS fail-closed', () => {
   it('OPTIONS returns the invalid sentinel origin when no extension id configured', async () => {
     const res = await call('/geo', baseEnv({ ALLOWED_EXTENSION_ID: undefined }), { method: 'OPTIONS' })
     expect(res.headers.get('Access-Control-Allow-Origin')).toContain('__actually_misconfigured__')
+  })
+
+  it('says Vary: Origin, because which allowed origin it echoes depends on the request', async () => {
+    // Store and dev ids are both allowed; a cached response carrying one of
+    // them must not be replayed to the other (/market-cache is cacheable).
+    const env = baseEnv({ ALLOWED_EXTENSION_ID: `${EXT},zyxwvutsrqponmlkzyxwvutsrqponmlk` })
+    expect((await call('/geo', env, { method: 'OPTIONS' })).headers.get('Vary')).toBe('Origin')
+    expect((await call('/geo', env, { country: 'RS' })).headers.get('Vary')).toBe('Origin')
   })
 })
 
@@ -374,6 +438,19 @@ describe('rate limiting', () => {
     }
     expect(statuses.slice(0, 60).every((s) => s === 200)).toBe(true)
     expect(statuses[60]).toBe(429)
+  })
+
+  it('counts an IPv6 caller by its /64, so rotating addresses inside one allocation does not multiply its limit', async () => {
+    const env = baseEnv()
+    for (let i = 0; i < 60; i++) {
+      const res = await call('/geo', env, { country: 'RS', headers: { 'CF-Connecting-IP': `2001:db8:1:2::${(i + 1).toString(16)}` } })
+      expect(res.status).toBe(200)
+    }
+    const next = await call('/geo', env, { country: 'RS', headers: { 'CF-Connecting-IP': '2001:0db8:0001:0002:ffff:ffff:ffff:ffff' } })
+    expect(next.status).toBe(429)
+    // A different /64 is a different caller.
+    const other = await call('/geo', env, { country: 'RS', headers: { 'CF-Connecting-IP': '2001:db8:1:3::1' } })
+    expect(other.status).toBe(200)
   })
 
   it('atomicity: concurrent requests never exceed the limit (regression for the old KV race)', async () => {
@@ -699,7 +776,7 @@ describe('builder signing (remote signer for Polymarket relayer)', () => {
     const env = baseEnv(CREDS)
     const res = await call('/builder-sign', env, {
       method: 'POST',
-      body: JSON.stringify({ method: 'POST', path: '/submit', body: '{"x":1}' }),
+      body: signRequest(await sdkRedeemBody()),
     })
     expect(res.status).toBe(200)
     const h = (await res.json()) as Record<string, string>
@@ -716,7 +793,7 @@ describe('builder signing (remote signer for Polymarket relayer)', () => {
     const env = baseEnv(CREDS)
     const res = await call('/builder-sign', env, {
       method: 'POST',
-      body: JSON.stringify({ method: 'POST', path: '/submit', timestamp: 1 }),
+      body: JSON.stringify({ method: 'POST', path: '/submit', body: await sdkRedeemBody(), timestamp: 1 }),
     })
     const h = (await res.json()) as Record<string, string>
     // A replayed or skewed timestamp is rejected by the relayer, so ours must win.
@@ -766,7 +843,7 @@ describe('builder signing (remote signer for Polymarket relayer)', () => {
     const env = baseEnv(RELAYER_CREDS)
     const res = await call('/builder-sign', env, {
       method: 'POST',
-      body: JSON.stringify({ method: 'POST', path: '/submit', body: '{"x":1}' }),
+      body: signRequest(await sdkRedeemBody()),
     })
     expect(res.status).toBe(200)
     expect((await res.json()) as unknown).toEqual({
@@ -781,7 +858,7 @@ describe('builder signing (remote signer for Polymarket relayer)', () => {
     const env = baseEnv({ ...CREDS, ...RELAYER_CREDS })
     const res = await call('/builder-sign', env, {
       method: 'POST',
-      body: JSON.stringify({ method: 'POST', path: '/submit' }),
+      body: signRequest(await sdkRedeemBody()),
     })
     const h = (await res.json()) as Record<string, string>
     expect(h.POLY_BUILDER_API_KEY).toBe('bk-123')
@@ -812,7 +889,7 @@ describe('builder signing (remote signer for Polymarket relayer)', () => {
 
   it('caps daily signatures at the Unverified tier limit', async () => {
     const env = baseEnv(CREDS)
-    const body = JSON.stringify({ method: 'POST', path: '/submit' })
+    const body = signRequest(await sdkRedeemBody())
     // 100/day is the whole relayer allowance; quietly burning it must not be
     // something a stranger can do. Each call comes from a different IP, both
     // to model a distributed caller and to get past the per-IP minute limit
@@ -828,6 +905,115 @@ describe('builder signing (remote signer for Polymarket relayer)', () => {
     const res = await call('/builder-sign', env, from(101))
     expect(res.status).toBe(429)
     expect((await res.json()) as unknown).toEqual({ error: 'builder_daily_limit_reached' })
+  })
+
+  it('signs the exact body the relayer SDK builds for a redeem, on both contracts', async () => {
+    const env = baseEnv(CREDS)
+    for (const negativeRisk of [false, true]) {
+      const res = await call('/builder-sign', env, { method: 'POST', body: signRequest(await sdkRedeemBody(negativeRisk)) })
+      expect(res.status).toBe(200)
+    }
+  })
+
+  it('refuses to sign GET /transactions: nothing in the redeem flow reads it, and it lists every transaction under the builder key', async () => {
+    const env = baseEnv(CREDS)
+    const res = await call('/builder-sign', env, { method: 'POST', body: signRequest(undefined, 'GET', '/transactions') })
+    expect(res.status).toBe(403)
+    expect((await res.json()) as unknown).toEqual({ error: 'path_not_signable' })
+  })
+
+  it('refuses /submit under any method but POST, or with a query string', async () => {
+    const env = baseEnv(CREDS)
+    const body = await sdkRedeemBody()
+    for (const [method, path] of [['GET', '/submit'], ['PUT', '/submit'], ['POST', '/submit?x=1']]) {
+      const res = await call('/builder-sign', env, { method: 'POST', body: signRequest(body, method, path) })
+      expect(res.status).toBe(403)
+      expect((await res.json()) as unknown).toEqual({ error: 'path_not_signable' })
+    }
+  })
+
+  it('refuses a /submit whose body is anything but a Safe redeem', async () => {
+    const env = baseEnv(CREDS)
+    const real = JSON.parse(await sdkRedeemBody()) as Record<string, unknown>
+    const approve = new Interface(['function setApprovalForAll(address operator, bool approved)']).encodeFunctionData(
+      'setApprovalForAll',
+      ['0x' + '22'.repeat(20), true],
+    )
+    const refused: Array<[string, string | undefined]> = [
+      ['no body at all', undefined],
+      ['not a relayer request', '{"x":1}'],
+      ['not JSON', 'not json'],
+      ['another function on the CTF contract', JSON.stringify({ ...real, data: approve })],
+      ['redeem calldata aimed at another contract', JSON.stringify({ ...real, to: '0x' + '33'.repeat(20) })],
+      ['not the Safe flow the extension uses', JSON.stringify({ ...real, type: 'PROXY' })],
+      [
+        'DELEGATECALL instead of CALL',
+        JSON.stringify({ ...real, signatureParams: { ...(real.signatureParams as object), operation: '1' } }),
+      ],
+    ]
+    for (const [why, body] of refused) {
+      const res = await call('/builder-sign', env, { method: 'POST', body: signRequest(body) })
+      expect(res.status, why).toBe(403)
+      expect(((await res.json()) as { error: string }).error, why).toBe('body_not_signable')
+    }
+  })
+
+  it('a refused request spends none of the daily allowance', async () => {
+    const env = baseEnv(CREDS)
+    const junk = signRequest('{"x":1}')
+    for (let i = 0; i < 120; i++) {
+      const res = await call('/builder-sign', env, {
+        method: 'POST',
+        body: junk,
+        headers: { 'CF-Connecting-IP': `10.1.${Math.floor(i / 250)}.${i % 250}` },
+      })
+      expect(res.status).toBe(403)
+    }
+    const res = await call('/builder-sign', env, { method: 'POST', body: signRequest(await sdkRedeemBody()) })
+    expect(res.status).toBe(200)
+  })
+
+  it('caps one address at 20 signatures a day, so a single caller cannot drain the shared allowance for everyone', async () => {
+    const body = signRequest(await sdkRedeemBody())
+    vi.useFakeTimers({ now: new Date('2026-09-28T10:00:00Z') })
+    try {
+      const env = baseEnv(CREDS)
+      const from = (ip: string) => ({ method: 'POST', body, headers: { 'CF-Connecting-IP': ip } })
+      for (let i = 0; i < 20; i++) {
+        if (i > 0 && i % 10 === 0) vi.advanceTimersByTime(61_000) // past the 10/min limit, same day
+        expect((await call('/builder-sign', env, from('203.0.113.7'))).status).toBe(200)
+      }
+      vi.advanceTimersByTime(61_000)
+      const res = await call('/builder-sign', env, from('203.0.113.7'))
+      expect(res.status).toBe(429)
+      expect((await res.json()) as unknown).toEqual({ error: 'builder_ip_daily_limit_reached' })
+      // Per caller, not the global cap: another address still gets through.
+      expect((await call('/builder-sign', env, from('198.51.100.9'))).status).toBe(200)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+})
+
+describe('ipRateKey', () => {
+  it('leaves IPv4 as it is', () => {
+    expect(ipRateKey('203.0.113.7')).toBe('203.0.113.7')
+  })
+
+  it('reduces IPv6 to its /64, however the address is spelled', () => {
+    expect(ipRateKey('2001:db8:1:2::1')).toBe('2001:db8:1:2::/64')
+    expect(ipRateKey('2001:0DB8:0001:0002:aaaa:bbbb:cccc:dddd')).toBe('2001:db8:1:2::/64')
+    expect(ipRateKey('2001:db8::')).toBe('2001:db8:0:0::/64')
+    expect(ipRateKey('::1')).toBe('0:0:0:0::/64')
+  })
+
+  it('reads an IPv4-mapped IPv6 address as the IPv4 address it is', () => {
+    expect(ipRateKey('::ffff:203.0.113.7')).toBe('203.0.113.7')
+  })
+
+  it('passes anything it cannot parse through unchanged', () => {
+    expect(ipRateKey('unknown')).toBe('unknown')
+    expect(ipRateKey('2001:db8::1::2')).toBe('2001:db8::1::2')
   })
 })
 
@@ -928,7 +1114,7 @@ describe('CORS preflight must allow the header the signing SDK actually sends', 
     const res = await call('/builder-sign', env, {
       method: 'POST',
       headers: { Authorization: 'Bearer secret' },
-      body: JSON.stringify({ method: 'POST', path: '/submit', body: '{}' }),
+      body: signRequest(await sdkRedeemBody()),
       auth: null,
     })
     expect(res.status).toBe(200)

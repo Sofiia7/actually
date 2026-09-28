@@ -89,3 +89,34 @@ export function buildRedeemTransaction(conditionId: string, positions: Redeemabl
   const data = NEG_RISK_INTERFACE.encodeFunctionData('redeemPositions', [conditionId, amounts])
   return { to: NEG_RISK_ADAPTER_ADDRESS, data, value: '0' }
 }
+
+/**
+ * Whether `to` + `data` is a redeem of the kind buildRedeemTransaction
+ * produces: the matching redeemPositions on the matching contract, into our
+ * collateral, canonically encoded (re-encoding the decoded arguments must
+ * give back the same bytes, which rules out trailing garbage).
+ *
+ * The Worker checks this before it signs a relayer /submit with the builder
+ * credential. The client secret in front of that route is public by design,
+ * so without it anyone could have arbitrary Safe transactions relayed on the
+ * builder's daily quota.
+ */
+export function isRedeemCall(to: string, data: string): boolean {
+  if (typeof to !== 'string' || typeof data !== 'string' || !/^0x[0-9a-fA-F]*$/.test(data)) return false
+  const target = to.toLowerCase()
+  try {
+    if (target === CTF_ADDRESS.toLowerCase()) {
+      const args = CTF_INTERFACE.decodeFunctionData('redeemPositions', data)
+      if (String(args.collateralToken).toLowerCase() !== COLLATERAL_TOKEN_ADDRESS.toLowerCase()) return false
+      if (String(args.parentCollectionId).toLowerCase() !== PARENT_COLLECTION_ID) return false
+      return CTF_INTERFACE.encodeFunctionData('redeemPositions', args).toLowerCase() === data.toLowerCase()
+    }
+    if (target === NEG_RISK_ADAPTER_ADDRESS.toLowerCase()) {
+      const args = NEG_RISK_INTERFACE.decodeFunctionData('redeemPositions', data)
+      return NEG_RISK_INTERFACE.encodeFunctionData('redeemPositions', args).toLowerCase() === data.toLowerCase()
+    }
+  } catch {
+    return false
+  }
+  return false
+}

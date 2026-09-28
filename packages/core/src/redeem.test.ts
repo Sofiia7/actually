@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest'
-import { buildRedeemTransaction, CTF_ADDRESS, NEG_RISK_ADAPTER_ADDRESS, type RedeemablePosition } from './redeem'
+import {
+  buildRedeemTransaction,
+  COLLATERAL_TOKEN_ADDRESS,
+  CTF_ADDRESS,
+  isRedeemCall,
+  NEG_RISK_ADAPTER_ADDRESS,
+  type RedeemablePosition,
+} from './redeem'
 import { Interface } from 'ethers'
 
 const CONDITION_ID = '0x' + '11'.repeat(32)
@@ -106,5 +113,71 @@ describe('buildRedeemTransaction - float-noise hardening (2026-08-16)', () => {
         { conditionId: CONDITION_ID, outcomeIndex: -1, size: 5, negativeRisk: true },
       ]),
     ).toThrow('invalid_outcome_index:-1')
+  })
+})
+
+// The Worker signs relayer requests with the builder credential, behind a
+// client secret that is public by design. isRedeemCall is what lets it sign
+// ONLY the call buildRedeemTransaction produces, instead of any transaction
+// someone wants relayed on the builder's quota.
+describe('isRedeemCall', () => {
+  const regular = buildRedeemTransaction(CONDITION_ID, [
+    { conditionId: CONDITION_ID, outcomeIndex: 0, size: 40, negativeRisk: false },
+  ])
+  const negRisk = buildRedeemTransaction(CONDITION_ID, [
+    { conditionId: CONDITION_ID, outcomeIndex: 1, size: 12.5, negativeRisk: true },
+  ])
+  const ctf = new Interface([
+    'function redeemPositions(address collateralToken, bytes32 parentCollectionId, bytes32 conditionId, uint256[] indexSets)',
+    'function setApprovalForAll(address operator, bool approved)',
+  ])
+
+  it('accepts exactly what buildRedeemTransaction produces, for both contracts', () => {
+    expect(isRedeemCall(regular.to, regular.data)).toBe(true)
+    expect(isRedeemCall(negRisk.to, negRisk.data)).toBe(true)
+  })
+
+  it('does not care about address checksum casing', () => {
+    expect(isRedeemCall(regular.to.toLowerCase(), regular.data)).toBe(true)
+    expect(isRedeemCall(negRisk.to.toUpperCase().replace('0X', '0x'), negRisk.data)).toBe(true)
+  })
+
+  it('rejects a redeem aimed at the other contract', () => {
+    expect(isRedeemCall(NEG_RISK_ADAPTER_ADDRESS, regular.data)).toBe(false)
+    expect(isRedeemCall(CTF_ADDRESS, negRisk.data)).toBe(false)
+  })
+
+  it('rejects any other function on the CTF contract', () => {
+    const approve = ctf.encodeFunctionData('setApprovalForAll', ['0x' + '22'.repeat(20), true])
+    expect(isRedeemCall(CTF_ADDRESS, approve)).toBe(false)
+  })
+
+  it('rejects a redeem on an unrelated contract', () => {
+    expect(isRedeemCall('0x' + '33'.repeat(20), regular.data)).toBe(false)
+  })
+
+  it('rejects a CTF redeem into some other collateral or a nested collection', () => {
+    const otherToken = ctf.encodeFunctionData('redeemPositions', [
+      '0x' + '44'.repeat(20),
+      '0x' + '0'.repeat(64),
+      CONDITION_ID,
+      [1, 2],
+    ])
+    const nested = ctf.encodeFunctionData('redeemPositions', [
+      COLLATERAL_TOKEN_ADDRESS,
+      '0x' + '55'.repeat(32),
+      CONDITION_ID,
+      [1, 2],
+    ])
+    expect(isRedeemCall(CTF_ADDRESS, otherToken)).toBe(false)
+    expect(isRedeemCall(CTF_ADDRESS, nested)).toBe(false)
+  })
+
+  it('rejects truncated, trailing-garbage, empty and non-hex calldata', () => {
+    expect(isRedeemCall(CTF_ADDRESS, regular.data.slice(0, -8))).toBe(false)
+    expect(isRedeemCall(CTF_ADDRESS, regular.data + 'ab')).toBe(false)
+    expect(isRedeemCall(CTF_ADDRESS, '0x')).toBe(false)
+    expect(isRedeemCall(CTF_ADDRESS, 'not hex')).toBe(false)
+    expect(isRedeemCall(CTF_ADDRESS, undefined as unknown as string)).toBe(false)
   })
 })
