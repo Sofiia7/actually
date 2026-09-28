@@ -12,6 +12,8 @@ Actually closes that gap. Open an article, click the toolbar icon, and the
 extension matches the text against live Polymarket markets and shows the
 market's own probability. No account, no wallet, no signup.
 
+**[Add it to Chrome from the Chrome Web Store](https://chromewebstore.google.com/detail/actually-what-markets-rea/gckkkfhpbklhnjhhpjhjfhamhbllkkcd?utm_source=github&utm_medium=readme)** - free.
+
 ![A news article matched to a live Polymarket market](docs/screenshots/matched-market.png)
 
 ## What it does
@@ -59,6 +61,12 @@ protocol):
 That gives an agent the signal tools - `check_news` and `get_market` - with no
 key and no wallet. Ask it "what do markets think about this?" with a headline
 and it answers with the market's own price.
+
+The very first launch downloads the package and its local model runtime (about
+170 MB), and the first `check_news` then fetches the 34 MB model. On a slow
+connection that can take longer than a client waits for a server to start; if
+yours reports a timeout, run `npx -y actually-mcp-server` once in a terminal,
+let it finish, and restart the client. Later launches start in a few seconds.
 
 Trading tools appear only if you supply a key of your own:
 
@@ -123,7 +131,7 @@ Load `extension/dist` as an unpacked extension in Chrome. Copy
 the Worker URL, the WalletConnect project id and the builder code.
 
 ```bash
-npm test --workspaces               # 763 tests across four workspaces
+npm test --workspaces               # 822 tests across four workspaces
 ```
 
 ## Privacy
@@ -139,18 +147,24 @@ Full policy: https://actually-api.sofiaseremeteva.workers.dev/privacy
 
 ## Status
 
-The extension is built and passing its release gates; the Chrome Web Store
-submission is in progress. `actually-mcp-server` is published on npm and listed
-in the official MCP registry.
+The extension is live on the
+[Chrome Web Store](https://chromewebstore.google.com/detail/actually-what-markets-rea/gckkkfhpbklhnjhhpjhjfhamhbllkkcd?utm_source=github&utm_medium=readme).
+`actually-mcp-server` is published on npm and listed in the official MCP
+registry.
 
 Redeeming a resolved position is **in testing**: builder authentication,
 neg-risk contract selection and the zero-balance guard are each verified
 against live services, but no redeem has yet been observed collecting funds end
 to end.
 
-Trading is unavailable in several jurisdictions (US, GB, FR, BE, AU, SG, TH,
-TW, PL, and sanctioned countries), enforced Worker-side. Viewing odds works
-everywhere.
+Viewing odds works everywhere. Opening new positions follows
+[Polymarket's own restrictions](https://docs.polymarket.com/api-reference/geoblock):
+it is unavailable in, among others, the US, the UK, France, Germany, Italy, the
+Netherlands, Belgium, Poland, Ireland, Australia, New Zealand, Japan,
+Singapore, Taiwan, Thailand, Brazil, Russia, and the Canadian provinces of
+Ontario, British Columbia, Alberta and Quebec - there, existing positions can
+still be sold and resting orders cancelled. Sanctioned jurisdictions are
+blocked entirely. The check runs on the Worker.
 
 Actually does not provide financial advice.
 

@@ -1,6 +1,6 @@
 # Actually - Privacy Policy
 
-_Last updated: 2026-09-08_
+_Last updated: 2026-09-28_
 
 Actually is a Chrome extension that shows Polymarket prediction-market odds for news articles, and lets users who connect a wallet place orders on those markets in one click. We aim to be as private as possible. This page explains exactly what data is collected, what is sent off your device, and why.
 
@@ -61,6 +61,12 @@ Each event carries a **pseudonymous** `installId` (a random UUID generated local
 What is **never** sent:
 - URLs you visit
 - Article headlines or content
+- Wallet addresses (EOA or Safe)
+- Order IDs or transaction hashes, except where unavoidably embedded in a CLOB failure message as described above
+- Polymarket usernames
+- IP addresses (telemetry never includes them; Cloudflare's own request logs do - see "Third parties involved" below)
+
+Disable telemetry at any time in Settings.
 
 ### Optional: "Search Polymarket when nothing matches" (default OFF)
 
@@ -81,18 +87,12 @@ your device on the local embedding provider**, exactly as described above. This
 is the only reason the feature is opt-in rather than simply on: it buys better
 market coverage with a small amount of what you are reading, and that is your
 call to make, not ours.
-- Wallet addresses (EOA or Safe)
-- Order IDs or transaction hashes, except where unavoidably embedded in a CLOB failure message as described above
-- Polymarket usernames
-- IP addresses (Cloudflare logs request IPs as standard infra; we do not query them)
-
-Disable telemetry at any time in Settings.
 
 ## Third parties involved
 
 | Party | When | What they see |
 |---|---|---|
-| Cloudflare Workers | All API calls **except signed order submission** (see below) | Request rate limiting, pseudonymous telemetry events (only if you opted in) |
+| Cloudflare Workers | All API calls **except signed order submission** (see below) | Request rate limiting, pseudonymous telemetry events (only if you opted in), and request logs: Cloudflare's Workers Logs keep each request's time, IP address and path for up to 7 days, which we use only to diagnose failures. For a positions lookup the path contains the Safe address being looked up |
 | Polymarket (`gamma-api`, `clob`, `data-api`) | All discovery + trading | Public market data requests via our Worker; **signed order payloads go directly from your browser to `clob.polymarket.com`, not through our Worker** (see "When you click Place order" above) |
 | Polymarket market search | Only if you turn on "Search Polymarket when nothing matches" (**default off**), and only when a local match fails | Up to six keywords from the headline |
 | OpenAI | Only if you switch to OpenAI embeddings | Article headline + body excerpt for embedding |
