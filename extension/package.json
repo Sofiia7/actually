@@ -1,6 +1,6 @@
 {
   "name": "actually-extension",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Chrome extension that shows Polymarket odds on any news page.",
   "private": true,
   "type": "module",
