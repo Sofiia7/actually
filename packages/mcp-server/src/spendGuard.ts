@@ -1,4 +1,4 @@
-import { closeSync, existsSync, mkdirSync, openSync, readFileSync, statSync, unlinkSync, writeFileSync, writeSync } from 'node:fs'
+import { closeSync, existsSync, mkdirSync, openSync, readFileSync, renameSync, statSync, unlinkSync, writeFileSync, writeSync } from 'node:fs'
 import { dirname } from 'node:path'
 
 // How long a lock file may sit unreleased before a NEW acquirer assumes its
@@ -162,15 +162,31 @@ export class SpendGuard {
     }
   }
 
-  private saveState(): void {
+  /**
+   * Writes the state and reports whether it landed. Written to a temporary
+   * file and renamed over the real one, so neither a crash mid-write nor a
+   * peer process reading at the wrong moment ever sees half a file. Never
+   * throws - a filesystem error must not crash a trading call - but the
+   * caller learns about it: reserve() used to approve spend whose write had
+   * silently failed, which the next process then read as budget still free
+   * (2026-09-08 audit F12).
+   */
+  private saveState(): boolean {
     const path = this.config.statePath
-    if (!path) return
+    if (!path) return true
+    const tmp = `${path}.${process.pid}.tmp`
     try {
       mkdirSync(dirname(path), { recursive: true })
-      writeFileSync(path, JSON.stringify({ day: this.day, daySpentUsd: this.daySpentUsd } satisfies PersistedState))
+      writeFileSync(tmp, JSON.stringify({ day: this.day, daySpentUsd: this.daySpentUsd } satisfies PersistedState))
+      renameSync(tmp, path)
+      return true
     } catch {
-      // Best-effort - a filesystem error here must not crash a trading call.
-      // Worst case the cap reverts to process-lifetime-only for this run.
+      try {
+        unlinkSync(tmp)
+      } catch {
+        // Never written, or already gone.
+      }
+      return false
     }
   }
 
@@ -258,8 +274,14 @@ export class SpendGuard {
         if (this.daySpentUsd + sizeUsd > this.config.dailyLimitUsd) {
           return { ok: false, error: `daily_limit_exceeded:${this.config.dailyLimitUsd}` }
         }
-        this.daySpentUsd += sizeUsd
-        this.saveState()
+        const before = this.daySpentUsd
+        this.daySpentUsd = before + sizeUsd
+        if (!this.saveState()) {
+          // A reservation a restart would forget is spend the cap never saw.
+          // Refuse it, and take it back out of the in-memory total as well.
+          this.daySpentUsd = before
+          return { ok: false, error: 'spend_guard_unsaved' }
+        }
         return { ok: true, reservedDay: this.day }
       },
       () => ({ ok: false, error: 'spend_guard_busy' }),
@@ -287,6 +309,9 @@ export class SpendGuard {
       this.rollDayIfNeeded()
       if (reservedDay !== undefined && reservedDay !== this.day) return
       this.daySpentUsd = Math.max(0, this.daySpentUsd - sizeUsd)
+      // A refund that fails to reach disk leaves the file holding the higher
+      // total, and syncFromDisk() keeps the higher of the two - the guard
+      // only ends up stricter, so there is nothing to refuse here.
       this.saveState()
     }, () => {})
   }

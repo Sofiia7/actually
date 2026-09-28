@@ -1,5 +1,5 @@
 import { describe, expect, it, vi, afterEach } from 'vitest'
-import { existsSync, mkdtempSync, rmSync, utimesSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, utimesSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { SpendGuard } from './spendGuard'
@@ -96,6 +96,44 @@ describe('SpendGuard', () => {
       const result = guard.reserve(10)
       expect(result.ok).toBe(true)
       expect(existsSync(statePath)).toBe(true)
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+
+  // 2026-09-08 audit F12, the part that was left: saveState() swallowed a
+  // failed write, so reserve() approved spend that a restart would forget -
+  // the next process read the old file and found that budget free again.
+  it('refuses a reservation it could not write down, and does not count it', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'spend-guard-test-'))
+    const statePath = join(dir, 'spend-guard.json')
+    try {
+      const guard = new SpendGuard({ maxOrderUsd: 100, dailyLimitUsd: 150, statePath })
+      // A directory where the state file should be: the lock (a sibling file)
+      // still works, but the state itself cannot be written.
+      mkdirSync(statePath)
+      expect(guard.reserve(100)).toEqual({ ok: false, error: 'spend_guard_unsaved' })
+      expect(readdirSync(dir).filter((f) => f.endsWith('.tmp'))).toEqual([])
+      // Nothing was committed: once the file can be written, the whole limit
+      // is still there - the refused 100 did not count, this 100 does.
+      rmSync(statePath, { recursive: true, force: true })
+      expect(guard.reserve(100).ok).toBe(true)
+      expect(guard.reserve(60).ok).toBe(false)
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+
+  it('writes the state file whole, leaving no temporary file behind', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'spend-guard-test-'))
+    const statePath = join(dir, 'spend-guard.json')
+    try {
+      const guard = new SpendGuard({ maxOrderUsd: 100, dailyLimitUsd: 500, statePath })
+      const first = guard.reserve(10)
+      guard.release(10, first.ok ? first.reservedDay : undefined)
+      guard.reserve(25)
+      expect(readdirSync(dir)).toEqual(['spend-guard.json'])
+      expect(JSON.parse(readFileSync(statePath, 'utf8'))).toMatchObject({ daySpentUsd: 25 })
     } finally {
       rmSync(dir, { recursive: true, force: true })
     }
