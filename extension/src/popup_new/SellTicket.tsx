@@ -161,7 +161,8 @@ export const SellTicket: React.FC<SellTicketProps> = ({ position, onDone, onCanc
               'saved to History; positions can take a few seconds to catch up.',
         )
       } else {
-        setResult(`Failed: ${humanSellError(r.error ?? 'unknown_error', minShares)}`)
+        // An unanswered sell may have filled; "Failed" would invite a second one.
+        setResult(`${r.unknown ? 'Status unknown' : 'Failed'}: ${humanSellError(r.error ?? 'unknown_error', minShares)}`)
       }
     } catch (err) {
       setResult(`Error: ${describeError(err)}`)
@@ -317,6 +318,17 @@ function pill(active: boolean): React.CSSProperties {
 }
 
 export function humanSellError(raw: string, minShares: number): string {
+  // First, before any pattern below can read the reason riding along after
+  // the prefix ("FOK ...") as a plain rejection and invite a second sell.
+  if (raw.startsWith('order_status_unknown')) {
+    return "Polymarket didn't confirm this sell, so it may or may not have gone through. It's in History as unconfirmed - check your positions before selling again. Another order on this market is held back until Polymarket confirms either way."
+  }
+  if (raw.includes('previous_order_unconfirmed')) {
+    return 'Your previous order on this market is still unconfirmed, so a second one is held back for now. Give it a minute and try again.'
+  }
+  if (raw.includes('previous_order_went_through')) {
+    return 'Your previous order on this market did go through - History is updated. If you still want to sell, sell again.'
+  }
   if (/min[_ ]size|minimum (order )?size/i.test(raw)) {
     return `Below Polymarket's ${minShares}-share minimum.`
   }

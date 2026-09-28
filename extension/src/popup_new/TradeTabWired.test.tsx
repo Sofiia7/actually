@@ -450,6 +450,41 @@ describe('TradeTabWired - order ticket', () => {
   })
 })
 
+// 2026-09-08 audit F03, extension side: "failed" invites a second signature,
+// and an order the exchange never answered for may already be on the book.
+describe('TradeTabWired - an order the exchange never answered for', () => {
+  async function signOrder() {
+    opsm.restoreWalletViaOffscreen.mockResolvedValue(wallet)
+    render(<TradeTabWired {...props} />)
+    await screen.findByText('Orderbook')
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /Place limit order/i })).toBeEnabled()
+    })
+    await userEvent.click(screen.getByRole('button', { name: /Place limit order/i }))
+    await userEvent.click(screen.getByRole('button', { name: /Sign in wallet/i }))
+  }
+
+  it('reads as unconfirmed, not failed, and says to check before trying again', async () => {
+    opsm.placeOrderViaOffscreen.mockResolvedValue({ ok: false, unknown: true, error: 'order_status_unknown:Network Error' })
+    await signOrder()
+    expect(await screen.findByText(/Order status unknown/i)).toBeInTheDocument()
+    expect(screen.queryByText(/Order failed/i)).not.toBeInTheDocument()
+    expect(screen.getByText(/may or may not have gone through/i)).toBeInTheDocument()
+  })
+
+  it('explains a repeat held back by an earlier unconfirmed order', async () => {
+    opsm.placeOrderViaOffscreen.mockResolvedValue({ ok: false, error: 'previous_order_unconfirmed' })
+    await signOrder()
+    expect(await screen.findByText(/previous order on this market is still unconfirmed/i)).toBeInTheDocument()
+  })
+
+  it('says so when the earlier order turned out to have gone through', async () => {
+    opsm.placeOrderViaOffscreen.mockResolvedValue({ ok: false, error: 'previous_order_went_through' })
+    await signOrder()
+    expect(await screen.findByText(/previous order on this market did go through/i)).toBeInTheDocument()
+  })
+})
+
 describe('TradeTabWired - connect loop race', () => {
   it('a stale connect loop (after Cancel + reconnect) does not clobber the newer attempt\'s state', async () => {
     opsm.restoreWalletViaOffscreen.mockResolvedValue(null)

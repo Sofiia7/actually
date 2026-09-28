@@ -107,6 +107,47 @@ describe('offscreen handle() - trade logging outlives the popup (2026-09-08 audi
       outcome: 'Yes', shares: 12, ref: 'tx-1',
     }))
   })
+
+  // 2026-09-08 audit F03: an order the exchange never answered for is logged
+  // as unconfirmed, with its token, because that row is what holds back a
+  // second order on the same token until the exchange has been checked.
+  it('OS_PLACE_ORDER logs an unanswered order as unknown, with its token, and passes the flag to the popup', async () => {
+    vi.mocked(restoreWallet).mockResolvedValue(fakeWallet)
+    vi.mocked(placeOrder).mockResolvedValue({ ok: false, unknown: true, error: 'order_status_unknown:Network Error' })
+
+    const res = await handle({
+      target: 'offscreen',
+      type: 'OS_PLACE_ORDER',
+      args: {
+        tokenId: 'tok-yes', side: 'BUY_YES', sizeUsd: 20, price: 0.25, negRisk: false,
+        orderType: 'MARKET', question: 'Will it happen?', marketSlug: 'will-it-happen', outcome: 'Yes',
+      },
+    })
+
+    expect(logTrade).toHaveBeenCalledWith(expect.objectContaining({
+      kind: 'BUY', status: 'unknown', tokenId: 'tok-yes', error: 'order_status_unknown:Network Error',
+    }))
+    expect(res).toMatchObject({ type: 'OS_ORDER_RESULT', ok: false, unknown: true })
+  })
+
+  it('OS_SELL_ORDER does the same for a sell, and records the token on a settled one too', async () => {
+    vi.mocked(restoreWallet).mockResolvedValue(fakeWallet)
+    vi.mocked(sellOrder).mockResolvedValue({ ok: false, unknown: true, error: 'order_status_unknown:Bad Gateway' })
+    await handle({
+      target: 'offscreen',
+      type: 'OS_SELL_ORDER',
+      args: { tokenId: 'tok-no', sizeShares: 40, price: 0.3, orderType: 'LIMIT', question: 'Q', outcome: 'No' },
+    })
+    expect(logTrade).toHaveBeenCalledWith(expect.objectContaining({ kind: 'SELL', status: 'unknown', tokenId: 'tok-no' }))
+
+    vi.mocked(sellOrder).mockResolvedValue({ ok: true, orderId: 'order-2' })
+    await handle({
+      target: 'offscreen',
+      type: 'OS_SELL_ORDER',
+      args: { tokenId: 'tok-no', sizeShares: 40, price: 0.3, orderType: 'LIMIT', question: 'Q', outcome: 'No' },
+    })
+    expect(logTrade).toHaveBeenLastCalledWith(expect.objectContaining({ status: 'placed', tokenId: 'tok-no' }))
+  })
 })
 
 describe('offscreen handle() - a stale cache refreshes even when matching fails (2026-09-08 audit F14)', () => {

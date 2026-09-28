@@ -55,18 +55,53 @@ export async function logTrade(entry: Omit<TradeLogItem, 'id' | 'timestamp'>): P
  * to write that down must not be reported as a failed cancel.
  */
 export async function markTradeCancelled(id: string): Promise<void> {
+  await updateTradeStatus(id, { status: 'cancelled' })
+}
+
+/**
+ * How long an unconfirmed order keeps holding back its token. trade.ts
+ * resolves one within a minute whenever the exchange can be reached; this
+ * only stops a row nobody ever re-checked from blocking the token forever.
+ */
+const PENDING_UNKNOWN_MAX_AGE_MS = 24 * 60 * 60 * 1000
+
+/**
+ * The newest BUY/SELL on `tokenId` still marked 'unknown' - an order the
+ * exchange never gave a definite answer for - or null.
+ */
+export async function findPendingUnknown(tokenId: string, now = Date.now()): Promise<TradeLogItem | null> {
+  const items = await getTradeLog()
+  return (
+    items.find(
+      (t) =>
+        t.status === 'unknown' &&
+        t.kind !== 'REDEEM' &&
+        t.tokenId === tokenId &&
+        now - t.timestamp < PENDING_UNKNOWN_MAX_AGE_MS,
+    ) ?? null
+  )
+}
+
+/**
+ * Record what became of a logged order - the verdict on an unconfirmed one
+ * once the exchange has been checked. Best-effort like logTrade.
+ */
+export async function updateTradeStatus(
+  id: string,
+  patch: Partial<Pick<TradeLogItem, 'status' | 'ref' | 'error'>>,
+): Promise<void> {
   try {
     const items = await getTradeLog()
     let touched = false
     const next = items.map((item) => {
       if (item.id !== id) return item
       touched = true
-      return { ...item, status: 'cancelled' as const }
+      return { ...item, ...patch }
     })
     if (!touched) return
     await chrome.storage.local.set({ [STORAGE_KEYS.tradeLog]: next })
   } catch {
-    // See the doc comment above.
+    // See logTrade's doc comment.
   }
 }
 

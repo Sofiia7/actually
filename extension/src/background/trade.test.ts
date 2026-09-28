@@ -42,8 +42,19 @@ vi.mock('./clob', async (importOriginal) => ({
   deriveCredentials: deriveCredentialsMock,
 }))
 
-import { connectWallet, disconnectWallet, placeOrder, restoreWallet, sellOrder, SESSION_RETRY_DELAYS_MS } from './trade'
+import {
+  connectWallet,
+  disconnectWallet,
+  placeOrder,
+  restoreWallet,
+  sellOrder,
+  SESSION_RETRY_DELAYS_MS,
+  UNKNOWN_RECHECK_DELAY_MS,
+  UNKNOWN_SETTLE_MS,
+} from './trade'
+import { makeClient } from './clob'
 import { getSettings, saveSettings } from './settings'
+import { clearTradeLog, getTradeLog, logTrade } from './tradeLog'
 import { MAX_ORDER_USD } from '../shared/constants'
 import type { WalletState } from './trade'
 
@@ -450,5 +461,131 @@ describe('sellOrder - guards before any signature', () => {
     const r = await sellOrder({ ...base, sizeShares: 10 })
     expect(r.error).not.toBe('worker_not_configured')
     expect(r.error).not.toBe('geo_blocked')
+  })
+})
+
+// 2026-09-08 audit F03, extension side. When the exchange gives no definite
+// answer, the order may be on the book anyway. Reporting that as "failed"
+// invites the user to sign it again, and a second FOK can fill twice.
+describe('an order the exchange never answered for', () => {
+  const buy = {
+    state: fakeState,
+    tokenId: 'tok-1',
+    side: 'BUY_YES' as const,
+    sizeUsd: 10,
+    price: 0.5,
+    negRisk: false,
+    orderType: 'LIMIT' as const,
+  }
+  const sell = { state: fakeState, tokenId: 'tok-1', sizeShares: 10, price: 0.5, orderType: 'LIMIT' as const }
+
+  function fakeClient(over: Record<string, unknown> = {}) {
+    const client = {
+      createOrder: vi.fn(async () => ({ order: 'signed' })),
+      createMarketOrder: vi.fn(async () => ({ order: 'signed' })),
+      // The SDK's shape for a request that got no HTTP answer at all.
+      postOrder: vi.fn(async () => ({ error: 'Network Error' }) as unknown),
+      getOpenOrders: vi.fn(async () => [] as unknown[]),
+      getTrades: vi.fn(async () => [] as unknown[]),
+      ...over,
+    }
+    vi.mocked(makeClient).mockReturnValue(client as never)
+    return client
+  }
+
+  /** Runs an order call through the one timed re-check it does after an unanswered submit. */
+  async function withRecheck<T>(p: Promise<T>): Promise<T> {
+    await vi.advanceTimersByTimeAsync(UNKNOWN_RECHECK_DELAY_MS)
+    return p
+  }
+
+  beforeEach(async () => {
+    vi.useFakeTimers({ now: new Date('2026-09-28T10:00:00Z') })
+    await clearTradeLog()
+    await saveSettings({ workerUrl: 'https://w.example', workerSecret: 'secret' })
+  })
+
+  afterEach(async () => {
+    vi.useRealTimers()
+    vi.mocked(makeClient).mockReturnValue({} as never)
+    await clearTradeLog()
+    await saveSettings({ workerUrl: undefined, workerSecret: undefined })
+  })
+
+  it('reports a lost response on a buy as unconfirmed, not failed', async () => {
+    fakeClient()
+    const r = await withRecheck(placeOrder(buy))
+    expect(r.ok).toBe(false)
+    expect(r.unknown).toBe(true)
+    expect(r.error).toMatch(/^order_status_unknown:/)
+  })
+
+  it('reports it placed when the order turns up on the book a moment later', async () => {
+    const nowS = Math.floor(Date.now() / 1000)
+    fakeClient({ getOpenOrders: vi.fn(async () => [{ id: '0xord', side: 'BUY', asset_id: 'tok-1', created_at: nowS }]) })
+    expect(await withRecheck(placeOrder(buy))).toEqual({ ok: true, orderId: '0xord' })
+  })
+
+  it('counts a fill that turns up in the trades as placed too', async () => {
+    fakeClient({ getTrades: vi.fn(async () => [{ id: 'trade-1', asset_id: 'tok-1' }]) })
+    expect((await withRecheck(placeOrder(buy))).ok).toBe(true)
+  })
+
+  it('treats a sell the same way', async () => {
+    fakeClient()
+    const r = await withRecheck(sellOrder(sell))
+    expect(r.unknown).toBe(true)
+    expect(r.error).toMatch(/^order_status_unknown:/)
+  })
+
+  it('refuses a new order on the token while an earlier one is unconfirmed, before asking for a signature', async () => {
+    await logTrade({ kind: 'BUY', status: 'unknown', question: 'q', tokenId: 'tok-1' })
+    const client = fakeClient()
+    expect(await placeOrder(buy)).toEqual({ ok: false, error: 'previous_order_unconfirmed' })
+    expect(await sellOrder(sell)).toEqual({ ok: false, error: 'previous_order_unconfirmed' })
+    expect(client.createOrder).not.toHaveBeenCalled()
+  })
+
+  it('marks the earlier order placed, and refuses this one once, when the check finds it went through', async () => {
+    await logTrade({ kind: 'BUY', status: 'unknown', question: 'q', tokenId: 'tok-1' })
+    const [row] = await getTradeLog()
+    const client = fakeClient({
+      getOpenOrders: vi.fn(async () => [
+        { id: '0xord', side: 'BUY', asset_id: 'tok-1', created_at: Math.floor(row.timestamp / 1000) },
+      ]),
+    })
+    expect(await placeOrder(buy)).toEqual({ ok: false, error: 'previous_order_went_through' })
+    expect(client.createOrder).not.toHaveBeenCalled()
+    expect((await getTradeLog())[0]).toMatchObject({ id: row.id, status: 'placed', ref: '0xord' })
+  })
+
+  it('lets the new order through once a minute has passed with nothing on the exchange, marking the earlier one failed', async () => {
+    await logTrade({ kind: 'BUY', status: 'unknown', question: 'q', tokenId: 'tok-1' })
+    const [row] = await getTradeLog()
+    vi.advanceTimersByTime(UNKNOWN_SETTLE_MS + 1_000)
+    const client = fakeClient({ postOrder: vi.fn(async () => ({ success: true, orderID: '0xnew' })) })
+    expect(await placeOrder(buy)).toEqual({ ok: true, orderId: '0xnew' })
+    expect(client.createOrder).toHaveBeenCalled()
+    expect((await getTradeLog()).find((t) => t.id === row.id)).toMatchObject({
+      status: 'failed',
+      error: 'not_found_on_exchange',
+    })
+  })
+
+  it('keeps the new order blocked while the exchange cannot be reached, however long it has been', async () => {
+    await logTrade({ kind: 'SELL', status: 'unknown', question: 'q', tokenId: 'tok-1' })
+    vi.advanceTimersByTime(UNKNOWN_SETTLE_MS + 1_000)
+    fakeClient({
+      getOpenOrders: vi.fn(async () => {
+        throw new Error('Network Error')
+      }),
+    })
+    expect(await placeOrder(buy)).toEqual({ ok: false, error: 'previous_order_unconfirmed' })
+  })
+
+  it('holds back only the token the unconfirmed order was on', async () => {
+    await logTrade({ kind: 'BUY', status: 'unknown', question: 'q', tokenId: 'tok-other' })
+    fakeClient({ postOrder: vi.fn(async () => ({ success: true, orderID: '0xnew' })) })
+    expect(await placeOrder(buy)).toEqual({ ok: true, orderId: '0xnew' })
   })
 })

@@ -1,5 +1,12 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { clearTradeLog, getTradeLog, logTrade, markTradeCancelled } from './tradeLog'
+import {
+  clearTradeLog,
+  findPendingUnknown,
+  getTradeLog,
+  logTrade,
+  markTradeCancelled,
+  updateTradeStatus,
+} from './tradeLog'
 import { MAX_TRADE_LOG_ITEMS } from '../shared/constants'
 
 beforeEach(async () => {
@@ -78,5 +85,41 @@ describe('tradeLog - the only local record that a trade happened', () => {
     await logTrade({ kind: 'BUY', status: 'placed', question: 'q' })
     await expect(markTradeCancelled('nope')).resolves.toBeUndefined()
     expect((await getTradeLog())[0].status).toBe('placed')
+  })
+})
+
+// An order the exchange never answered for stays "unknown" in the log until
+// someone checks the exchange. trade.ts refuses a second order on the same
+// token until then (2026-09-08 audit F03), so the log has to be able to say
+// which token that unconfirmed order was on, and to record the verdict.
+describe('tradeLog - unconfirmed orders', () => {
+  it('finds the unconfirmed order on a token', async () => {
+    await logTrade({ kind: 'BUY', status: 'unknown', question: 'q', tokenId: 'tok-1' })
+    const pending = await findPendingUnknown('tok-1')
+    expect(pending).toMatchObject({ kind: 'BUY', status: 'unknown', tokenId: 'tok-1' })
+  })
+
+  it('ignores other tokens, settled rows, and redeems', async () => {
+    await logTrade({ kind: 'BUY', status: 'unknown', question: 'q', tokenId: 'tok-other' })
+    await logTrade({ kind: 'BUY', status: 'failed', question: 'q', tokenId: 'tok-1' })
+    await logTrade({ kind: 'SELL', status: 'placed', question: 'q', tokenId: 'tok-1' })
+    await logTrade({ kind: 'REDEEM', status: 'unknown', question: 'q' })
+    expect(await findPendingUnknown('tok-1')).toBeNull()
+  })
+
+  it('stops holding a day-old unconfirmed order against the token', async () => {
+    await logTrade({ kind: 'SELL', status: 'unknown', question: 'q', tokenId: 'tok-1' })
+    const dayLater = Date.now() + 24 * 60 * 60 * 1000 + 1
+    expect(await findPendingUnknown('tok-1', dayLater)).toBeNull()
+  })
+
+  it('records the verdict on an unconfirmed order, keeping everything else', async () => {
+    await logTrade({ kind: 'BUY', status: 'unknown', question: 'q', tokenId: 'tok-1', error: 'Network Error' })
+    const [row] = await getTradeLog()
+    await updateTradeStatus(row.id, { status: 'placed', ref: '0xord', error: undefined })
+    const [after] = await getTradeLog()
+    expect(after).toMatchObject({ id: row.id, status: 'placed', ref: '0xord', tokenId: 'tok-1', question: 'q' })
+    expect(after.error).toBeUndefined()
+    expect(await findPendingUnknown('tok-1')).toBeNull()
   })
 })

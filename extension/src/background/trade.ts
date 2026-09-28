@@ -16,13 +16,14 @@
  * service worker.
  */
 import { describeError } from '../shared/describeError'
-import { OrderType, type ApiKeyCreds } from '@polymarket/clob-client-v2'
+import { OrderType, type ApiKeyCreds, type ClobClient } from '@polymarket/clob-client-v2'
 import { deriveSafeAddress, isBelowMinOrderSize, minOrderShares, orderShares } from '@actually/core'
 import { BUILDER_CODE, GEO_FAIL_OPEN, MAX_ORDER_USD } from '../shared/constants'
 import {
   cancelOrder as clobCancelOrder,
   deriveCredentials,
   fetchOrderBook,
+  findOrderOnExchange,
   listOpenOrders,
   makeClient,
   pollOrderStatus,
@@ -31,7 +32,9 @@ import {
   signMarketSellOrder,
   signSellOrder,
   submitSignedOrder,
+  type SubmitResult,
 } from './clob'
+import { findPendingUnknown, updateTradeStatus } from './tradeLog'
 import type { OpenOrderSummary, Settings } from '../shared/types'
 import {
   type ActiveSession,
@@ -387,6 +390,78 @@ export interface OrderSubmitResult {
   ok: boolean
   orderId?: string
   error?: string
+  /** The exchange never gave a definite answer, and a re-check found no
+   *  trace of the order yet: it may still be on the book. Not a failure -
+   *  see guardUnconfirmedOrder for what it holds back. */
+  unknown?: true
+}
+
+/**
+ * Pause before the one re-check after a submit the exchange never answered.
+ * Long enough for an accepted order to show up in its open orders or trades,
+ * short enough that the popup is still waiting on the result.
+ */
+export const UNKNOWN_RECHECK_DELAY_MS = 3_000
+
+/**
+ * How long "the exchange shows nothing" has to hold before an unconfirmed
+ * order counts as never placed. An accepted GTC shows up as an open order at
+ * once and a filled FOK as a trade within seconds; a minute is far past both.
+ */
+export const UNKNOWN_SETTLE_MS = 60_000
+
+/**
+ * After a submit with no definite answer (2026-09-08 audit F03), look once
+ * more before reporting it: most of the time the response was lost, not the
+ * order, and it is already on the book.
+ */
+async function recheckUnanswered(
+  client: ClobClient,
+  result: SubmitResult,
+  tokenId: string,
+  kind: 'BUY' | 'SELL',
+  submittedAt: number,
+): Promise<SubmitResult> {
+  if (!result.unknown) return result
+  await sleep(UNKNOWN_RECHECK_DELAY_MS)
+  const found = await findOrderOnExchange(client, tokenId, kind, submittedAt)
+  return found.state === 'went_through' ? { success: true, orderId: found.orderId } : result
+}
+
+/**
+ * Holds back a new order on a token while an earlier one on it is still
+ * unconfirmed (logged 'unknown'), so "Order failed? Try again" can never turn
+ * into two orders. Asks the exchange first:
+ * - the earlier order is there: record it as placed and refuse this one
+ *   once, so a second order is a decision rather than an accident;
+ * - nothing there and a minute has passed: record it as failed and go ahead;
+ * - otherwise, including when the exchange can't be reached: refuse.
+ * Returns the refusal, or null to go ahead.
+ */
+async function guardUnconfirmedOrder(client: ClobClient, tokenId: string): Promise<OrderSubmitResult | null> {
+  const pending = await findPendingUnknown(tokenId)
+  if (!pending) return null
+  const found = await findOrderOnExchange(client, tokenId, pending.kind === 'SELL' ? 'SELL' : 'BUY', pending.timestamp)
+  if (found.state === 'went_through') {
+    await updateTradeStatus(pending.id, {
+      status: 'placed',
+      error: undefined,
+      ...(found.orderId ? { ref: found.orderId } : {}),
+    })
+    return { ok: false, error: 'previous_order_went_through' }
+  }
+  if (found.state === 'not_found' && Date.now() - pending.timestamp >= UNKNOWN_SETTLE_MS) {
+    await updateTradeStatus(pending.id, { status: 'failed', error: 'not_found_on_exchange' })
+    return null
+  }
+  return { ok: false, error: 'previous_order_unconfirmed' }
+}
+
+/** What an order call reports for a submit that did not succeed. */
+function failedSubmit(result: SubmitResult): OrderSubmitResult {
+  return result.unknown
+    ? { ok: false, unknown: true, error: `order_status_unknown:${result.error ?? 'no_answer'}` }
+    : { ok: false, error: result.error ?? 'unknown_error' }
 }
 
 export async function placeOrder(args: PlaceOrderArgs): Promise<OrderSubmitResult> {
@@ -426,6 +501,11 @@ export async function placeOrder(args: PlaceOrderArgs): Promise<OrderSubmitResul
     funderAddress: args.state.safeAddress,
     creds: args.state.creds,
   })
+
+  // Before any signature: an earlier order on this token that the exchange
+  // never confirmed must be settled first - see guardUnconfirmedOrder.
+  const held = await guardUnconfirmedOrder(client, args.tokenId)
+  if (held) return held
 
   const isMarket = args.orderType === 'MARKET'
 
@@ -469,19 +549,23 @@ export async function placeOrder(args: PlaceOrderArgs): Promise<OrderSubmitResul
     order_type: args.orderType,
   })
 
-  // 2. Post the signed payload to CLOB with the matching execution type.
-  const result = await submitSignedOrder(
+  // 2. Post the signed payload to CLOB with the matching execution type. An
+  //    answer that never came is re-checked once before it is reported.
+  const submittedAt = Date.now()
+  const result = await recheckUnanswered(
     client,
-    signed,
-    isMarket ? OrderType.FOK : OrderType.GTC,
+    await submitSignedOrder(client, signed, isMarket ? OrderType.FOK : OrderType.GTC),
+    args.tokenId,
+    'BUY',
+    submittedAt,
   )
   if (!result.success) {
     void trackEvent('order_failed', settings, {
       side: args.side,
-      stage: 'submit',
+      stage: result.unknown ? 'submit_unknown' : 'submit',
       reason: result.error ?? 'unknown',
     })
-    return { ok: false, error: result.error ?? 'unknown_error' }
+    return failedSubmit(result)
   }
   void trackEvent('order_submitted', settings, {
     side: args.side,
@@ -554,6 +638,11 @@ export async function sellOrder(args: SellOrderArgs): Promise<OrderSubmitResult>
     creds: args.state.creds,
   })
 
+  // Same hold as placeOrder: a sell that may already have gone through must
+  // not be signed a second time on "it said failed".
+  const held = await guardUnconfirmedOrder(client, args.tokenId)
+  if (held) return held
+
   const isMarket = args.orderType === 'MARKET'
   let signed: unknown
   try {
@@ -583,18 +672,21 @@ export async function sellOrder(args: SellOrderArgs): Promise<OrderSubmitResult>
     order_type: args.orderType,
   })
 
-  const result = await submitSignedOrder(
+  const submittedAt = Date.now()
+  const result = await recheckUnanswered(
     client,
-    signed,
-    isMarket ? OrderType.FOK : OrderType.GTC,
+    await submitSignedOrder(client, signed, isMarket ? OrderType.FOK : OrderType.GTC),
+    args.tokenId,
+    'SELL',
+    submittedAt,
   )
   if (!result.success) {
     void trackEvent('order_failed', settings, {
       side: 'SELL',
-      stage: 'submit',
+      stage: result.unknown ? 'submit_unknown' : 'submit',
       reason: result.error ?? 'unknown',
     })
-    return { ok: false, error: result.error ?? 'unknown_error' }
+    return failedSubmit(result)
   }
   void trackEvent('order_submitted', settings, {
     side: 'SELL',

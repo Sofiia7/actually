@@ -766,7 +766,7 @@ const OrderFormWired: React.FC<OrderFormProps> = ({
   const [bookAttempt, setBookAttempt] = useState(0)
   const [estimate, setEstimate] = useState<{ effectivePrice: number; slippage: number } | null>(null)
   const [submitting, setSubmitting] = useState(false)
-  const [result, setResult] = useState<{ ok: boolean; msg: string; orderId?: string } | null>(null)
+  const [result, setResult] = useState<{ ok: boolean; unknown?: boolean; msg: string; orderId?: string } | null>(null)
   // Confirm step before the wallet signature prompt (ТЗ §6.5) - a misclick on
   // "Place order" opens this summary, not the wallet, so the user reviews
   // side/size/price/payout before committing to a signature.
@@ -885,6 +885,7 @@ const OrderFormWired: React.FC<OrderFormProps> = ({
       })
       setResult({
         ok: r.ok,
+        unknown: r.unknown,
         msg: r.ok
           ? orderType === 'LIMIT'
             ? `Limit order placed - ${effShares.toFixed(2)} shares of ${side === 'BUY_YES' ? 'Yes' : 'No'} at ${fmtC(price)}. It rests on the book until it fills.`
@@ -1134,19 +1135,32 @@ const OrderFormWired: React.FC<OrderFormProps> = ({
           was still resting. "Your positions & open orders" below re-fetches
           real CLOB state on every mount and owns cancelling. */}
       {result && (
+        // Three states, not two: an order Polymarket never answered for may
+        // be on the book anyway, and "failed" is exactly the word that makes
+        // someone sign it a second time (2026-09-08 audit F03).
         <div
           style={{
             padding: '12px 14px',
             borderRadius: 10,
-            background: result.ok ? 'rgba(30,110,60,.10)' : 'rgba(160,40,40,.09)',
-            border: `1px solid ${result.ok ? 'rgba(30,110,60,.45)' : 'rgba(160,40,40,.42)'}`,
+            background: result.ok
+              ? 'rgba(30,110,60,.10)'
+              : result.unknown
+                ? 'rgba(170,120,20,.10)'
+                : 'rgba(160,40,40,.09)',
+            border: `1px solid ${
+              result.ok ? 'rgba(30,110,60,.45)' : result.unknown ? 'rgba(170,120,20,.45)' : 'rgba(160,40,40,.42)'
+            }`,
             display: 'flex',
             flexDirection: 'column',
             gap: 6,
           }}
         >
-          <Etched size={14} weight={500} color={result.ok ? 'rgba(22,95,52,.98)' : 'rgba(150,32,32,.98)'}>
-            {result.ok ? '✓ Order placed' : '✕ Order failed'}
+          <Etched
+            size={14}
+            weight={500}
+            color={result.ok ? 'rgba(22,95,52,.98)' : result.unknown ? 'rgba(150,105,20,.98)' : 'rgba(150,32,32,.98)'}
+          >
+            {result.ok ? '✓ Order placed' : result.unknown ? '⚠ Order status unknown' : '✕ Order failed'}
           </Etched>
           <Etched size={12.5} weight={300} style={{ lineHeight: 1.45 }}>
             {result.msg}
@@ -1388,6 +1402,17 @@ const CLOB_ERROR_HINTS: Array<[RegExp, string]> = [
 ]
 
 function humanError(raw: string): string {
+  // Checked first: whatever reason rides along after the prefix, the point
+  // is that nobody knows yet whether the order is on the book.
+  if (raw.startsWith('order_status_unknown')) {
+    return "Polymarket didn't confirm this order, so it may or may not have gone through. It's in History as unconfirmed - check your open orders and positions before trying again. A new order on this market is held back until Polymarket confirms either way."
+  }
+  if (raw.includes('previous_order_unconfirmed')) {
+    return "Your previous order on this market is still unconfirmed, so a second one is held back for now. Give it a minute and try again - Polymarket is checked first, so the same order can't go through twice."
+  }
+  if (raw.includes('previous_order_went_through')) {
+    return 'Your previous order on this market did go through - History is updated. If you want another one, place it again.'
+  }
   if (raw.includes('signature_timeout')) {
     return "Your wallet never returned the signature. Open the wallet app, make sure there's no pending request waiting, and connect again."
   }

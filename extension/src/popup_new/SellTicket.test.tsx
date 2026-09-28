@@ -177,6 +177,27 @@ describe('humanSellError', () => {
   it('passes an unrecognised reason through rather than hiding it', () => {
     expect(humanSellError('some_new_clob_code', 5)).toBe('some_new_clob_code')
   })
+
+  // 2026-09-08 audit F03: a sell Polymarket never answered for may have gone
+  // through, and a FOK "reason" riding along must not turn it into "the book
+  // moved, try again".
+  it('explains an unconfirmed sell, and a sell held back by one', () => {
+    expect(humanSellError('order_status_unknown:FOK timeout', 5)).toMatch(/may or may not have gone through/)
+    expect(humanSellError('previous_order_unconfirmed', 5)).toMatch(/previous order on this market is still unconfirmed/)
+    expect(humanSellError('previous_order_went_through', 5)).toMatch(/previous order on this market did go through/)
+  })
+})
+
+describe('SellTicket - a sell the exchange never answered for', () => {
+  it('reads as unconfirmed, not as a failure', async () => {
+    opsm.sellOrderViaOffscreen.mockResolvedValue({ ok: false, unknown: true, error: 'order_status_unknown:Network Error' })
+    render(<SellTicket position={position} onDone={noop} onCancel={noop} />)
+    await waitFor(() => expect(screen.getByRole('button', { name: /Sell now/i })).toBeEnabled())
+    await userEvent.click(screen.getByRole('button', { name: /Sell now/i }))
+    await userEvent.click(screen.getByRole('button', { name: /Sign in wallet/i }))
+    expect(await screen.findByText(/^Status unknown:/)).toBeInTheDocument()
+    expect(screen.queryByText(/^Failed:/)).not.toBeInTheDocument()
+  })
 })
 
 describe('SellTicket - regressions from the 2026-08-16 audit', () => {

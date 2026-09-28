@@ -173,7 +173,7 @@ export type OffscreenResponse =
       wallet?: SerializableWalletState
       error?: string
     }
-  | { type: 'OS_ORDER_RESULT'; ok: boolean; orderId?: string; error?: string }
+  | { type: 'OS_ORDER_RESULT'; ok: boolean; orderId?: string; error?: string; unknown?: true }
   | {
       type: 'OS_ORDERBOOK'
       bestBid: number | null

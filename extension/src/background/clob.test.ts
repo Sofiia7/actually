@@ -116,6 +116,8 @@ describe('submitSignedOrder', () => {
     const r = await submitSignedOrder(client, {})
     expect(r.success).toBe(false)
     expect(r.error).toBe('invalid order minimum size')
+    // A 4xx is an answer: nothing was placed, so this is a plain failure.
+    expect(r.unknown).toBeUndefined()
   })
 
   it('stringifies a structured error body', async () => {
@@ -130,13 +132,37 @@ describe('submitSignedOrder', () => {
     expect(await submitSignedOrder(client, {})).toEqual({ success: false, error: 'clob_rejected' })
   })
 
-  it('reports failure when the SDK call throws', async () => {
+  it('reports an unconfirmed outcome, not a failure, when the SDK call throws', async () => {
     const client = fakePostClient(async () => {
       throw new Error('network_error')
     })
     const r = await submitSignedOrder(client, {})
     expect(r.success).toBe(false)
+    expect(r.unknown).toBe(true)
     expect(r.error).toContain('network_error')
+  })
+
+  // 2026-09-08 audit F03, extension side. The SDK does not throw on a lost
+  // response - it resolves { error } with no HTTP status - so the catch above
+  // never saw the case that matters most.
+  it('reports a lost response as unknown: the order may already be on the book', async () => {
+    const client = fakePostClient(async () => ({ error: 'Network Error' }))
+    expect(await submitSignedOrder(client, {})).toEqual({ success: false, error: 'Network Error', unknown: true })
+  })
+
+  it('reports a 5xx as unknown', async () => {
+    const client = fakePostClient(async () => ({ error: 'Bad Gateway', status: 502 }))
+    expect(await submitSignedOrder(client, {})).toEqual({ success: false, error: 'Bad Gateway', unknown: true })
+  })
+
+  it('reports a "duplicate" answer as unknown: the SDK retried once, so the first attempt may have landed', async () => {
+    const client = fakePostClient(async () => ({ error: 'order is invalid. Duplicated.', status: 400 }))
+    expect((await submitSignedOrder(client, {})).unknown).toBe(true)
+  })
+
+  it('reports an empty response as unknown', async () => {
+    const client = fakePostClient(async () => undefined)
+    expect(await submitSignedOrder(client, {})).toEqual({ success: false, error: 'empty_response', unknown: true })
   })
 })
 

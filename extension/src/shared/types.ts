@@ -74,6 +74,10 @@ export interface TradeLogItem {
   price?: number
   /** CLOB order id (BUY/SELL) or relayer transaction id (REDEEM). */
   ref?: string
+  /** BUY/SELL: the outcome token traded. Lets an unconfirmed ('unknown')
+   *  order hold back a second order on the same token until the exchange
+   *  has been checked (see trade.ts, guardUnconfirmedOrder). */
+  tokenId?: string
   /** Human-readable failure reason when status !== 'placed'. */
   error?: string
 }

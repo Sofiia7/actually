@@ -22,6 +22,7 @@ import {
   type UserOrderV2,
   type UserMarketOrderV2,
 } from '@polymarket/clob-client-v2'
+import { classifyOrderPost } from '@actually/core'
 import { BUILDER_CODE } from '../shared/constants'
 import type { OpenOrderSummary } from '../shared/types'
 import { WCSigner } from './wallet'
@@ -313,61 +314,48 @@ export async function signMarketBuyOrder(
   return client.createMarketOrder(userMarketOrder, opts)
 }
 
+export interface SubmitResult {
+  success: boolean
+  orderId?: string
+  error?: string
+  /**
+   * Neither a confirmed fill nor a confirmed rejection: the CLOB gave no
+   * definite answer, so the order may be on the book anyway. Callers must not
+   * present this as "failed" - a user who reads that retries, and a retried
+   * FOK can fill twice (2026-09-08 audit F03).
+   */
+  unknown?: true
+}
+
 /**
  * Submit-only step. Posts a previously-signed order to CLOB. `orderType` must
  * match how the order was built: GTC for a resting limit, FOK for a market buy.
  *
- * Two distinct failure shapes have to be read here (same trap as cancelOrder
- * below): a *logical* rejection comes back HTTP 200 as
- * `{ success: false, errorMsg }`, but a rejection the CLOB answers with a
- * non-2xx status never sets either field - `makeClient` doesn't enable
- * `throwOnError`, so clob-client-v2's errorHandling() resolves it to
- * `{ error, status }` instead. Reading only `errorMsg` collapsed every one of
- * those (below-minimum size, insufficient balance/allowance, bad tick, market
- * not accepting orders) into a bare "clob_rejected" with the actual reason
- * discarded - the user signed, paid nothing, and learned nothing.
+ * `makeClient` doesn't enable `throwOnError`, so the SDK resolves every
+ * failure instead of throwing, in shapes that mean different things - a 200
+ * with `success: false`, a 4xx `{ error, status }`, and a lost response as
+ * `{ error }` with no status at all. classifyOrderPost (@actually/core, shared
+ * with the MCP server) tells "the exchange said no" apart from "we don't
+ * know", and keeps the CLOB's own reason instead of a bare "clob_rejected".
+ * A throw can still happen after the POST went out, so it counts as unknown.
  */
 export async function submitSignedOrder(
   client: ClobClient,
   signed: unknown,
   orderType: OrderType = OrderType.GTC,
-): Promise<{ success: boolean; orderId?: string; error?: string }> {
+): Promise<SubmitResult> {
+  let res: unknown
   try {
     // SDK type is `SignedOrder` - we passed it through `unknown` to keep
     // the sign/submit boundary explicit. Cast back here.
-    const res = (await client.postOrder(
-      signed as Parameters<ClobClient['postOrder']>[0],
-      orderType,
-    )) as
-      // `status` is typed `string` on the SDK's success shape (e.g. "matched"),
-      // but the axios-error shape puts the numeric HTTP status in the same
-      // field - hence the union.
-      | { success?: boolean; errorMsg?: string; orderID?: string; error?: unknown; status?: number | string }
-      | undefined
-    if (!res) return { success: false, error: 'empty_response' }
-    if (res.success) return { success: true, orderId: res.orderID }
-    return { success: false, error: clobErrorText(res) ?? 'clob_rejected' }
+    res = await client.postOrder(signed as Parameters<ClobClient['postOrder']>[0], orderType)
   } catch (err) {
-    return { success: false, error: describeError(err) }
+    return { success: false, error: describeError(err), unknown: true }
   }
-}
-
-/**
- * Pull a human-meaningful reason out of either CLOB failure shape, or null
- * when the response genuinely carries none. Shared by the order path so a new
- * response shape only has to be taught here once.
- */
-function clobErrorText(res: {
-  errorMsg?: string
-  error?: unknown
-  status?: number | string
-}): string | null {
-  if (typeof res.errorMsg === 'string' && res.errorMsg.trim() !== '') return res.errorMsg
-  if (typeof res.error === 'string' && res.error.trim() !== '') return res.error
-  if (res.error !== undefined && res.error !== null) return JSON.stringify(res.error)
-  if (typeof res.status === 'number') return `clob_http_${res.status}`
-  if (typeof res.status === 'string' && res.status.trim() !== '') return `clob_status_${res.status}`
-  return null
+  const outcome = classifyOrderPost(res)
+  if (outcome.kind === 'accepted') return { success: true, orderId: outcome.orderId }
+  if (outcome.kind === 'unknown') return { success: false, error: outcome.error, unknown: true }
+  return { success: false, error: outcome.error }
 }
 
 /**
@@ -421,6 +409,55 @@ export async function listOpenOrders(client: ClobClient, marketId?: string): Pro
     status: o.status,
     outcome: o.outcome,
   }))
+}
+
+/** Allowance for our clock vs the exchange's when matching its records to an attempt. */
+const EXCHANGE_CLOCK_SKEW_MS = 60_000
+
+export type OrderSearch =
+  | { state: 'went_through'; orderId?: string }
+  | { state: 'not_found' }
+  | { state: 'unreachable' }
+
+/**
+ * Did an order we got no definite answer for reach the exchange after all?
+ * It did if it is resting on the book (an open order on `tokenId`, on our
+ * side, created since `sinceMs`) or if anything on `tokenId` has traded for
+ * us since then - a FOK that filled leaves no open order, only a trade. The
+ * trade side is not checked: counting an unrelated fill as "went through"
+ * costs the user one extra click, missing a real one costs a double order.
+ *
+ * `unreachable` when either lookup fails: the SDK resolves a failed GET to an
+ * error object, which has no `data` to spread and so throws right here.
+ */
+export async function findOrderOnExchange(
+  client: ClobClient,
+  tokenId: string,
+  kind: 'BUY' | 'SELL',
+  sinceMs: number,
+): Promise<OrderSearch> {
+  const fromMs = sinceMs - EXCHANGE_CLOCK_SKEW_MS
+  try {
+    const [open, trades] = await Promise.all([
+      client.getOpenOrders({ asset_id: tokenId }, true),
+      client.getTrades({ asset_id: tokenId, after: String(Math.floor(fromMs / 1000)) }, true),
+    ])
+    if (!Array.isArray(open) || !Array.isArray(trades)) return { state: 'unreachable' }
+    const resting = open.find(
+      (o) => String(o.side).toUpperCase() === kind && epochMs(o.created_at) >= fromMs,
+    )
+    if (resting) return { state: 'went_through', orderId: resting.id }
+    if (trades.length > 0) return { state: 'went_through' }
+    return { state: 'not_found' }
+  } catch {
+    return { state: 'unreachable' }
+  }
+}
+
+/** The CLOB reports order times in unix seconds; tolerate milliseconds too. */
+function epochMs(t: number | string): number {
+  const n = Number(t)
+  return n > 1e12 ? n : n * 1000
 }
 
 /**

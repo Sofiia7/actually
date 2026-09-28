@@ -20,7 +20,7 @@ import {
   SignatureTypeV2,
   type ApiKeyCreds,
 } from '@polymarket/clob-client-v2'
-import { deriveSafeAddress } from '@actually/core'
+import { classifyOrderPost, deriveSafeAddress } from '@actually/core'
 import { BUILDER_CODE } from './config'
 import type { EthersKeySigner } from './ethersKeySigner'
 
@@ -155,66 +155,38 @@ export async function signMarketBuyOrder(client: ClobClient, args: MarketBuyOrde
  * Submit-only step. Posts a previously-signed order to CLOB. `orderType` must
  * match how the order was built: GTC for a resting limit, FOK for a market buy.
  *
- * Mirrors extension/src/background/clob.ts. Two distinct failure shapes have
- * to be read: a *logical* rejection comes back HTTP 200 as
- * `{ success: false, errorMsg }`, but a rejection the CLOB answers with a
- * non-2xx status never sets either field - we don't enable `throwOnError`, so
- * clob-client-v2's errorHandling() resolves it to `{ error, status }`.
- * Reading only `errorMsg` collapsed every one of those (below-minimum size,
- * insufficient balance/allowance, bad tick) into a bare "clob_rejected",
- * leaving the calling agent nothing to act on.
+ * Mirrors extension/src/background/clob.ts. We don't enable `throwOnError`, so
+ * the SDK resolves every failure instead of throwing, in shapes that mean
+ * different things: a 200 with `success: false` and a 4xx `{ error, status }`
+ * are the exchange saying no, while a lost response comes back as `{ error }`
+ * with no status at all, and a 5xx or a "duplicate" (the SDK retries once by
+ * itself) may sit on top of an order that was accepted. classifyOrderPost
+ * (@actually/core) reads them, keeping the CLOB's own reason for the agent.
  *
- * A THIRD shape - `unknown: true` - marks a result that is neither a
- * confirmed fill nor a confirmed rejection: `postOrder` threw (network
- * failure, timeout, ...) or resolved with nothing at all. The exchange may
- * have already accepted the order upstream even though this process never
- * saw the answer (2026-09-08 audit F03) - callers must not treat `unknown`
- * the same as a confirmed "no" and release spend-guard budget for it.
+ * `unknown: true` marks a result that is neither a confirmed fill nor a
+ * confirmed rejection - including a throw, which can happen after the POST
+ * went out. The exchange may already hold the order (2026-09-08 audit F03),
+ * so callers must not release spend-guard budget for it. The first version of
+ * this fix only caught the throw and an empty response; the lost-response
+ * shape, the one that actually happens, still read as a rejection.
  */
 export async function submitSignedOrder(
   client: ClobClient,
   signed: unknown,
   orderType: OrderType = OrderType.GTC,
 ): Promise<{ success: boolean; orderId?: string; error?: string; unknown?: boolean }> {
+  let res: unknown
   try {
     // SDK type is `SignedOrder` - we passed it through `unknown` to keep the
     // sign/submit boundary explicit. Cast back here.
-    const res = (await client.postOrder(
-      signed as Parameters<ClobClient['postOrder']>[0],
-      orderType,
-    )) as
-      // `status` is typed `string` on the SDK's success shape (e.g. "matched"),
-      // but the axios-error shape puts the numeric HTTP status in the same
-      // field - hence the union.
-      | { success?: boolean; errorMsg?: string; orderID?: string; error?: unknown; status?: number | string }
-      | undefined
-    if (!res) return { success: false, error: 'empty_response', unknown: true }
-    if (res.success) return { success: true, orderId: res.orderID }
-    return { success: false, error: clobErrorText(res) ?? 'clob_rejected' }
+    res = await client.postOrder(signed as Parameters<ClobClient['postOrder']>[0], orderType)
   } catch (err) {
     return { success: false, error: String(err), unknown: true }
   }
-}
-
-/** Pull a human-meaningful reason out of either CLOB failure shape, or null
- * when the response genuinely carries none. */
-function clobErrorText(res: {
-  errorMsg?: string
-  error?: unknown
-  status?: number | string
-}): string | null {
-  if (typeof res.errorMsg === 'string' && res.errorMsg.trim() !== '') return res.errorMsg
-  if (typeof res.error === 'string' && res.error.trim() !== '') return res.error
-  // Only stringify a STRUCTURED error that stringifies to something readable.
-  // An empty string or bare {} would otherwise surface as '""' / '{}' - worse
-  // than the status fallback below.
-  if (res.error !== undefined && res.error !== null && typeof res.error !== 'string') {
-    const s = JSON.stringify(res.error)
-    if (s && s !== '{}' && s !== '[]') return s
-  }
-  if (typeof res.status === 'number') return `clob_http_${res.status}`
-  if (typeof res.status === 'string' && res.status.trim() !== '') return `clob_status_${res.status}`
-  return null
+  const outcome = classifyOrderPost(res)
+  if (outcome.kind === 'accepted') return { success: true, orderId: outcome.orderId }
+  if (outcome.kind === 'unknown') return { success: false, error: outcome.error, unknown: true }
+  return { success: false, error: outcome.error }
 }
 
 export interface SellOrderArgs {

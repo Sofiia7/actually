@@ -83,4 +83,29 @@ describe('submitSignedOrder', () => {
     const result = await submitSignedOrder(client, {})
     expect(result).toEqual({ success: false, error: 'empty_response', unknown: true })
   })
+
+  // The case the F03 fix above missed: the SDK does not throw on a lost
+  // response, it RESOLVES { error } with no HTTP status - which read as a
+  // confirmed rejection and released the reservation of an order that may
+  // be on the book.
+  it('marks a lost response the SDK resolves as { error } with no status as unknown', async () => {
+    const client = fakeOrderClient(async () => ({ error: 'timeout of 10000ms exceeded' }))
+    const result = await submitSignedOrder(client, {})
+    expect(result).toEqual({ success: false, error: 'timeout of 10000ms exceeded', unknown: true })
+  })
+
+  it('marks a 5xx as unknown', async () => {
+    const client = fakeOrderClient(async () => ({ error: 'Bad Gateway', status: 502 }))
+    expect((await submitSignedOrder(client, {})).unknown).toBe(true)
+  })
+
+  it('marks a "duplicate" answer as unknown: the SDK retried once, so the first attempt may have landed', async () => {
+    const client = fakeOrderClient(async () => ({ error: 'order is invalid. Duplicated.', status: 400 }))
+    expect((await submitSignedOrder(client, {})).unknown).toBe(true)
+  })
+
+  it('keeps a 4xx a confirmed rejection, with the CLOB reason', async () => {
+    const client = fakeOrderClient(async () => ({ error: 'invalid order minimum size', status: 400 }))
+    expect(await submitSignedOrder(client, {})).toEqual({ success: false, error: 'invalid order minimum size' })
+  })
 })

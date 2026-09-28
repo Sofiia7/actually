@@ -424,7 +424,10 @@ export async function handle(msg: OffscreenRequest): Promise<OffscreenResponse> 
       // the one that durably records what happened (2026-09-08 audit F13).
       void logTrade({
         kind: 'BUY',
-        status: r.ok ? 'placed' : 'failed',
+        // 'unknown' is not cosmetic: that row is what holds back a second
+        // order on this token until the exchange has been checked (trade.ts,
+        // guardUnconfirmedOrder), and tokenId is how it finds the token.
+        status: r.ok ? 'placed' : r.unknown ? 'unknown' : 'failed',
         question: msg.args.question,
         marketSlug: msg.args.marketSlug,
         outcome: msg.args.outcome,
@@ -433,6 +436,7 @@ export async function handle(msg: OffscreenRequest): Promise<OffscreenResponse> 
         shares: orderShares(msg.args.sizeUsd, msg.args.price),
         price: msg.args.price,
         ref: r.orderId,
+        tokenId: msg.args.tokenId,
         error: r.ok ? undefined : r.error,
       })
       return { type: 'OS_ORDER_RESULT', ...r }
@@ -454,7 +458,7 @@ export async function handle(msg: OffscreenRequest): Promise<OffscreenResponse> 
       // See OS_PLACE_ORDER above - same reason this can't be left to the popup.
       void logTrade({
         kind: 'SELL',
-        status: r.ok ? 'placed' : 'failed',
+        status: r.ok ? 'placed' : r.unknown ? 'unknown' : 'failed',
         question: msg.args.question,
         marketSlug: msg.args.marketSlug,
         outcome: msg.args.outcome,
@@ -463,6 +467,7 @@ export async function handle(msg: OffscreenRequest): Promise<OffscreenResponse> 
         price: msg.args.price,
         usd: msg.args.sizeShares * msg.args.price,
         ref: r.orderId,
+        tokenId: msg.args.tokenId,
         error: r.ok ? undefined : r.error,
       })
       return { type: 'OS_ORDER_RESULT', ...r }
