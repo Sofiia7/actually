@@ -1,5 +1,5 @@
 /**
- * Live matching-quality eval. NOT a unit test — it needs network (the
+ * Live matching-quality eval. NOT a unit test - it needs network (the
  * worker's /market-cache blob) and the local MiniLM model, so it runs on
  * demand, not in CI:
  *
@@ -10,7 +10,7 @@
  * the machine this runs on).
  *
  * Each case pins a headline to an expectation against the LIVE market cache.
- * Expectations are deliberately loose regexes — the cache's exact contents
+ * Expectations are deliberately loose regexes - the cache's exact contents
  * drift as markets open and close, so we assert "a market about X", not a
  * specific market id. When the pool genuinely lacks a right market, the
  * correct behavior is no confident match, hence `none` / `not` cases.
@@ -61,7 +61,7 @@ const CASES: EvalCase[] = [
     expect: /fed .*(rate|bps)|interest rates/i,
   },
   {
-    name: 'Bitcoin $120k — must not pick a conflicting price level',
+    name: 'Bitcoin $120k - must not pick a conflicting price level',
     text: 'Bitcoin climbs above $120,000 as spot ETF inflows accelerate',
     kind: 'confident',
     expect: /bitcoin.*120,000/i,
@@ -79,7 +79,7 @@ const CASES: EvalCase[] = [
     expect: /ceasefire|peace deal/i,
   },
   {
-    name: 'Ukraine war (article-length) — regression: must not match Putin-leadership/election',
+    name: 'Ukraine war (article-length) - regression: must not match Putin-leadership/election',
     text:
       'Russian forces launched one of the largest drone and missile attacks on Kyiv in months, ' +
       'killing at least 12 people and damaging residential buildings. Ukrainian officials said air ' +
@@ -94,7 +94,7 @@ const CASES: EvalCase[] = [
     expect: /france.*(final|world cup)/i,
   },
   {
-    name: 'Apple AI event — no Apple market exists; xAI/OpenAI junk must not be CONFIDENT',
+    name: 'Apple AI event - no Apple market exists; xAI/OpenAI junk must not be CONFIDENT',
     text: 'Apple unveils new AI features for iPhone at its developer event',
     kind: 'not',
     reject: /xai|openai|google/i,
@@ -110,7 +110,7 @@ const CASES: EvalCase[] = [
     kind: 'none',
   },
   {
-    name: 'Taylor Swift album — Rihanna-album market must not be CONFIDENT',
+    name: 'Taylor Swift album - Rihanna-album market must not be CONFIDENT',
     text: 'Taylor Swift announces a new album release date',
     kind: 'not',
     reject: /rihanna|carti|drake/i,

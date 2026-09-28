@@ -20,9 +20,13 @@ import { readdirSync, readFileSync, statSync } from 'node:fs'
 import { join, sep, resolve } from 'node:path'
 
 const ROOT = resolve(process.argv[2] ?? '..')
-const SKIP_DIRS = new Set(['node_modules', '.git', 'dist', '.wrangler', 'public', 'coverage'])
+// .claude holds agent session state, including whole git worktrees - copies
+// of this repo whose paths the ALLOWED entry below can never match.
+const SKIP_DIRS = new Set(['node_modules', '.git', '.claude', 'dist', '.wrangler', 'public', 'coverage'])
 const SKIP_FILES = new Set(['package-lock.json'])
-const EXT = /\.(ts|tsx|js|mjs|cjs|md|json|html|css|yml|yaml)$/
+// Comments hide in config too: wrangler.toml, the .env.example files and a
+// .mts eval script all carried long dashes this list used to walk past.
+const EXT = /(\.(ts|tsx|mts|cts|js|mjs|cjs|md|json|html|css|yml|yaml|toml|example|txt|sh|py)|^\.gitignore)$/
 const ALLOWED = [
   // extension/src/background/extractor.ts: splits foreign page titles.
   { file: 'extension/src/background/extractor.ts', contains: 'document.title.split' },

@@ -4,7 +4,7 @@ dist/
 *.log
 .DS_Store
 
-# Build / packaging artifacts — never commit
+# Build / packaging artifacts - never commit
 *.zip
 *.tar.gz
 *.crx
@@ -19,7 +19,7 @@ worker/.dev.vars
 *.local
 
 # Bundled model + WASM runtime (populated by `npm run models:fetch`, see
-# scripts/fetch-model.mjs). ~33MB — reproducibly fetched at build time
+# scripts/fetch-model.mjs). ~33MB - reproducibly fetched at build time
 # instead of committed, same rationale as node_modules/.
 public/models/
 public/onnx/

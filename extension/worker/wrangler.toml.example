@@ -1,7 +1,7 @@
 # Copy this file to wrangler.toml and fill in real values LOCALLY.
 # Do NOT commit your real KV namespace id, extension id, or account id.
 #
-# Requires the Workers PAID plan (not Free) — RATE_LIMITER_DO is a Durable
+# Requires the Workers PAID plan (not Free) - RATE_LIMITER_DO is a Durable
 # Object, which Cloudflare doesn't offer on the Free tier. `wrangler deploy`
 # will fail on the [[migrations]] block below if you're on Free.
 #
@@ -9,7 +9,7 @@
 #   1. cp wrangler.toml.example wrangler.toml
 #   2. npx wrangler login                               # CF auth
 #   3. npx wrangler kv namespace create MARKET_CACHE     # copy returned id below
-#      (RATE_LIMITER_DO needs no separate creation step — `wrangler deploy`
+#      (RATE_LIMITER_DO needs no separate creation step - `wrangler deploy`
 #      provisions it from the [[migrations]] block below.)
 #   4. Edit the `id =` line below with the returned id
 #   5. Set ALLOWED_EXTENSION_ID to your unpacked / CWS extension id
@@ -31,7 +31,7 @@ workers_dev = true
 
 # Atomic rate limiting + OpenAI daily cap (see worker/index.ts's RateLimiterDO).
 # Durable Object storage is provisioned automatically by `wrangler deploy` via
-# the [[migrations]] block — no `wrangler kv namespace create`-style manual
+# the [[migrations]] block - no `wrangler kv namespace create`-style manual
 # step needed, unlike the KV namespaces below.
 [[durable_objects.bindings]]
 name = "RATE_LIMITER_DO"
@@ -58,10 +58,10 @@ WORKER_DEV_MODE = ""  # set to "true" only for local dev
 # Aggregate daily cap on embedded characters across all clients (≈ tokens).
 # OPENAI_DAILY_CHAR_LIMIT = "5000000"
 
-# Secrets — DO NOT put in this file. Use wrangler secret put.
-#   WORKER_SHARED_SECRET — random 32+ chars, baked into extension as VITE_WORKER_SECRET
-#   OPENAI_API_KEY       — only for centralized OpenAI embedding fallback
-#   MARKET_CACHE_WRITE_SECRET — random 32+ chars (openssl rand -hex 32). Set
+# Secrets - DO NOT put in this file. Use wrangler secret put.
+#   WORKER_SHARED_SECRET - random 32+ chars, baked into extension as VITE_WORKER_SECRET
+#   OPENAI_API_KEY       - only for centralized OpenAI embedding fallback
+#   MARKET_CACHE_WRITE_SECRET - random 32+ chars (openssl rand -hex 32). Set
 #                             via `wrangler secret put MARKET_CACHE_WRITE_SECRET`.
 #                             Distinct from WORKER_SHARED_SECRET: the shared
 #                             secret is baked into public clients (extension,

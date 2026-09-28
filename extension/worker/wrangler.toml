@@ -15,7 +15,7 @@ compatibility_flags = ["nodejs_compat"]
 workers_dev = true
 
 # Atomic rate limiting + OpenAI daily cap (see worker/index.ts's RateLimiterDO).
-# Requires the Workers PAID plan — Durable Objects aren't on Workers Free.
+# Requires the Workers PAID plan - Durable Objects aren't on Workers Free.
 # Provisioned automatically by `wrangler deploy` via [[migrations]] below, no
 # manual `wrangler kv namespace create`-style step needed.
 [[durable_objects.bindings]]
@@ -27,7 +27,7 @@ tag = "v1-rate-limiter" # bump the tag if RateLimiterDO's class ever changes sha
 new_sqlite_classes = ["RateLimiterDO"]
 
 # Telemetry persistence (bound via dashboard 2026-07-13; keep this block in
-# sync — a future `wrangler deploy` without it would silently DROP the
+# sync - a future `wrangler deploy` without it would silently DROP the
 # dashboard-added binding).
 [[analytics_engine_datasets]]
 binding = "TELEMETRY"
@@ -46,7 +46,7 @@ head_sampling_rate = 1
 binding = "MARKET_CACHE"
 # Create with: npx wrangler kv namespace create MARKET_CACHE
 # The real id is committed deliberately: a KV namespace id is not a secret
-# (useless without an account API token) — see SECURITY.md. Fork operators
+# (useless without an account API token) - see SECURITY.md. Fork operators
 # replace it with their own namespace's id.
 id = "e1c0e2aa31b94900847aca14def4b261"
 
@@ -77,11 +77,11 @@ WORKER_DEV_MODE = ""
 EXTRA_BLOCKED_COUNTRIES = ""
 #
 # Secrets to set via `wrangler secret put`:
-#   WORKER_SHARED_SECRET    — random 32+ chars (openssl rand -hex 32),
+#   WORKER_SHARED_SECRET    - random 32+ chars (openssl rand -hex 32),
 #                             also baked into the extension via
 #                             VITE_WORKER_SECRET. Rotate together.
-#   OPENAI_API_KEY          — only if you offer centralized OpenAI embeddings
-#   MARKET_CACHE_WRITE_SECRET — separate secret gating PUT /market-cache,
+#   OPENAI_API_KEY          - only if you offer centralized OpenAI embeddings
+#   MARKET_CACHE_WRITE_SECRET - separate secret gating PUT /market-cache,
 #                             used by the cron precompute job (never baked
 #                             into the extension or MCP server).
 
