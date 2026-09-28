@@ -122,74 +122,43 @@ who want the axios/ethers versions bumped regardless should pin an
 
 **Removed:** `prepare_order` (returning an "unsigned order to sign elsewhere") was cut before publish - `@polymarket/clob-client-v2`'s `createOrder`/`createMarketOrder` sign internally with no public API to construct genuine unsigned EIP-712 typed data, so the tool could never honestly deliver on "sign this exact object unchanged." If you need a sign-elsewhere flow, run your own `ClobClient` with a custom signer instead.
 
-## Local embedding dependency - known critical advisory, deliberately not force-fixed
+## Local embedding dependency
 
-**Triage (checked 2026-07-20):** `check_news`'s local embedder (`@xenova/transformers@2.17.2`,
-shared with the browser extension) bundles a pinned, old `onnxruntime-web@1.14.0`,
-which pulls `onnx-proto@4.0.4` → `protobufjs@6.11.6` - `npm audit` flags
-`protobufjs<=7.6.2` as **critical** (arbitrary code execution / prototype
-pollution in generated message code). `@xenova/transformers` is itself frozen
-at `2.17.2` (its entire usable 2.x range pins this same vulnerable chain -
-`npm audit`'s own suggested fix is a *downgrade*, i.e. there is no forward
-fix within this package). The real fix is migrating to its actively
-maintained successor, `@huggingface/transformers` (currently `4.x`, a
-different package with a changed API surface) - not attempted here: it's a
-genuine migration of the code both products use for every embedding
-(matching quality, WASM loading, and the offscreen-document CSP path all
-need re-verification), and doing that same-day under launch pressure risks a
-silent regression in match quality more than it removes real risk today.
+**Fixed 2026-09-28 (audit F11).** `check_news` embeds text with
+`@xenova/transformers@2.17.2`, which depends on `onnxruntime-web@1.14.0` ->
+`onnx-proto` -> `protobufjs@6.11.6` (critical per `npm audit`) and on
+`sharp@0.32` (high). The monorepo's `overrides` never reached a consumer's
+install, because npm only applies the overrides of the install root.
 
-**Why this is lower real-world risk than "critical" suggests for this
-specific product:** protobufjs's vulnerable code paths need attacker-supplied
-protobuf/JSON schema data reaching `.load()`/dynamic descriptor parsing at
-*runtime*. Here, protobufjs only ever parses one thing: the `model_quantized.onnx`
-file. No request-time input - not the news text being embedded, not anything a
-website or calling agent controls - ever reaches protobufjs; only the
-inference tensors do, which is a different, unrelated code path. The
-practically-reachable attack here was always the model file's *supply
-chain* (an untrusted or swapped `.onnx` file). How that's closed differs
-between this package and the extension, and it's worth being precise about
-which applies here:
-- **The extension** bundles the model at *build time* - `npm run
-  models:fetch` (`extension/scripts/fetch-model.mjs`) fetches it once
-  against a pinned commit and verifies each file's SHA-256 before it's
-  baked into the shipped `.crx`. No runtime fetch happens at all.
-- **This package** (`src/embedder.ts`) fetches the model *lazily at
-  runtime*, on the first `check_news` call, via transformers.js's own
-  loader - pinned to the same immutable commit revision (`LOCAL_MODEL_REVISION`,
-  shared from `@actually/core` so both products can never drift onto
-  different models), but with no separate hash check on this package's
-  side. The commit pin is the integrity guarantee here: an immutable git
-  commit's file contents can't change after the fact, so pinning it (rather
-  than `main`, a mutable ref) is what prevents a future run silently
-  fetching different bytes - there's no extra hash-verification step
-  layered on top the way the extension's build-time fetch has one.
+The published package now bundles `@xenova/transformers` into `dist/` at build
+time and swaps `onnxruntime-web` and `sharp` for stubs (`tsup.config.ts`,
+`src/stubs/`): under Node the library only ever runs on `onnxruntime-node`, and
+this server only embeds text. A consumer install contains no
+`onnxruntime-web`, `onnx-proto`, `protobufjs` or `sharp` at all.
+`onnxruntime-node@1.14.0`, the engine that actually runs the model, is a direct
+dependency - the same version as before, so embeddings are bit-identical to the
+unbundled library (checked on English, Cyrillic and number-heavy text). The
+install also shrank: 220 tarballs / ~171 MB compressed instead of 294 / ~206 MB.
 
-**Migration attempted 2026-07-24, blocked on a real (not hypothetical) native-binding
-issue, not abandoned by choice:** swapped `packages/mcp-server/src/embedder.ts` to
-`@huggingface/transformers@4.2.0` (the official successor package - same
-maintainer/project, confirmed the `pipeline()`/`env` API is unchanged) and verified
-the mocked unit tests pass unmodified. But `@huggingface/transformers`'s package
-`exports` map resolves to `dist/transformers.node.mjs` for ANY Node.js runtime
-(`"node"` export condition, no override available - deep imports into
-`dist/transformers.web.js` are blocked by the package's strict `exports` map), and
-that Node build unconditionally attempts `require('onnxruntime-node')` - a ~220MB
-native addon - at module-import time, before `pipeline()`'s own `device: 'wasm'`
-option is even read. On this development machine that native binary threw
-`ERR_DLOPEN_FAILED` / "the operating system cannot run %1" (the classic Windows
-native-addon-ABI-mismatch error, likely a missing MSVC redistributable or a
-too-new Node version the prebuilt binary doesn't support) - an environment/system
-issue outside what a code change can route around, not a logic bug in this
-package. Reverted; `@xenova/transformers` stays in place for now.
+The model itself is fetched lazily on the first `check_news` call, pinned to an
+immutable commit (`LOCAL_MODEL_REVISION`, shared from `@actually/core` with the
+extension). The commit pin is the integrity guarantee here; the extension goes
+further and verifies each file's SHA-256 when it bakes the model in at build
+time.
 
-Tracked as a real fast-follow, not dismissed: retry the
-`@huggingface/transformers` migration once either (a) the native `onnxruntime-node`
-binding loads cleanly in the actual deployment/dev environment, or (b) the package
-ships a documented way to force its WASM-only path under Node (no env var or
-`--conditions` override was found to do this as of 4.2.0). Whichever environment
-attempts this next should run a full matching-quality regression pass
-(`npm run eval:matching -w @actually/core`) before shipping it - this was not
-yet possible to attempt end-to-end here.
+Moving to `@huggingface/transformers` is no longer needed for security, and
+would cost size: `onnxruntime-node@1.30.0` alone is 301 MB unpacked. An attempt
+on 2026-07-24 also hit `ERR_DLOPEN_FAILED` loading that native binding on
+Windows. Re-evaluate only if 2.17.2 stops working.
+
+Still flagged in a consumer install, and why they stay:
+- `axios@0.27.2` via `@polymarket/builder-relayer-client@0.0.10` (its latest
+  release pins `^0.27.2`). The advisories need an attacker-chosen URL or cookie;
+  this package only calls fixed Polymarket hosts. Moving it to axios 1.x
+  changes the `Content-Type` of the relayer `/submit` request, which cannot be
+  verified without a live redeem - so it waits for Polymarket's own update.
+- `ws@8.18.0` via ethers v5 (`@ethersproject/providers`). It backs ethers'
+  WebSocketProvider, which this package never constructs.
 
 ## `@modelcontextprotocol/sdk` - a moderate advisory with no better version to move to
 
@@ -244,10 +213,12 @@ you are never charged extra by us. `redeem_position` carries no builder code
 
 ## Notes on cold start
 
-The embedder (`@xenova/transformers`, local MiniLM) downloads a ~33MB ONNX
-model on its *first* `check_news` call, not on server startup - an operator
-using only the trading tools never pays this cost. Expect the first
-`check_news` call in a fresh install to take longer than subsequent ones.
+The very first `npx actually-mcp-server` downloads about 171 MB of packages,
+and the embedder (local MiniLM) downloads a ~34 MB ONNX model on its *first*
+`check_news` call, not on server startup - an operator using only the trading
+tools never pays that part. On a slow connection the first launch can outlast a
+client's start-up timeout; running `npx -y actually-mcp-server` once in a
+terminal fills the cache, and later launches start in seconds.
 
 Separately, `@polymarket/builder-relayer-client` (needed for `redeem_position`)
 adds ~2-3s to every server *startup* regardless of which tools you actually

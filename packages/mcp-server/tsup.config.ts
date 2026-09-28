@@ -39,7 +39,24 @@ export default defineConfig({
   clean: true,
   // @actually/core is a private workspace package, never published - it MUST
   // be bundled into dist/index.js, not left as an external import.
-  noExternal: ['@actually/core'],
+  //
+  // @xenova/transformers is bundled too, with its two browser/image
+  // dependencies swapped for stubs (esbuildOptions below), so a consumer's
+  // install tree no longer contains onnxruntime-web, onnx-proto's protobufjs 6
+  // or sharp at all (2026-09-08 audit F11). onnxruntime-node stays external:
+  // it is the native engine that actually runs the model, the very same
+  // version as before, so embeddings are unchanged. An earlier attempt
+  // bundled onnxruntime-web and onnx-proto themselves, whose CommonJS
+  // require()/__filename use does not survive esbuild's ESM output; stubbing
+  // them instead means none of that code is ever bundled.
+  noExternal: ['@actually/core', '@xenova/transformers', '@huggingface/jinja'],
+  external: ['onnxruntime-node'],
+  esbuildOptions(options) {
+    options.alias = {
+      'onnxruntime-web': './src/stubs/onnxruntime-web.ts',
+      sharp: './src/stubs/sharp.ts',
+    }
+  },
   banner: { js: '#!/usr/bin/env node' },
   define: {
     __BUILDER_CODE__: JSON.stringify(BUILDER_CODE),

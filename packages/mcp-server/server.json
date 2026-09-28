@@ -3,12 +3,12 @@
   "name": "io.github.Sofiia7/actually",
   "description": "Matches news to Polymarket markets and returns the market's probability. Optional capped trading.",
   "websiteUrl": "https://github.com/Sofiia7/actually",
-  "version": "0.1.7",
+  "version": "0.1.9",
   "packages": [
     {
       "registryType": "npm",
       "identifier": "actually-mcp-server",
-      "version": "0.1.7",
+      "version": "0.1.9",
       "transport": {
         "type": "stdio"
       },
