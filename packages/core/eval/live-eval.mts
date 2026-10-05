@@ -44,17 +44,33 @@ function workerCreds(): { url: string; secret: string } {
 interface EvalCase {
   name: string
   text: string
+  /** Article body; the headline stands in for it when absent. */
+  body?: string
   /** 'confident' = top match must hit `expect` and not be lowConfidence.
    *  'top'       = top match must hit `expect`, at any confidence.
    *  'top3'      = `expect` must appear in top match or first 3 alternatives.
    *  'none'      = no match at all (below floor).
-   *  'not'       = whatever matches, the top match must NOT hit `reject` as CONFIDENT. */
-  kind: 'confident' | 'top' | 'top3' | 'none' | 'not'
+   *  'not'       = whatever matches, the top match must NOT hit `reject` as CONFIDENT.
+   *  'avoid'     = the top match must NOT hit `reject` at any confidence. */
+  kind: 'confident' | 'top' | 'top3' | 'none' | 'not' | 'avoid'
   expect?: RegExp
   reject?: RegExp
 }
 
 const CASES: EvalCase[] = [
+  {
+    // 2026-10-05: Motley Fool's piece, read with its body, landed on "Will
+    // Ethereum dip to $1,500?". The cache had no stock market market, so the
+    // right answer is a weak match on something about stocks or the economy,
+    // never a crypto price ladder. The body is a paraphrase, not the article.
+    name: 'Stock market crash worry - must not land on a crypto price market',
+    text: 'Worried About a Stock Market Crash? History Says Not So Fast.',
+    body:
+      'Every bear market in the S&P 500 has been followed by a bull market that reached new highs, ' +
+      'from the dot-com crash to the Great Recession. Investors who held on through the downturns were rewarded.',
+    kind: 'avoid',
+    reject: /bitcoin|ethereum|solana|xrp|dogecoin|hyperliquid/i,
+  },
   {
     // 2026-10-05: a $7.7k district-margin bracket ("MI-11 ... by 30%-35%")
     // and a 2028 market both outranked House control on this headline.
@@ -157,7 +173,7 @@ const thresholds = defaultThresholds('local')
 
 let failed = 0
 for (const c of CASES) {
-  const m = await findMatch(c.text, c.text, { store, embedder, thresholds })
+  const m = await findMatch(c.text, c.body ?? c.text, { store, embedder, thresholds })
   const desc = m
     ? `raw=${m.confidence.toFixed(3)} ${m.lowConfidence ? 'LOW' : 'CONFIDENT'} -> "${m.market.question}"`
     : 'NO MATCH'
@@ -177,6 +193,9 @@ for (const c of CASES) {
       break
     case 'not':
       ok = !m || m.lowConfidence || !c.reject!.test(m.market.question)
+      break
+    case 'avoid':
+      ok = !m || !c.reject!.test(m.market.question)
       break
   }
   if (!ok) failed++

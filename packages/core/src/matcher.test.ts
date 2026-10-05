@@ -8,6 +8,7 @@ import {
   findMatch,
   keywordOverlapBonus,
   numberOverlapScore,
+  priceSubjectScore,
 } from './matcher'
 import type { CachedMarket } from './types'
 import { floatArrayToB64 } from './util'
@@ -243,6 +244,76 @@ describe('findMatch - a midterms article finds the midterms market (live failure
       { store: { getMarkets: async () => markets() }, embedder, thresholds },
     )
     expect(result?.market.id).toBe('pres2028')
+  })
+})
+
+describe('priceSubjectScore', () => {
+  const crashStory =
+    'Worried About a Stock Market Crash? History Says Not So Fast. Every bear market in the S&P 500 has ended in a bull market.'
+
+  it('marks down a price market whose asset the article never names', () => {
+    expect(priceSubjectScore(crashStory, 'Will Ethereum dip to $1,500 by December 31, 2026?')).toBeCloseTo(-0.05, 6)
+    expect(priceSubjectScore(crashStory, 'Will the price of Bitcoin be above $88,000 on October 5?')).toBeCloseTo(-0.05, 6)
+    expect(priceSubjectScore(crashStory, 'Will Gold (GC) hit (HIGH) $6,000 by end of December?')).toBeCloseTo(-0.05, 6)
+  })
+
+  it('leaves it alone when the article names the asset, by name or by ticker', () => {
+    expect(priceSubjectScore('Ethereum slides toward $2,000', 'Will Ethereum dip to $1,500 by December 31, 2026?')).toBe(0)
+    expect(priceSubjectScore('ETH slides toward $2,000', 'Will Ethereum dip to $1,500 by December 31, 2026?')).toBe(0)
+    expect(priceSubjectScore('BTC tops $120,000 for the first time', 'Will Bitcoin reach $150,000 in October?')).toBe(0)
+    expect(priceSubjectScore('Oil jumps after OPEC cuts output', 'Will WTI Crude Oil (WTI) hit (HIGH) $100 in October?')).toBe(0)
+  })
+
+  it('counts a story about crypto as a whole as naming every coin', () => {
+    expect(priceSubjectScore('Crypto sell-off deepens as traders flee risk', 'Will Solana reach $600 by December 31, 2026?')).toBe(0)
+  })
+
+  it('goes by the name, not by filler words like market or cap', () => {
+    const q = "Will Anthropic's market cap be between $2.25T and $2.5T at market close on IPO day?"
+    expect(priceSubjectScore('Stock market rally lifts big tech valuations', q)).toBeCloseTo(-0.05, 6)
+    expect(priceSubjectScore('Anthropic files for its IPO', q)).toBe(0)
+    expect(priceSubjectScore('Token launches surge this week', 'Variational FDV above $1B one day after launch?')).toBeCloseTo(-0.05, 6)
+  })
+
+  it('ignores markets that are not about a price', () => {
+    expect(priceSubjectScore(crashStory, 'AI bubble burst in 2026?')).toBe(0)
+    expect(priceSubjectScore(crashStory, 'US recession by end of 2026?')).toBe(0)
+    expect(priceSubjectScore(crashStory, 'Will Trump sign a $1 trillion infrastructure bill?')).toBe(0)
+  })
+})
+
+describe('findMatch - a stock market article does not land on a crypto price market (live failure 2026-10-05)', () => {
+  const thresholds = { confidenceThreshold: 0.45, lowConfidenceFloor: 0.35 }
+  const at = (raw: number) => [raw, Math.sqrt(1 - raw * raw), 0]
+
+  // Raw cosines and volumes as the live cache scored Motley Fool's "Worried
+  // About a Stock Market Crash?" with its body on 2026-10-05. The cache had
+  // no stock market market at all, and an Ethereum price ladder came first.
+  const markets = () => [
+    fakeMarket({ id: 'eth', question: 'Will Ethereum dip to $2,000 by December 31, 2026?', volume: 555_260, vec: at(0.484) }),
+    fakeMarket({ id: 'ai', question: 'AI bubble burst in 2026?', volume: 2_426_380, vec: at(0.478) }),
+    fakeMarket({ id: 'recession', question: 'US recession by end of 2026?', volume: 2_254_219, vec: at(0.462) }),
+  ]
+  const embedder = { embed: async () => new Float32Array([1, 0, 0]) }
+  const store = { getMarkets: async () => markets() }
+
+  it('puts a stock market market ahead of the crypto ladder', async () => {
+    const result = await findMatch(
+      'Worried About a Stock Market Crash? History Says Not So Fast.',
+      'Every bear market in the history of the S&P 500 has been followed by a bull market that reached new highs.',
+      { store, embedder, thresholds },
+    )
+    expect(result?.market.id).not.toBe('eth')
+    expect(result?.alternatives.map((m) => m.id)).toContain('recession')
+  })
+
+  it('still picks the Ethereum market for an article about Ethereum', async () => {
+    const result = await findMatch(
+      'Ethereum slides toward $2,000 as the crypto sell-off deepens',
+      'Ether fell 8% on the day.',
+      { store, embedder, thresholds },
+    )
+    expect(result?.market.id).toBe('eth')
   })
 })
 

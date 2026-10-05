@@ -1,7 +1,8 @@
 /**
  * Why did this article match that market? Prints the top markets for one
  * article against the LIVE cache, with every component of the ranking score
- * broken out: raw cosine, keyword bonus, number score, volume bonus. Needs
+ * broken out: raw cosine, keyword bonus, number score, bracket, far-future
+ * year, price subject and volume bonus. Needs
  * network and the local model, like live-eval.mts.
  *
  *   npx tsx eval/score-breakdown.mts <article.json> [topN] [regex to also show]
@@ -25,6 +26,7 @@ import {
   LOCAL_MODEL_ID,
   MAX_BODY_TEXT_CHARS,
   numberOverlapScore,
+  priceSubjectScore,
 } from '../src/index'
 import type { CachedMarket } from '../src/types'
 
@@ -58,15 +60,16 @@ const rows = blob.markets
     const n = numberOverlapScore(nums, m.question)
     const b = bracketScore(nums, m.question)
     const f = farFutureYearScore(`${article.headline} ${article.bodyText}`, m.question, now)
+    const s = priceSubjectScore(`${article.headline} ${article.bodyText}`, m.question)
     const v = m.volume > 0 ? Math.min(0.015, 0.002 * Math.log10(m.volume)) : 0
-    return { q: m.question, raw, k, n, b, f, v, score: raw + k + n + b + f + v, vol: m.volume }
+    return { q: m.question, raw, k, n, b, f, s, v, score: raw + k + n + b + f + s + v, vol: m.volume }
   })
   .filter((r) => r.raw >= floor)
   .sort((a, b) => b.score - a.score)
 
 console.log(`headline: ${article.headline}\nkeywords: ${[...kw].join(', ')} | numbers: ${[...nums].join(', ') || '-'}\n`)
 const fmt = (r: (typeof rows)[number], i: number) =>
-  `${String(i + 1).padStart(2)}. score ${r.score.toFixed(3)} = raw ${r.raw.toFixed(3)} + kw ${r.k.toFixed(2)} + num ${r.n.toFixed(2)} + bracket ${r.b.toFixed(2)} + year ${r.f.toFixed(2)} + vol ${r.v.toFixed(3)}  $${Math.round(r.vol).toLocaleString('en')}  ${r.q}`
+  `${String(i + 1).padStart(2)}. score ${r.score.toFixed(3)} = raw ${r.raw.toFixed(3)} + kw ${r.k.toFixed(2)} + num ${r.n.toFixed(2)} + bracket ${r.b.toFixed(2)} + year ${r.f.toFixed(2)} + subj ${r.s.toFixed(2)} + vol ${r.v.toFixed(3)}  $${Math.round(r.vol).toLocaleString('en')}  ${r.q}`
 rows.slice(0, topN).forEach((r, i) => console.log(fmt(r, i)))
 if (show) {
   console.log(`\nalso matching /${showArg}/:`)

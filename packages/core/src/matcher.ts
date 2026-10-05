@@ -228,6 +228,55 @@ export function farFutureYearScore(article: string | Set<number>, marketQuestion
   return far.every((y) => mentioned.has(y)) ? 0 : -0.05
 }
 
+/** Lowercase words in `text`, for "does the article name X" checks. */
+function wordsIn(text: string): Set<string> {
+  return new Set(text.toLowerCase().match(/[a-z0-9&]+/g) ?? [])
+}
+
+// A market on one asset's price: "Will Ethereum dip to $1,500 ...", "Will the
+// price of Bitcoin be above $88,000 ...", "Variational FDV above $1B ...".
+// Group 1 is what comes before the verb, and it names the asset.
+const PRICE_MARKET =
+  /^(?:will\s+)?(?:the\s+price\s+of\s+|the\s+)?(.+?)\s+(?:dip|drop|fall|reach|hit|rise|climb|close|trade|be|finish|end|stay|above|below)\b[^?]*\$\s?\d/i
+
+// Words beside an asset's name that name nothing by themselves.
+const NOT_A_NAME = new Set(['market', 'cap', 'price', 'prices', 'valuation', 'ipo', 'fdv', 'closing', 'net', 'worth', 'high', 'low'])
+
+// The same asset under the other names news uses for it.
+const ASSET_ALIASES: Record<string, string[]> = {
+  bitcoin: ['btc'],
+  ethereum: ['eth', 'ether'],
+  solana: ['sol'],
+  dogecoin: ['doge'],
+  xrp: ['ripple'],
+  hyperliquid: ['hype'],
+}
+
+// Coins that a story about crypto as a whole is also about.
+const COINS = new Set(['bitcoin', 'ethereum', 'solana', 'dogecoin', 'xrp', 'hyperliquid', 'altcoin', 'cardano', 'bnb', 'litecoin'])
+const CRYPTO_WORDS = ['crypto', 'cryptocurrency', 'cryptocurrencies', 'altcoins']
+
+/**
+ * A market on one asset's price ("Will Ethereum dip to $1,500 ...") is only
+ * the right match for an article that names that asset, by name or ticker:
+ * -0.05 when it never does. Price ladders crowd the cache (213 of 1,878
+ * markets on 2026-10-05) and share every word a markets story uses - dip,
+ * crash, fall - and one topped a Motley Fool piece about a stock market crash
+ * that never mentions crypto. A story about crypto as a whole names every
+ * coin.
+ */
+export function priceSubjectScore(article: string | Set<string>, marketQuestion: string): number {
+  if (!marketQuestion.includes('$')) return 0
+  const m = PRICE_MARKET.exec(marketQuestion)
+  if (!m) return 0
+  const names = (m[1].toLowerCase().match(/[a-z0-9&]+/g) ?? []).filter((w) => w.length > 1 && !NOT_A_NAME.has(w))
+  if (names.length === 0) return 0
+  const words = typeof article === 'string' ? wordsIn(article) : article
+  const named = names.some((n) => words.has(n) || (ASSET_ALIASES[n] ?? []).some((a) => words.has(a)))
+  const aboutCrypto = names.some((n) => COINS.has(n)) && CRYPTO_WORDS.some((w) => words.has(w))
+  return named || aboutCrypto ? 0 : -0.05
+}
+
 /** The best-scoring tradeable market, even when it fell short of the floor. */
 export interface NearestMiss {
   question: string
@@ -369,6 +418,7 @@ export async function attemptMatch(
   const headlineKeywords = extractKeywords(headline)
   const headlineNumbers = extractNumericTokens(headline)
   const articleYears = yearsIn(`${headline} ${bodyText}`)
+  const articleWords = wordsIn(`${headline} ${bodyText}`)
 
   // Score every market. Additive components:
   //   1. raw cosine similarity (semantic relatedness)
@@ -378,7 +428,9 @@ export async function attemptMatch(
   //      number for (see bracketScore - zero or negative)
   //   5. far-future-year score: a contest years away the article never
   //      names (see farFutureYearScore - zero or negative)
-  //   6. small volume bonus (capped +0.015) - tiebreaker for genuine ties
+  //   6. price-subject score: a price market on an asset the article never
+  //      names (see priceSubjectScore - zero or negative)
+  //   7. small volume bonus (capped +0.015) - tiebreaker for genuine ties
   const now = Date.now()
   /** Score one market against the article. Null when it is not scoreable. */
   const scoreOne = (
@@ -397,8 +449,9 @@ export async function attemptMatch(
     const numScore = numberOverlapScore(headlineNumbers, m.question)
     const bracket = bracketScore(headlineNumbers, m.question)
     const future = farFutureYearScore(articleYears, m.question, now)
+    const subject = priceSubjectScore(articleWords, m.question)
     const volBonus = m.volume > 0 ? Math.min(0.015, 0.002 * Math.log10(m.volume)) : 0
-    return { market: m, score: raw + kwBonus + numScore + bracket + future + volBonus, raw }
+    return { market: m, score: raw + kwBonus + numScore + bracket + future + subject + volBonus, raw }
   }
 
   const scored: { market: CachedMarket; score: number; raw: number }[] = []
