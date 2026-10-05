@@ -162,6 +162,72 @@ export function numberOverlapScore(headlineNums: Set<string>, marketQuestion: st
   return headlineHasStrong && marketHasStrong && sharedStrong === 0 ? -0.05 : 0
 }
 
+// Some questions write the range with an en dash (Brazil's "first round by
+// 5-10%" did on 2026-10-05). It is built from its char code so the source
+// never holds the character itself: extension/scripts/check-dashes.mjs.
+const RANGE = new RegExp(
+  String.raw`\$?(\d[\d,]*(?:\.\d+)?)\s*([kK])?\s*%?\s*(?:-|${String.fromCharCode(0x2013)}|to|and|or)\s*\$?(\d[\d,]*(?:\.\d+)?)\s*([kK])?`,
+  'g',
+)
+
+/**
+ * Numeric ranges in a market question: "by 30%-35%", "between 3.25% and 3.5%",
+ * "$100k-$105k", "28 or 29", and the one-number slice "exactly 52". Both ends
+ * must be specific numbers in ascending order, which keeps out district codes
+ * ("MI-11"), seasons ("2026-27") and single digits.
+ */
+function numericBrackets(question: string): Array<[number, number]> {
+  const out: Array<[number, number]> = []
+  for (const m of question.matchAll(/\bexactly\s+\$?(\d[\d,]*(?:\.\d+)?)/gi)) {
+    const n = Number(m[1].replace(/,/g, ''))
+    if (Number.isFinite(n) && !isWeakNumber(String(n))) out.push([n, n])
+  }
+  for (const m of question.matchAll(RANGE)) {
+    const lo = Number(m[1].replace(/,/g, '')) * (m[2] || m[4] ? 1000 : 1)
+    const hi = Number(m[3].replace(/,/g, '')) * (m[4] ? 1000 : 1)
+    if (!Number.isFinite(lo) || !Number.isFinite(hi) || !(lo < hi)) continue
+    if (isWeakNumber(String(lo)) || isWeakNumber(String(hi))) continue
+    out.push([lo, hi])
+  }
+  return out
+}
+
+/**
+ * A bracket market ("win MI-11 by 30%-35%") is one slice of a many-way event,
+ * so it is only the right match for an article that names a number inside
+ * the slice. Without one, -0.05 - the size of a conflicting-number penalty.
+ * Election season fills the cache with these, one per district and margin,
+ * and one of them topped a plain "Democrats lead the midterm polls" article
+ * over the House-control market it was about (2026-10-05).
+ */
+export function bracketScore(headlineNums: Set<string>, marketQuestion: string): number {
+  const brackets = numericBrackets(marketQuestion)
+  if (brackets.length === 0) return 0
+  const nums = [...headlineNums].filter((t) => !isWeakNumber(t)).map(Number)
+  const covered = brackets.some(([lo, hi]) => nums.some((n) => n >= lo && n <= hi))
+  return covered ? 0 : -0.05
+}
+
+/** Four-digit years mentioned anywhere in `text`. */
+function yearsIn(text: string): Set<number> {
+  return new Set((text.match(/\b(?:19|20)\d\d\b/g) ?? []).map(Number))
+}
+
+/**
+ * A market about a year two or more ahead ("win the 2028 presidential
+ * election") is a different contest from the one in today's news unless the
+ * article names that year: -0.05 when it does not. Next year is left alone -
+ * a season or a final that ends next year ("Super Bowl 2027") is still about
+ * what is happening now.
+ */
+export function farFutureYearScore(article: string | Set<number>, marketQuestion: string, now = Date.now()): number {
+  const year = new Date(now).getUTCFullYear()
+  const far = [...yearsIn(marketQuestion)].filter((y) => y >= year + 2)
+  if (far.length === 0) return 0
+  const mentioned = typeof article === 'string' ? yearsIn(article) : article
+  return far.every((y) => mentioned.has(y)) ? 0 : -0.05
+}
+
 /** The best-scoring tradeable market, even when it fell short of the floor. */
 export interface NearestMiss {
   question: string
@@ -302,12 +368,17 @@ export async function attemptMatch(
   // market as similarly close, so we add a lexical-overlap boost on top.
   const headlineKeywords = extractKeywords(headline)
   const headlineNumbers = extractNumericTokens(headline)
+  const articleYears = yearsIn(`${headline} ${bodyText}`)
 
-  // Score every market. Four additive components:
+  // Score every market. Additive components:
   //   1. raw cosine similarity (semantic relatedness)
   //   2. lexical-overlap bonus (see keywordOverlapBonus)
   //   3. number-overlap score (see numberOverlapScore - can be negative)
-  //   4. small volume bonus (capped +0.015) - tiebreaker for genuine ties
+  //   4. bracket score: one slice of a many-way event the article gives no
+  //      number for (see bracketScore - zero or negative)
+  //   5. far-future-year score: a contest years away the article never
+  //      names (see farFutureYearScore - zero or negative)
+  //   6. small volume bonus (capped +0.015) - tiebreaker for genuine ties
   const now = Date.now()
   /** Score one market against the article. Null when it is not scoreable. */
   const scoreOne = (
@@ -324,8 +395,10 @@ export async function attemptMatch(
     const raw = cosineSimilarity(articleVec, vec)
     const kwBonus = keywordOverlapBonus(headlineKeywords, m.question)
     const numScore = numberOverlapScore(headlineNumbers, m.question)
+    const bracket = bracketScore(headlineNumbers, m.question)
+    const future = farFutureYearScore(articleYears, m.question, now)
     const volBonus = m.volume > 0 ? Math.min(0.015, 0.002 * Math.log10(m.volume)) : 0
-    return { market: m, score: raw + kwBonus + numScore + volBonus, raw }
+    return { market: m, score: raw + kwBonus + numScore + bracket + future + volBonus, raw }
   }
 
   const scored: { market: CachedMarket; score: number; raw: number }[] = []

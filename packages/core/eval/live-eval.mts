@@ -45,15 +45,34 @@ interface EvalCase {
   name: string
   text: string
   /** 'confident' = top match must hit `expect` and not be lowConfidence.
+   *  'top'       = top match must hit `expect`, at any confidence.
    *  'top3'      = `expect` must appear in top match or first 3 alternatives.
    *  'none'      = no match at all (below floor).
    *  'not'       = whatever matches, the top match must NOT hit `reject` as CONFIDENT. */
-  kind: 'confident' | 'top3' | 'none' | 'not'
+  kind: 'confident' | 'top' | 'top3' | 'none' | 'not'
   expect?: RegExp
   reject?: RegExp
 }
 
 const CASES: EvalCase[] = [
+  {
+    // 2026-10-05: a $7.7k district-margin bracket ("MI-11 ... by 30%-35%")
+    // and a 2028 market both outranked House control on this headline.
+    // A poll story is not literally about the market, so LOW confidence is
+    // the honest answer; what matters is which market comes first.
+    name: 'Midterm polls - must find House/Senate control, not a district bracket or 2028',
+    text: 'Democrats hold midterm lead with independents breaking sharply against Trump',
+    kind: 'top',
+    expect: /control the (House|Senate) after the 2026 midterm/i,
+  },
+  {
+    // Headline only here; with the article body the October market comes
+    // first. Guards that the bracket/year penalties leave Fed markets alone.
+    name: 'Fed October meeting (CNBC, 2026-10-02)',
+    text: 'Traders now see little chance of a Fed rate hike in October after weak jobs report',
+    kind: 'top3',
+    expect: /fed .*october 2026 meeting/i,
+  },
   {
     name: 'Fed July meeting',
     text: 'Fed expected to cut interest rates at its July meeting as inflation cools',
@@ -149,6 +168,9 @@ for (const c of CASES) {
       break
     case 'confident':
       ok = !!m && !m.lowConfidence && c.expect!.test(m.market.question)
+      break
+    case 'top':
+      ok = !!m && c.expect!.test(m.market.question)
       break
     case 'top3':
       ok = !!m && [m.market, ...m.alternatives.slice(0, 3)].some((x) => c.expect!.test(x.question))

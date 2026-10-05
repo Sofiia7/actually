@@ -1,5 +1,14 @@
-import { describe, expect, it, vi } from 'vitest'
-import { attemptMatch, extractKeywords, extractNumericTokens, findMatch, keywordOverlapBonus, numberOverlapScore } from './matcher'
+import { afterEach, describe, expect, it, vi } from 'vitest'
+import {
+  attemptMatch,
+  bracketScore,
+  extractKeywords,
+  extractNumericTokens,
+  farFutureYearScore,
+  findMatch,
+  keywordOverlapBonus,
+  numberOverlapScore,
+} from './matcher'
 import type { CachedMarket } from './types'
 import { floatArrayToB64 } from './util'
 
@@ -139,6 +148,101 @@ describe('numberOverlapScore', () => {
     const h = extractNumericTokens('What 2026 holds for world markets')
     expect(numberOverlapScore(h, 'Will X happen in 2027?')).toBe(0)
     expect(numberOverlapScore(h, 'Will X happen in 2026?')).toBeCloseTo(0.01, 6)
+  })
+})
+
+// A bracket market ("by 30%-35%") is one slice of a many-way event: only an
+// article that names a number in that slice is about it. Election season
+// fills the cache with them, one per district and margin.
+describe('bracketScore', () => {
+  const none = new Set<string>()
+
+  it('marks down a bracket the headline gives no number for', () => {
+    expect(bracketScore(none, 'Will the Democratic Party candidate win the 2026 MI-11 House election by 30%-35%?')).toBeCloseTo(-0.05, 6)
+    expect(bracketScore(none, 'Will the Fed funds rate be between 3.25% and 3.5% in December?')).toBeCloseTo(-0.05, 6)
+    expect(bracketScore(none, 'Will Bitcoin close the year between $100k-$105k?')).toBeCloseTo(-0.05, 6)
+  })
+
+  it('reads a range written with an en dash', () => {
+    const q = `Will Flávio Bolsonaro win the first round by 15${String.fromCharCode(0x2013)}20%?`
+    expect(bracketScore(none, q)).toBeCloseTo(-0.05, 6)
+  })
+
+  it('treats "exactly N" as a one-number bracket', () => {
+    const q = 'Will the Republican Party hold exactly 52 Senate seats after the 2026 midterm elections?'
+    expect(bracketScore(none, q)).toBeCloseTo(-0.05, 6)
+    expect(bracketScore(extractNumericTokens('Republicans on track for 52 Senate seats'), q)).toBe(0)
+  })
+
+  it('leaves the bracket alone when a headline number falls inside it', () => {
+    expect(bracketScore(extractNumericTokens('Democrat leads MI-11 race by 32%'), 'Will the Democratic Party candidate win the 2026 MI-11 House election by 30%-35%?')).toBe(0)
+  })
+
+  it('does not mistake a district code, a season or a plain threshold for a bracket', () => {
+    expect(bracketScore(none, 'Will the Democratic Party win the MN-02 House seat?')).toBe(0)
+    expect(bracketScore(none, 'Will Arsenal win the 2026-27 English Premier League?')).toBe(0)
+    expect(bracketScore(none, 'Will Bitcoin reach $120,000 by December 31, 2026?')).toBe(0)
+    expect(bracketScore(none, 'Will the Fed decrease interest rates by 25 bps after the October 2026 meeting?')).toBe(0)
+  })
+})
+
+// A market about a year two or more ahead is a different contest from the
+// one in today's news, unless the article itself says that year.
+describe('farFutureYearScore', () => {
+  const now = Date.parse('2026-10-05T12:00:00Z')
+
+  it('marks down a market two or more years out that the article never mentions', () => {
+    expect(farFutureYearScore('Democrats hold midterm lead with independents', 'Will the Democrats win the 2028 US Presidential Election?', now)).toBeCloseTo(-0.05, 6)
+  })
+
+  it('leaves it alone when the article does mention that year', () => {
+    expect(farFutureYearScore('Democrats eye the 2028 White House race', 'Will the Democrats win the 2028 US Presidential Election?', now)).toBe(0)
+  })
+
+  it('leaves next year and the current year alone - a season or final that ends next year is still today\'s news', () => {
+    expect(farFutureYearScore('Chiefs win again', 'Will the Chiefs win Super Bowl 2027?', now)).toBe(0)
+    expect(farFutureYearScore('Arsenal go top', 'Will Arsenal win the 2026-27 English Premier League?', now)).toBe(0)
+    expect(farFutureYearScore('Midterms tighten', 'Will the Democratic Party control the House after the 2026 Midterm elections?', now)).toBe(0)
+  })
+})
+
+describe('findMatch - a midterms article finds the midterms market (live failure 2026-10-05)', () => {
+  const thresholds = { confidenceThreshold: 0.45, lowConfidenceFloor: 0.35 }
+  const at = (raw: number) => [raw, Math.sqrt(1 - raw * raw), 0]
+
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
+  // Raw cosines and volumes as the live cache scored PBS's "Democrats hold
+  // midterm lead..." on 2026-10-05: a $7.7k district-margin bracket and a
+  // 2028 market both outranked the $7.8M House-control market the article
+  // is actually about.
+  const markets = () => [
+    fakeMarket({ id: 'mi11', question: 'Will the Democratic Party candidate win the 2026 MI-11 House election by 30%-35%?', volume: 7_740, vec: at(0.552) }),
+    fakeMarket({ id: 'pres2028', question: 'Will the Democrats win the 2028 US Presidential Election?', volume: 1_225_001, vec: at(0.544) }),
+    fakeMarket({ id: 'house', question: 'Will the Democratic Party control the House after the 2026 Midterm elections?', volume: 7_796_564, vec: at(0.493) }),
+  ]
+  const embedder = { embed: async () => new Float32Array([1, 0, 0]) }
+
+  it('puts the House-control market on top', async () => {
+    vi.useFakeTimers({ now: new Date('2026-10-05T12:00:00Z') })
+    const result = await findMatch(
+      'Democrats hold midterm lead with independents breaking sharply against Trump',
+      "President Donald Trump's efforts to make the midterm elections a referendum on his presidency appear to be backfiring.",
+      { store: { getMarkets: async () => markets() }, embedder, thresholds },
+    )
+    expect(result?.market.id).toBe('house')
+  })
+
+  it('still picks the 2028 market for an article that is about 2028', async () => {
+    vi.useFakeTimers({ now: new Date('2026-10-05T12:00:00Z') })
+    const result = await findMatch(
+      'Democrats eye the 2028 White House race as hopefuls line up',
+      'Potential 2028 candidates are already visiting early primary states.',
+      { store: { getMarkets: async () => markets() }, embedder, thresholds },
+    )
+    expect(result?.market.id).toBe('pres2028')
   })
 })
 
