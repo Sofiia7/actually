@@ -1,6 +1,6 @@
 {
   "name": "actually-mcp-server",
-  "version": "0.1.9",
+  "version": "0.1.10",
   "description": "MCP server that matches news text to Polymarket prediction markets and returns the market's current probability - plus optional trading tools (place, sell, redeem) using your own wallet.",
   "keywords": [
     "mcp",
