@@ -55,9 +55,11 @@ export interface MatchResult {
   lowConfidence: boolean
   alternatives: PolyMarket[]
   /** Ranking score per alternative (raw cosine + keyword/number/volume
-   * bonuses) - for ordering/display only. NOT a probability-like value: the
-   * bonuses can push it past 1. Promoting an alternative to the featured
-   * match must use alternativeRawScores instead (2026-09-08 audit F20). */
+   * bonuses) - for ordering only. NOT a probability-like value: the bonuses
+   * can push it past 1. Promoting an alternative to the featured match must
+   * use alternativeRawScores instead (2026-09-08 audit F20), and a UI must
+   * not print it beside a market: the popup did until 2026-10-05, where it
+   * read as that market's chance. */
   alternativeScores?: number[]
   /** Raw semantic similarity per alternative, same scale as `confidence` on
    * the featured match (0..1, comparable to a confidenceThreshold). This is

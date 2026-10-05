@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { buildMatchFromAlternative, formatTestResult } from './IntegratedPopup'
+import { buildMatchFromAlternative, formatTestResult, relatedRows } from './IntegratedPopup'
 import type { MatchResult, PolyMarket } from '@actually/core'
 import type { TestKeysResult } from '../shared/types'
 
@@ -64,6 +64,35 @@ describe('buildMatchFromAlternative - promoting an alternative to featured (2026
     expect(next?.alternatives[0]?.id).toBe('featured')
     expect(next?.alternativeRawScores?.[0]).toBeCloseTo(0.9, 6)
     expect(next?.alternativeScores?.[0]).toBeCloseTo(0.9, 6)
+  })
+})
+
+describe('relatedRows - a related market shows its price, never the ranking score (2026-10-05)', () => {
+  // Live case: on a Reuters story about Taiwan the row read 89% beside "Will
+  // China invade Taiwan by end of 2026?", a market trading at 2%. The row is
+  // drawn exactly like a probability, so the number in it has to be one.
+  const match: MatchResult = {
+    market: fakeMarket({ id: 'featured', question: 'Will China invade Taiwan by June 30, 2027?' }),
+    probability: 0.07,
+    confidence: 0.79,
+    color: 'blue',
+    lowConfidence: false,
+    alternatives: [
+      fakeMarket({ id: 'a', question: 'Will China invade Taiwan by end of 2026?', outcomePrices: '["0.02","0.98"]' }),
+      fakeMarket({ id: 'b', question: 'Listed No first', outcomes: '["No","Yes"]', outcomePrices: '["0.9","0.1"]' }),
+      fakeMarket({ id: 'c', question: 'Broken prices', outcomePrices: 'not json' }),
+    ],
+    alternativeScores: [0.89, 1.12, 0.6],
+    alternativeRawScores: [0.7, 0.6, 0.5],
+  }
+
+  it("uses each market's own YES price", () => {
+    expect(relatedRows(match).map((r) => r.pct)).toEqual([2, 10, 0])
+    expect(relatedRows(match).map((r) => r.q)).toEqual([
+      'Will China invade Taiwan by end of 2026?',
+      'Listed No first',
+      'Broken prices',
+    ])
   })
 })
 

@@ -72,8 +72,20 @@ function toDesignMarket(m: MatchResult): DesignMarket {
     desc: d ? (d.length > 200 ? d.slice(0, 200).replace(/\s+\S*$/, '') + '…' : d) : undefined,
   }
 }
-function altToDesignMarket(question: string, score: number | undefined): DesignMarket {
-  return { q: question, pct: score != null ? Math.round(score * 100) : 0 }
+/**
+ * The "Other related markets" rows: each market's own YES price, never the
+ * matcher's ranking score. A row is drawn exactly like a probability (tinted
+ * dot, % chip), and until 2026-10-05 it carried the ranking score instead: on
+ * a Reuters story about Taiwan it read 89% beside "Will China invade Taiwan by
+ * end of 2026?", a market trading at 2%. The price is the cached one - the
+ * same number the featured card shows once the row is picked
+ * (buildMatchFromAlternative reads these outcomePrices too).
+ */
+export function relatedRows(m: MatchResult): DesignMarket[] {
+  return m.alternatives.map((alt) => {
+    const p = priceFromOutcomes(alt.outcomePrices, alt.outcomes)
+    return { q: alt.question, pct: Number.isFinite(p) ? Math.round(p * 100) : 0 }
+  })
 }
 function formatVolume(v: number): string {
   if (v >= 1_000_000) return `$${(v / 1_000_000).toFixed(1)}M`
@@ -439,10 +451,7 @@ export const IntegratedPopup: React.FC<IntegratedPopupProps> = ({
       if (res.match) {
         setLastMatch(res.match)
         const featured = toDesignMarket(res.match)
-        const related = res.match.alternatives.map((alt, i) =>
-          altToDesignMarket(alt.question, res.match!.alternativeScores?.[i]),
-        )
-        setCheckState({ kind: 'success', featured, related })
+        setCheckState({ kind: 'success', featured, related: relatedRows(res.match) })
       } else {
         setLastMatch(null)
         if (res.reason === 'no_article') {
@@ -525,7 +534,7 @@ export const IntegratedPopup: React.FC<IntegratedPopupProps> = ({
     setCheckState({
       kind: 'success',
       featured: toDesignMarket(next),
-      related: next.alternatives.map((alt, i) => altToDesignMarket(alt.question, next.alternativeScores?.[i])),
+      related: relatedRows(next),
     })
   }
 
