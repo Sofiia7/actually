@@ -168,6 +168,11 @@ blocked entirely. The check runs on the Worker.
 
 Actually does not provide financial advice.
 
+## Listed in
+
+- [Polymarket Tools Directory](https://polymart.app): catalog of Polymarket tools.
+- [Prediction Market Tools](https://www.predictionmarket.tools): directory of prediction market projects.
+
 ## License
 
 See [LICENSE](LICENSE).
