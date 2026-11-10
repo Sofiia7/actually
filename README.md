@@ -171,7 +171,6 @@ Actually does not provide financial advice.
 ## Polymarket tool directories
 
 - [PolyMart](https://polymart.app): a directory of Polymarket tools.
-- [Prediction Market Tools](https://www.predictionmarket.tools): a directory of prediction market tools.
 - [Prediction Market Tools](https://www.predictionmarket.tools/): a directory of prediction market projects.
 
 ## License
