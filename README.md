@@ -172,6 +172,7 @@ Actually does not provide financial advice.
 
 - [PolyMart](https://polymart.app): a directory of Polymarket tools.
 - [Prediction Market Tools](https://www.predictionmarket.tools/): a directory of prediction market projects.
+- [PredAtlas](https://predatlas.com/tool/actually): Actually's profile in a directory of prediction market tools.
 
 ## License
 
